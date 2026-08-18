@@ -69,7 +69,7 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> Opt
                     f"{base.rstrip('/')}/chat/completions",
                     json=payload,
                     headers={"Authorization": f"Bearer {key}"},
-                    timeout=aiohttp.ClientTimeout(total=25),
+                    timeout=aiohttp.ClientTimeout(total=12),
                 ) as resp:
                     if resp.status != 200:
                         body = await resp.text()

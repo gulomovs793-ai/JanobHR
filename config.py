@@ -14,6 +14,22 @@ AI_API_KEY = os.getenv("AI_API_KEY", "")
 AI_API_BASE = os.getenv("AI_API_BASE", "https://api.openai.com/v1")
 AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
 
+# --- Zaxira AI provayderlar ---
+# Asosiy provayder (yuqoridagi) ishlamay qolsa (kredit tugasa, limit yoki server
+# xatosi bo'lsa), bot avtomatik navbatdagi provayderga o'tadi — bir xil JSON
+# formatida tahlil davom etadi, nomzod buni sezmaydi. Kalit bo'sh bo'lsa, o'sha
+# provayder shunchaki o'tkazib yuboriladi.
+#
+# Zaxira 1 — Groq (standart: OpenAI-compatible, tez va bepul tarifi saxiy).
+AI_API_KEY_2 = os.getenv("AI_API_KEY_2", "")
+AI_API_BASE_2 = os.getenv("AI_API_BASE_2", "https://api.groq.com/openai/v1")
+AI_MODEL_2 = os.getenv("AI_MODEL_2", "openai/gpt-oss-120b")
+
+# Zaxira 2 — DeepSeek (standart: OpenAI-compatible, juda arzon).
+AI_API_KEY_3 = os.getenv("AI_API_KEY_3", "")
+AI_API_BASE_3 = os.getenv("AI_API_BASE_3", "https://api.deepseek.com/v1")
+AI_MODEL_3 = os.getenv("AI_MODEL_3", "deepseek-v4-flash")
+
 FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "")
 
 SQLITE_PATH = os.getenv("SQLITE_PATH", "data.db")

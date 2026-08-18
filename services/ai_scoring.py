@@ -6,8 +6,14 @@ direktor kabi 3 mezon bo'yicha (Natijadorlik, Mas'uliyat, Aniqlik) baholaydi,
 "qizil bayroqlarni" (qurbon sindromi, abstrakt javob, "Men/Biz" nomutanosibligi)
 aniqlaydi va 🟢/🟡/🔴 yakuniy verdikt chiqaradi.
 
-AI_API_KEY bo'sh bo'lsa, hech narsa chaqirilmaydi (None qaytadi) — bot AI'siz
-ham ishlayveradi.
+AI PROVAYDER ZANJIRI: asosiy provayder (AI_API_KEY/AI_API_BASE/AI_MODEL) ishlamay
+qolsa (kredit tugasa, limit yoki server xatosi bo'lsa), avtomatik ravishda
+zaxira provayderlarga (AI_API_KEY_2, keyin AI_API_KEY_3) o'tiladi — barchasi
+bir xil OpenAI-compatible formatda so'raladi va bir xil JSON strukturasida
+javob kutiladi, shuning uchun nomzod yoki admin hech narsani sezmaydi.
+
+Hech qanday provayder sozlanmagan bo'lsa yoki barchasi ishlamasa, None qaytadi
+— bot AI'siz ham ishlayveradi.
 """
 import json
 import logging
@@ -16,9 +22,69 @@ from typing import Optional, TypedDict
 
 import aiohttp
 
-from config import AI_API_BASE, AI_API_KEY, AI_MODEL
+from config import (
+    AI_API_BASE,
+    AI_API_BASE_2,
+    AI_API_BASE_3,
+    AI_API_KEY,
+    AI_API_KEY_2,
+    AI_API_KEY_3,
+    AI_MODEL,
+    AI_MODEL_2,
+    AI_MODEL_3,
+)
 
 logger = logging.getLogger("janob_hr_bot")
+
+# (kalit, manzil, model, log-yorlig'i) — kalit bo'sh bo'lgan provayderlar
+# avtomatik o'tkazib yuboriladi.
+_PROVIDERS = [
+    (AI_API_KEY, AI_API_BASE, AI_MODEL, "asosiy"),
+    (AI_API_KEY_2, AI_API_BASE_2, AI_MODEL_2, "zaxira-1"),
+    (AI_API_KEY_3, AI_API_BASE_3, AI_MODEL_3, "zaxira-2"),
+]
+
+
+async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> Optional[str]:
+    """Sozlangan provayderlarni navbat bilan sinaydi, birinchi muvaffaqiyatlisidan
+    xom matnni qaytaradi. Hech biri sozlanmagan yoki barchasi ishlamasa — None.
+    """
+    active = [(k, b, m, label) for k, b, m, label in _PROVIDERS if k]
+    if not active:
+        return None
+
+    for key, base, model, label in active:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0,
+            "max_tokens": max_tokens,
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{base.rstrip('/')}/chat/completions",
+                    json=payload,
+                    headers={"Authorization": f"Bearer {key}"},
+                    timeout=aiohttp.ClientTimeout(total=25),
+                ) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        logger.warning(
+                            "AI provayder (%s) xatosi: HTTP %s | %s", label, resp.status, body[:300]
+                        )
+                        continue  # navbatdagi provayderga o'tamiz
+                    data = await resp.json()
+                    return data["choices"][0]["message"]["content"].strip()
+        except Exception:
+            logger.exception("AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi.", label)
+            continue  # navbatdagi provayderga o'tamiz
+
+    logger.error("Barcha AI provayderlar ishlamadi (%d ta sinaldi).", len(active))
+    return None
 
 
 class ScoreResult(TypedDict):
@@ -70,39 +136,13 @@ FAQAT quyidagi JSON formatida javob ber, boshqa hech qanday matn, izoh yoki mark
 
 
 async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
-    if not AI_API_KEY:
-        return None
-
-    payload = {
-        "model": AI_MODEL,
-        "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": f"Savol: {question}\nNomzod javobi: {answer}"},
-        ],
-        "temperature": 0,
-        "max_tokens": 300,
-    }
-    headers = {"Authorization": f"Bearer {AI_API_KEY}"}
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{AI_API_BASE.rstrip('/')}/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=25),
-            ) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    logger.warning("AI scoring API xatosi: HTTP %s | %s", resp.status, body[:300])
-                    return None
-                data = await resp.json()
-    except Exception:
-        logger.exception("AI scoring so'rovi muvaffaqiyatsiz tugadi.")
+    content = await _call_ai(
+        _SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=300
+    )
+    if content is None:
         return None
 
     try:
-        content = data["choices"][0]["message"]["content"].strip()
         # Ba'zi modellar JSON'ni ```json ... ``` bilan o'rab yuborishi mumkin — tozalaymiz.
         content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
         parsed = json.loads(content)
@@ -138,7 +178,7 @@ async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
             izoh=izoh,
         )
     except Exception:
-        logger.exception("AI javobini o'qib bo'lmadi: %s", data)
+        logger.exception("AI javobini o'qib bo'lmadi: %s", content)
         return None
 
 
@@ -156,42 +196,16 @@ FAQAT bitta so'z bilan javob ber: HA yoki YOQ. Boshqa hech qanday matn yozma.
 async def check_relevance(question: str, answer: str) -> Optional[bool]:
     """AI_score bilan belgilanmagan (oddiy faktik) savollar uchun yengil aloqadorlik tekshiruvi.
 
-    True — javob mavzuga/kasbga aloqador, False — aloqasiz/bema'ni. AI o'chirilgan
-    bo'lsa (AI_API_KEY yo'q) yoki so'rov muvaffaqiyatsiz tugasa, None qaytaradi —
-    bunday holda chaqiruvchi tekshiruvni o'tkazib yuborishi kerak (botni AI'siz
-    ham ishlashi uchun).
+    True — javob mavzuga/kasbga aloqador, False — aloqasiz/bema'ni. Hech qanday
+    provayder sozlanmagan yoki barchasi ishlamasa, None qaytaradi — bunday holda
+    chaqiruvchi tekshiruvni o'tkazib yuborishi kerak (botni AI'siz ham ishlashi uchun).
     """
-    if not AI_API_KEY:
+    content = await _call_ai(
+        _RELEVANCE_SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=5
+    )
+    if content is None:
         return None
-
-    payload = {
-        "model": AI_MODEL,
-        "messages": [
-            {"role": "system", "content": _RELEVANCE_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Savol: {question}\nNomzod javobi: {answer}"},
-        ],
-        "temperature": 0,
-        "max_tokens": 5,
-    }
-    headers = {"Authorization": f"Bearer {AI_API_KEY}"}
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{AI_API_BASE.rstrip('/')}/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning("Relevance-check API xatosi: HTTP %s", resp.status)
-                    return None
-                data = await resp.json()
-        content = data["choices"][0]["message"]["content"].strip().upper()
-        return content.startswith("HA")
-    except Exception:
-        logger.exception("Relevance-check so'rovi muvaffaqiyatsiz tugadi.")
-        return None
+    return content.strip().upper().startswith("HA")
 
 
 class AggregateResult(TypedDict):
@@ -204,7 +218,7 @@ def aggregate_scores(ai_scores: dict) -> Optional[AggregateResult]:
     """Bir nechta savol bo'yicha AI baholarini bitta yakuniy natijaga birlashtiradi.
 
     ai_scores — {savol_key: ScoreResult} lug'ati (questions.py'da to'planadi).
-    Hech qanday AI ball bo'lmasa (masalan AI_API_KEY sozlanmagan), None qaytadi.
+    Hech qanday AI ball bo'lmasa (masalan hech bir provayder sozlanmagan), None qaytadi.
     """
     valid = [v for v in ai_scores.values() if isinstance(v, dict) and "score" in v]
     if not valid:

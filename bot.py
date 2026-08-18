@@ -15,7 +15,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 from services.database import init_db
-from handlers import start, vacancy, questions, files, admin, sell
+from handlers import start, vacancy, questions, files, admin, sell, contact
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger("janob_hr_bot")
@@ -64,6 +64,7 @@ async def main():
     dp.include_router(vacancy.router)
     dp.include_router(questions.router)
     dp.include_router(files.router)
+    dp.include_router(contact.router)
 
     logger.info("Janob HR bot ishga tushdi ✅")
     await bot.delete_webhook(drop_pending_updates=True)

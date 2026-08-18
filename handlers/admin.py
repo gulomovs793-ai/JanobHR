@@ -8,6 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_GROUP_ID
 from services import database
 from services.ai_scoring import aggregate_scores
+from vacancies import get_questions
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -32,8 +33,11 @@ def _format_application_text(app: dict) -> str:
     lines = [
         f"🆕 <b>Yangi anketa</b> — {app['vacancy_title']}",
         f"👤 {app['full_name']} (@{app['username'] or '—'}, id: {app['user_id']})",
-        "",
     ]
+    if app.get("phone_number"):
+        lines.append(f"📞 {app['phone_number']}")
+    lines.append("")
+
     for value in app["answers"].values():
         text = str(value)
         # Bitta javob juda uzun bo'lib qolsa (masalan nomzod juda batafsil yozsa),
@@ -45,10 +49,25 @@ def _format_application_text(app: dict) -> str:
     ai_scores = app.get("ai_scores") or {}
     aggregate = aggregate_scores(ai_scores)
 
-    if aggregate:
+    # Ushbu vakansiyada nechta savol AI orqali baholanishi kerak edi — shunga
+    # qarab, AI umuman ishlamagan holatni ("aggregate is None") va qisman
+    # ishlagan holatni bir-biridan ajratamiz.
+    expected_keys = [q["key"] for q in get_questions(app["vacancy_key"]) if q.get("ai_score")]
+    valid_count = sum(
+        1 for k in expected_keys
+        if isinstance(ai_scores.get(k), dict) and "score" in ai_scores[k]
+    )
+
+    lines.append("")
+    if expected_keys and not aggregate:
+        lines.append(
+            "⚠️ <b>AI tahlili amalga oshmadi</b> (API xatosi yoki limit tugagan bo'lishi "
+            "mumkin) — javoblarni qo'lda ko'rib chiqing."
+        )
+    elif aggregate:
         emoji = _VERDICT_EMOJI.get(aggregate["verdict"], "⚪")
-        lines.append("")
-        lines.append(f"{emoji} <b>Yakuniy AI ball: {aggregate['avg_score']}/100</b>")
+        coverage = f" ({valid_count}/{len(expected_keys)} savol tahlil qilindi)" if valid_count < len(expected_keys) else ""
+        lines.append(f"{emoji} <b>Yakuniy AI ball: {aggregate['avg_score']}/100</b>{coverage}")
 
         if aggregate["red_flags"]:
             flag_labels = [_RED_FLAG_LABELS.get(f, f) for f in aggregate["red_flags"]]

@@ -18,6 +18,10 @@ FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "")
 
 SQLITE_PATH = os.getenv("SQLITE_PATH", "data.db")
 
+# Bitta savolga javob uchun belgilar chegarasi. Nomzod bundan uzunroq yozsa,
+# bot qisqartirib qayta yozishni so'raydi (o'qish/AI tahlili qulay bo'lishi uchun).
+MAX_ANSWER_CHARS = int(os.getenv("MAX_ANSWER_CHARS", "800"))
+
 # --- "Sell" bosqichi: yuqori ball olgan nomzodlarga avtomatik taklif ---
 # O'rtacha AI ball shu chegaradan yuqori bo'lsa (va qizil bayroq bo'lmasa),
 # nomzodga kompaniya taqdimoti va suhbat vaqtini tanlash tugmalari yuboriladi.

@@ -44,6 +44,9 @@ async def init_db():
         if "selected_slot" not in existing_columns:
             await db.execute("ALTER TABLE applications ADD COLUMN selected_slot TEXT")
             logger.info("Migratsiya: 'selected_slot' ustuni qo'shildi.")
+        if "phone_number" not in existing_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN phone_number TEXT")
+            logger.info("Migratsiya: 'phone_number' ustuni qo'shildi.")
 
         await db.commit()
     logger.info("Ma'lumotlar bazasi tayyor: %s", SQLITE_PATH)
@@ -61,6 +64,7 @@ async def save_application(
     resume_file_id: Optional[str],
     video_file_id: Optional[str],
     status: str,
+    phone_number: str = "",
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
@@ -68,8 +72,9 @@ async def save_application(
             """
             INSERT INTO applications (
                 user_id, username, full_name, vacancy_key, vacancy_title,
-                answers, ai_scores, resume_file_id, video_file_id, status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                answers, ai_scores, resume_file_id, video_file_id, status,
+                phone_number, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -82,6 +87,7 @@ async def save_application(
                 resume_file_id,
                 video_file_id,
                 status,
+                phone_number,
                 created_at,
             ),
         )

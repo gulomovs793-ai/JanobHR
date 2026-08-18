@@ -5,6 +5,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from config import MAX_ANSWER_CHARS
 from services import database
 from services.ai_scoring import check_relevance, score_answer
 from states import ApplyForm
@@ -78,6 +79,14 @@ async def handle_answer(message: Message, state: FSMContext):
         await message.answer("Iltimos, savolga matn ko'rinishida javob yozing.")
         return
 
+    # --- Uzunlik chegarasi: juda uzun javoblar o'qishni va AI tahlilini qiyinlashtiradi ---
+    if len(answer_text) > MAX_ANSWER_CHARS:
+        await message.answer(
+            f"Javobingiz juda uzun ({len(answer_text)} belgi). Iltimos, fikringizni "
+            f"qisqaroq — taxminan {MAX_ANSWER_CHARS} belgigacha — qilib qayta yozing. ✍️"
+        )
+        return
+
     # --- Hard filter: salbiy javob bo'lsa, darhol xushmuomalalik bilan rad etamiz ---
     if q.get("hard_filter") and is_negative_answer(answer_text):
         answers = data.get("answers", {})
@@ -124,6 +133,7 @@ async def handle_wrong_answer_type(message: Message):
 
 
 async def finish_questions(message: Message, state: FSMContext):
+    """Barcha savollar tugagach chaqiriladi: kerak bo'lsa fayl, keyin aloqa ma'lumotlari."""
     data = await state.get_data()
     vacancy = VACANCIES[data["vacancy_key"]]
 
@@ -134,15 +144,13 @@ async def finish_questions(message: Message, state: FSMContext):
         await state.set_state(ApplyForm.waiting_file)
         return
 
-    await complete_application(message, state)
+    from handlers.contact import ask_full_name
+
+    await ask_full_name(message, state)
 
 
-async def complete_application(
-    message: Message,
-    state: FSMContext,
-    resume_file_id: str | None = None,
-    video_file_id: str | None = None,
-):
+async def complete_application(message: Message, state: FSMContext):
+    """handlers/contact.py orqali ism-familiya va telefon yig'ilgach chaqiriladi."""
     from handlers.admin import notify_admin_group
     from handlers.sell import maybe_send_sell_pitch
 
@@ -152,13 +160,14 @@ async def complete_application(
     app_id = await database.save_application(
         user_id=message.from_user.id,
         username=message.from_user.username or "",
-        full_name=message.from_user.full_name,
+        full_name=data.get("candidate_full_name") or message.from_user.full_name,
+        phone_number=data.get("candidate_phone", ""),
         vacancy_key=data["vacancy_key"],
         vacancy_title=vacancy["title"],
         answers=data.get("answers", {}),
         ai_scores=data.get("ai_scores", {}),
-        resume_file_id=resume_file_id,
-        video_file_id=video_file_id,
+        resume_file_id=data.get("resume_file_id"),
+        video_file_id=data.get("video_file_id"),
         status="pending",
     )
 

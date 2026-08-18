@@ -59,16 +59,28 @@ async def _reject_and_save(
     await state.clear()
 
 
+_IRRELEVANT_RETRY_TEXT = (
+    "Kechirasiz, javobingiz savolga unchalik mos kelmadi. 🤔\n\n"
+    "Iltimos, quyidagi savolga qayta, aniqroq javob bering:\n\n"
+    "{question_text}"
+)
+
 _IRRELEVANT_REJECT_TEXT = (
-    "Kechirasiz, javobingiz savolga mos kelmadi. ⚠️\n\n"
-    "Iltimos, savollarga jiddiy va mavzuga oid javob bering. Agar tasodifiy xato bo'lgan "
-    "bo'lsa, /start orqali qaytadan urinib ko'rishingiz mumkin."
+    "Kechirasiz, bir necha marta savolga mos javob bera olmadingiz. ⚠️\n\n"
+    "Iltimos, keyinroq /start orqali qaytadan urinib ko'ring va savollarga jiddiy, "
+    "mavzuga oid javob bering."
 )
 
 # Oddiy faktik savollarda ("qaysi platforma/dastur ishlatasiz" kabi) bundan qisqa
 # javoblar AI orqali tekshirilmaydi — bir so'zlik to'g'ri javoblarni ("Instagram",
 # "Figma") noto'g'ri "aloqasiz" deb belgilash xavfini kamaytirish uchun.
 _SHORT_ANSWER_SKIP_CHARS = 20
+
+# AI ba'zan to'g'ri javoblarni ham noto'g'ri "aloqasiz" deb belgilashi mumkin —
+# shuning uchun bitta xato tufayli butun arizani yo'qotmaslik uchun, nomzodga
+# SHU SAVOLNI qayta javob berishga necha marta imkoniyat berilishi (ketma-ket
+# necha marta "aloqasiz" chiqsa, arizani chindan rad etamiz).
+_MAX_IRRELEVANT_RETRIES = 2
 
 
 @router.message(ApplyForm.answering_questions, F.text)
@@ -108,31 +120,43 @@ async def handle_answer(message: Message, state: FSMContext):
     ai_scores = data.get("ai_scores", {})
 
     # --- Har bir javob uchun: mavzuga/kasbga aloqadormi degan tekshiruv ---
+    relevant = True
     if q.get("ai_score"):
         result = await score_answer(q["text"], answer_text)
         if result is not None:
             ai_scores[q["key"]] = result
-            if not result.get("relevant", True):
-                await _reject_and_save(
-                    message, state, vacancy_key, answers, ai_scores,
-                    _IRRELEVANT_REJECT_TEXT, "rejected_irrelevant",
-                )
-                return
+            relevant = result.get("relevant", True)
     elif len(answer_text) > _SHORT_ANSWER_SKIP_CHARS:
         # Oddiy faktik savollarda (masalan "qaysi platforma/dastur ishlatasiz")
         # juda qisqa javoblar ("Instagram", "Figma" kabi) deyarli doim to'g'ri
         # bo'ladi — AI bunday qisqa matnlarni ba'zan noto'g'ri "aloqasiz" deb
         # belgilashi mumkin, shuning uchun tekshiruvni faqat uzunroq javoblarga
         # qo'llaymiz (noto'g'ri rad etish xavfini kamaytirish uchun).
-        relevant = await check_relevance(q["text"], answer_text)
-        if relevant is False:
+        checked = await check_relevance(q["text"], answer_text)
+        if checked is not None:
+            relevant = checked
+
+    if not relevant:
+        # AI xato qilishi mumkinligi uchun, birinchi marta darhol rad etmaymiz —
+        # SHU SAVOLNING O'ZIDA qolib, qayta javob berish imkonini beramiz
+        # (boshqa javoblar, fayl va h.k. saqlanib qoladi, jarayon qaytadan
+        # boshlanmaydi).
+        retry_count = data.get("irrelevant_retry_count", 0) + 1
+        if retry_count > _MAX_IRRELEVANT_RETRIES:
             await _reject_and_save(
                 message, state, vacancy_key, answers, ai_scores,
                 _IRRELEVANT_REJECT_TEXT, "rejected_irrelevant",
             )
             return
 
-    await state.update_data(answers=answers, ai_scores=ai_scores, question_index=idx + 1)
+        await state.update_data(irrelevant_retry_count=retry_count)
+        await message.answer(_IRRELEVANT_RETRY_TEXT.format(question_text=q["text"]))
+        return
+
+    await state.update_data(
+        answers=answers, ai_scores=ai_scores, question_index=idx + 1,
+        irrelevant_retry_count=0,
+    )
     await ask_current_question(message, state)
 
 

@@ -27,6 +27,7 @@ class ScoreResult(TypedDict):
     natijadorlik: int
     masuliyat: int
     aniqlik: int
+    relevant: bool  # javob savolga/kasbga umuman aloqadormi
     red_flags: list[str]
     izoh: str  # 1 gapli qisqa xulosa
 
@@ -35,7 +36,13 @@ _SYSTEM_PROMPT = """Sen Google va Apple kompaniyalarida ishlagan 15 yillik tajri
 juda qattiqqo'l va professional HR direktorsan. Sening vazifang — Telegram-bot orqali \
 kelgan nomzodning bitta savolga bergan javobini sovuqqonlik bilan, hissiyotsiz tahlil qilish.
 
-Javobni 3 ta qat'iy mezon bo'yicha 0 dan 100 gacha bahola:
+Avval eng muhim narsani tekshir — "relevant": javob umuman shu savolga va kasbga aloqadormi?
+Agar javob bema'ni matn, spam, mavzudan butunlay chetga chiqqan, yoki savolga hech qanday
+aloqasi yo'q bo'lsa — "relevant": false qo'y (bunday holda boshqa ballarni 0 qo'yishing mumkin).
+Qisqa lekin mazmunan to'g'ri javoblarni "relevant": false qilib belgilama — faqat haqiqatan
+ham aloqasiz/bema'ni bo'lsa shunday qil.
+
+Javob relevant bo'lsa, uni 3 ta qat'iy mezon bo'yicha 0 dan 100 gacha bahola:
 1. natijadorlik — Matnda aniq raqamlar, foizlar, muddatlar bormi, yoki faqat quruq umumiy gaplarmi?
 2. masuliyat — Muammo haqida gapirganda, nomzod boshqalarni/vaziyatni ayblaydimi ("Biz",
    "Bozor yomon edi", "Rahbarim ahmoq edi"), yoki o'z harakatiga mas'uliyat oladimi ("Men qildim")?
@@ -53,11 +60,12 @@ Quyidagi "qizil bayroqlarni" alohida qidir va topilganlarini ro'yxatga qo'sh (to
 Uchala mezon o'rtachasi asosida yakuniy "verdict" tanla:
 - "yashil" — o'rtacha ball 75 dan yuqori va jiddiy qizil bayroq yo'q
 - "sariq" — o'rtacha ball 50-74 oralig'ida, yoki bitta yengil bayroq bor
-- "qizil" — o'rtacha ball 50 dan past, yoki jiddiy bayroq(lar) bor
+- "qizil" — o'rtacha ball 50 dan past, relevant=false, yoki jiddiy bayroq(lar) bor
 
 FAQAT quyidagi JSON formatida javob ber, boshqa hech qanday matn, izoh yoki markdown yozma:
-{"natijadorlik": <son>, "masuliyat": <son>, "aniqlik": <son>, "verdict": "<yashil|sariq|qizil>", \
-"red_flags": [<satrlar ro'yxati>], "izoh": "<15 so'zdan oshmagan, o'zbek tilida qisqa xulosa>"}
+{"relevant": <true yoki false>, "natijadorlik": <son>, "masuliyat": <son>, "aniqlik": <son>, \
+"verdict": "<yashil|sariq|qizil>", "red_flags": [<satrlar ro'yxati>], \
+"izoh": "<15 so'zdan oshmagan, o'zbek tilida qisqa xulosa>"}
 """
 
 
@@ -99,6 +107,8 @@ async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
         content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
         parsed = json.loads(content)
 
+        relevant = bool(parsed.get("relevant", True))
+
         natijadorlik = max(0, min(100, int(parsed.get("natijadorlik", 0))))
         masuliyat = max(0, min(100, int(parsed.get("masuliyat", 0))))
         aniqlik = max(0, min(100, int(parsed.get("aniqlik", 0))))
@@ -108,6 +118,8 @@ async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
         if verdict not in ("yashil", "sariq", "qizil"):
             # AI noto'g'ri qiymat qaytarsa, ballga qarab o'zimiz aniqlaymiz (himoya chizig'i).
             verdict = "yashil" if avg >= 75 else "sariq" if avg >= 50 else "qizil"
+        if not relevant:
+            verdict = "qizil"
 
         red_flags = parsed.get("red_flags") or []
         if not isinstance(red_flags, list):
@@ -121,11 +133,64 @@ async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
             natijadorlik=natijadorlik,
             masuliyat=masuliyat,
             aniqlik=aniqlik,
+            relevant=relevant,
             red_flags=[str(f) for f in red_flags],
             izoh=izoh,
         )
     except Exception:
         logger.exception("AI javobini o'qib bo'lmadi: %s", data)
+        return None
+
+
+_RELEVANCE_SYSTEM_PROMPT = """Sen HR-botning kirish filtridasan. Vazifang — nomzodning \
+javobi berilgan savolga va lavozimga mazmunan aloqadormi yoki yo'qmi, shuni tekshirish.
+
+"YOQ" deb hisobla, agar javob: bema'ni/tushunarsiz matn bo'lsa, spam bo'lsa, savolga umuman \
+aloqasi bo'lmagan boshqa mavzuda bo'lsa, yoki shunchaki emoji/bitta harf kabi mazmunsiz bo'lsa.
+"HA" deb hisobla, agar javob qisqa bo'lsa ham, savolga mazmunan tegishli va jiddiy javob bo'lsa.
+
+FAQAT bitta so'z bilan javob ber: HA yoki YOQ. Boshqa hech qanday matn yozma.
+"""
+
+
+async def check_relevance(question: str, answer: str) -> Optional[bool]:
+    """AI_score bilan belgilanmagan (oddiy faktik) savollar uchun yengil aloqadorlik tekshiruvi.
+
+    True — javob mavzuga/kasbga aloqador, False — aloqasiz/bema'ni. AI o'chirilgan
+    bo'lsa (AI_API_KEY yo'q) yoki so'rov muvaffaqiyatsiz tugasa, None qaytaradi —
+    bunday holda chaqiruvchi tekshiruvni o'tkazib yuborishi kerak (botni AI'siz
+    ham ishlashi uchun).
+    """
+    if not AI_API_KEY:
+        return None
+
+    payload = {
+        "model": AI_MODEL,
+        "messages": [
+            {"role": "system", "content": _RELEVANCE_SYSTEM_PROMPT},
+            {"role": "user", "content": f"Savol: {question}\nNomzod javobi: {answer}"},
+        ],
+        "temperature": 0,
+        "max_tokens": 5,
+    }
+    headers = {"Authorization": f"Bearer {AI_API_KEY}"}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{AI_API_BASE.rstrip('/')}/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning("Relevance-check API xatosi: HTTP %s", resp.status)
+                    return None
+                data = await resp.json()
+        content = data["choices"][0]["message"]["content"].strip().upper()
+        return content.startswith("HA")
+    except Exception:
+        logger.exception("Relevance-check so'rovi muvaffaqiyatsiz tugadi.")
         return None
 
 

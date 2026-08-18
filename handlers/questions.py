@@ -1,4 +1,4 @@
-"""Janob HR Bot — savol-javob oqimi, hard-filter va AI baholash."""
+"""Janob HR Bot — savol-javob oqimi, hard-filter, mavzuga aloqadorlik va AI baholash."""
 import logging
 
 from aiogram import F, Router
@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from services import database
-from services.ai_scoring import score_answer
+from services.ai_scoring import check_relevance, score_answer
 from states import ApplyForm
 from vacancies import VACANCIES, get_questions, is_negative_answer
 
@@ -30,6 +30,41 @@ async def ask_current_question(message: Message, state: FSMContext):
     await state.set_state(ApplyForm.answering_questions)
 
 
+async def _reject_and_save(
+    message: Message,
+    state: FSMContext,
+    vacancy_key: str,
+    answers: dict,
+    ai_scores: dict,
+    reject_text: str,
+    status: str,
+):
+    """Nomzodni xushmuomalalik bilan rad etadi, arizani baribir bazaga yozadi (statistika
+    uchun) va suhbat holatini tozalaydi."""
+    vacancy = VACANCIES[vacancy_key]
+    await message.answer(reject_text)
+    await database.save_application(
+        user_id=message.from_user.id,
+        username=message.from_user.username or "",
+        full_name=message.from_user.full_name,
+        vacancy_key=vacancy_key,
+        vacancy_title=vacancy["title"],
+        answers=answers,
+        ai_scores=ai_scores,
+        resume_file_id=None,
+        video_file_id=None,
+        status=status,
+    )
+    await state.clear()
+
+
+_IRRELEVANT_REJECT_TEXT = (
+    "Kechirasiz, javobingiz savolga mos kelmadi. ⚠️\n\n"
+    "Iltimos, savollarga jiddiy va mavzuga oid javob bering. Agar tasodifiy xato bo'lgan "
+    "bo'lsa, /start orqali qaytadan urinib ko'rishingiz mumkin."
+)
+
+
 @router.message(ApplyForm.answering_questions, F.text)
 async def handle_answer(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -45,34 +80,38 @@ async def handle_answer(message: Message, state: FSMContext):
 
     # --- Hard filter: salbiy javob bo'lsa, darhol xushmuomalalik bilan rad etamiz ---
     if q.get("hard_filter") and is_negative_answer(answer_text):
-        vacancy = VACANCIES[vacancy_key]
-        await message.answer(vacancy["reject_message"])
-
         answers = data.get("answers", {})
         answers[q["key"]] = answer_text
-        await database.save_application(
-            user_id=message.from_user.id,
-            username=message.from_user.username or "",
-            full_name=message.from_user.full_name,
-            vacancy_key=vacancy_key,
-            vacancy_title=vacancy["title"],
-            answers=answers,
-            ai_scores=data.get("ai_scores", {}),
-            resume_file_id=None,
-            video_file_id=None,
-            status="rejected_hard_filter",
+        vacancy = VACANCIES[vacancy_key]
+        await _reject_and_save(
+            message, state, vacancy_key, answers, data.get("ai_scores", {}),
+            vacancy["reject_message"], "rejected_hard_filter",
         )
-        await state.clear()
         return
 
     answers = data.get("answers", {})
     answers[q["key"]] = answer_text
-
     ai_scores = data.get("ai_scores", {})
+
+    # --- Har bir javob uchun: mavzuga/kasbga aloqadormi degan tekshiruv ---
     if q.get("ai_score"):
         result = await score_answer(q["text"], answer_text)
         if result is not None:
             ai_scores[q["key"]] = result
+            if not result.get("relevant", True):
+                await _reject_and_save(
+                    message, state, vacancy_key, answers, ai_scores,
+                    _IRRELEVANT_REJECT_TEXT, "rejected_irrelevant",
+                )
+                return
+    else:
+        relevant = await check_relevance(q["text"], answer_text)
+        if relevant is False:
+            await _reject_and_save(
+                message, state, vacancy_key, answers, ai_scores,
+                _IRRELEVANT_REJECT_TEXT, "rejected_irrelevant",
+            )
+            return
 
     await state.update_data(answers=answers, ai_scores=ai_scores, question_index=idx + 1)
     await ask_current_question(message, state)

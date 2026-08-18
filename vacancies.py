@@ -64,6 +64,14 @@ VACANCIES = {
                 "hard_filter": True,
             },
             {
+                "key": "experience_details",
+                "text": "Qayerda va qancha muddat sotuv qilgansiz? Qisqacha yozing.",
+            },
+            {
+                "key": "crm",
+                "text": "Qanday CRM tizimlarida ishlagansiz? (Bitrix24, amoCRM va h.k.)",
+            },
+            {
                 # Scorecard: kelajakdagi vazifa aniq raqamda beriladi — "tajribam bor"
                 # kabi umumiy javob emas, konkret reja so'raladi.
                 "key": "scorecard_plan",
@@ -92,6 +100,26 @@ VACANCIES = {
                     "undan qanday dars oldingiz?"
                 ),
                 "ai_score": True,
+            },
+            {
+                "key": "hard_client",
+                "text": "Qiyin mijoz bilan qanday ishlaysiz? Bitta real holatni yozib bering.",
+                "ai_score": True,
+            },
+            {
+                # "Men/Biz" balansini alohida tekshiruvchi savol.
+                "key": "teamwork",
+                "text": "Jamoada ishlash tajribangizni bitta real misol bilan tushuntiring.",
+                "ai_score": True,
+            },
+            {
+                "key": "motivation",
+                "text": "Nega aynan bizning kompaniyada ishlashni xohlaysiz?",
+                "ai_score": True,
+            },
+            {
+                "key": "salary_expectation",
+                "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)",
             },
         ],
         "resume_required": False,
@@ -130,6 +158,33 @@ VACANCIES = {
                 ),
                 "ai_score": True,
             },
+            {
+                "key": "mistake_lesson",
+                "text": "Dizaynda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va undan qanday dars oldingiz?",
+                "ai_score": True,
+            },
+            {
+                "key": "style",
+                "text": "Sizga qaysi dizayn yo'nalishi (uslub) yaqinroq va nega?",
+                "ai_score": True,
+            },
+            {
+                "key": "deadline_handling",
+                "text": (
+                    "Bir vaqtning o'zida bir nechta muhim topshiriq kelib qolsa, "
+                    "ularni qanday tartibga solasiz?"
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "feedback_handling",
+                "text": "Mijoz yoki rahbar ishingizni qattiq tanqid qilsa, munosabatingiz qanday bo'ladi?",
+                "ai_score": True,
+            },
+            {
+                "key": "salary_expectation",
+                "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)",
+            },
         ],
         "resume_required": True,
     },
@@ -143,6 +198,11 @@ VACANCIES = {
             {
                 "key": "platforms",
                 "text": "Qaysi platformalarda (Instagram, Telegram, TikTok) tajribangiz bor?",
+            },
+            {
+                "key": "content_plan",
+                "text": "Kontent-reja tuzish tajribangiz bormi? (Ha/Yo'q)",
+                "hard_filter": True,
             },
             {
                 # Scorecard: aniq o'sish maqsadi + amalga oshirish rejasi.
@@ -166,6 +226,30 @@ VACANCIES = {
                 "key": "mistake_lesson",
                 "text": "SMMda qilgan eng katta xatoyingiz nima edi va undan qanday xulosa chiqardingiz?",
                 "ai_score": True,
+            },
+            {
+                "key": "trend_reaction",
+                "text": (
+                    "Ijtimoiy tarmoqlarda tez o'zgaruvchi trendlarga qanday moslashasiz? "
+                    "Oxirgi kuzatgan va ishlatgan trendingizni ayting."
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "crisis_management",
+                "text": (
+                    "Agar brend haqida salbiy komment yoki kichik inqiroziy vaziyat "
+                    "yuzaga kelsa, birinchi qadamingiz nima bo'ladi?"
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "tools",
+                "text": "Qanday dizayn/analitika vositalaridan (Canva, Meta Business Suite va h.k.) foydalanasiz?",
+            },
+            {
+                "key": "salary_expectation",
+                "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)",
             },
         ],
         "resume_required": False,

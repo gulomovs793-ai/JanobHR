@@ -11,10 +11,10 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
-from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN
+from config import BOT_TOKEN, SQLITE_PATH
 from services.database import init_db
+from services.storage import SQLiteStorage
 from handlers import start, vacancy, questions, files, admin, sell, contact
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -49,12 +49,15 @@ def _build_session():
 async def main():
     await init_db()
 
+    fsm_storage = SQLiteStorage(SQLITE_PATH)
+    await fsm_storage.init()
+
     bot = Bot(
         token=BOT_TOKEN,
         session=_build_session(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    dp = Dispatcher(storage=MemoryStorage())
+    dp = Dispatcher(storage=fsm_storage)
 
     # Handlerlar tartibi muhim: admin (callback) va start eng birinchi bo'lishi shart emas,
     # lekin har bir router o'z filtri (state/callback prefiksi) bilan ishlaydi.

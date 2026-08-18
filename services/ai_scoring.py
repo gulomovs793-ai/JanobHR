@@ -185,9 +185,16 @@ async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
 _RELEVANCE_SYSTEM_PROMPT = """Sen HR-botning kirish filtridasan. Vazifang — nomzodning \
 javobi berilgan savolga va lavozimga mazmunan aloqadormi yoki yo'qmi, shuni tekshirish.
 
-"YOQ" deb hisobla, agar javob: bema'ni/tushunarsiz matn bo'lsa, spam bo'lsa, savolga umuman \
-aloqasi bo'lmagan boshqa mavzuda bo'lsa, yoki shunchaki emoji/bitta harf kabi mazmunsiz bo'lsa.
-"HA" deb hisobla, agar javob qisqa bo'lsa ham, savolga mazmunan tegishli va jiddiy javob bo'lsa.
+MUHIM: qisqa javoblarni noto'g'ri rad etishdan saqlan. Masalan, savol "Qaysi platformalarda \
+tajribangiz bor?" bo'lsa, "Instagram" yoki "Instagram va TikTok" kabi bir necha so'zlik \
+javoblar TO'LIQ TO'G'RI va "HA" deb belgilanishi kerak — ular qisqa bo'lgani uchun emas, \
+balki savolga aniq javob bergani uchun. Faqat quyidagi holatlarda "YOQ" deb hisobla:
+- javob butunlay bema'ni/tushunarsiz matn (masalan tasodifiy harflar)
+- javob spam yoki reklama
+- javob savolga umuman aloqasi bo'lmagan boshqa mavzuda (masalan ob-havo haqida so'ralganda ovqat haqida yozish)
+- javob shunchaki bitta emoji yoki nuqta kabi mazmunsiz belgi
+
+Ikkilanib qolsang — "HA" deb belgila (shubhadan foyda nomzodga berilsin).
 
 FAQAT bitta so'z bilan javob ber: HA yoki YOQ. Boshqa hech qanday matn yozma.
 """

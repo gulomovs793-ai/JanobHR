@@ -65,6 +65,11 @@ _IRRELEVANT_REJECT_TEXT = (
     "bo'lsa, /start orqali qaytadan urinib ko'rishingiz mumkin."
 )
 
+# Oddiy faktik savollarda ("qaysi platforma/dastur ishlatasiz" kabi) bundan qisqa
+# javoblar AI orqali tekshirilmaydi — bir so'zlik to'g'ri javoblarni ("Instagram",
+# "Figma") noto'g'ri "aloqasiz" deb belgilash xavfini kamaytirish uchun.
+_SHORT_ANSWER_SKIP_CHARS = 20
+
 
 @router.message(ApplyForm.answering_questions, F.text)
 async def handle_answer(message: Message, state: FSMContext):
@@ -113,7 +118,12 @@ async def handle_answer(message: Message, state: FSMContext):
                     _IRRELEVANT_REJECT_TEXT, "rejected_irrelevant",
                 )
                 return
-    else:
+    elif len(answer_text) > _SHORT_ANSWER_SKIP_CHARS:
+        # Oddiy faktik savollarda (masalan "qaysi platforma/dastur ishlatasiz")
+        # juda qisqa javoblar ("Instagram", "Figma" kabi) deyarli doim to'g'ri
+        # bo'ladi — AI bunday qisqa matnlarni ba'zan noto'g'ri "aloqasiz" deb
+        # belgilashi mumkin, shuning uchun tekshiruvni faqat uzunroq javoblarga
+        # qo'llaymiz (noto'g'ri rad etish xavfini kamaytirish uchun).
         relevant = await check_relevance(q["text"], answer_text)
         if relevant is False:
             await _reject_and_save(

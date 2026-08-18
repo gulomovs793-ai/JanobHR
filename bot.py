@@ -15,7 +15,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 from services.database import init_db
-from handlers import start, vacancy, questions, files, admin
+from handlers import start, vacancy, questions, files, admin, sell
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger("janob_hr_bot")
@@ -59,6 +59,7 @@ async def main():
     # Handlerlar tartibi muhim: admin (callback) va start eng birinchi bo'lishi shart emas,
     # lekin har bir router o'z filtri (state/callback prefiksi) bilan ishlaydi.
     dp.include_router(admin.router)
+    dp.include_router(sell.router)
     dp.include_router(start.router)
     dp.include_router(vacancy.router)
     dp.include_router(questions.router)

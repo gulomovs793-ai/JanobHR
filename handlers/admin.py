@@ -7,10 +7,19 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import ADMIN_GROUP_ID
 from services import database
+from services.ai_scoring import aggregate_scores
 
 logger = logging.getLogger("janob_hr_bot")
 
 router = Router(name="admin")
+
+_VERDICT_EMOJI = {"yashil": "🟢", "sariq": "🟡", "qizil": "🔴"}
+
+_RED_FLAG_LABELS = {
+    "qurbon_sindromi": "Qurbon sindromi (aybni boshqaga yuklaydi)",
+    "abstrakt_javob": "Abstrakt javob (aniq raqam/qadam yo'q)",
+    "narsissizm": "Ortiqcha \"men\"chilik (jamoa hissasini tan olmaydi)",
+}
 
 
 def _format_application_text(app: dict) -> str:
@@ -22,11 +31,33 @@ def _format_application_text(app: dict) -> str:
     for value in app["answers"].values():
         lines.append(f"• {value}")
 
-    if app.get("ai_scores"):
-        scores = list(app["ai_scores"].values())
-        avg = sum(scores) / len(scores)
+    ai_scores = app.get("ai_scores") or {}
+    aggregate = aggregate_scores(ai_scores)
+
+    if aggregate:
+        emoji = _VERDICT_EMOJI.get(aggregate["verdict"], "⚪")
         lines.append("")
-        lines.append(f"🤖 O'rtacha AI ball: {avg:.0f}/100")
+        lines.append(f"{emoji} <b>Yakuniy AI ball: {aggregate['avg_score']}/100</b>")
+
+        if aggregate["red_flags"]:
+            flag_labels = [_RED_FLAG_LABELS.get(f, f) for f in aggregate["red_flags"]]
+            lines.append("🚩 Bayroqlar: " + "; ".join(flag_labels))
+
+        notes = [
+            v.get("izoh", "").strip()
+            for v in ai_scores.values()
+            if isinstance(v, dict) and v.get("izoh", "").strip()
+        ]
+        # Takrorlanmaydigan, bo'sh bo'lmagan izohlarni ko'rsatamiz (ko'pi bilan 3 tasi).
+        seen = []
+        for note in notes:
+            if note not in seen:
+                seen.append(note)
+        if seen:
+            lines.append("🤖 AI izohi: " + " / ".join(seen[:3]))
+
+    if app.get("selected_slot"):
+        lines.append(f"📅 Nomzod tanlagan vaqt: {app['selected_slot']}")
 
     return "\n".join(lines)
 
@@ -70,6 +101,24 @@ async def notify_admin_group(bot, app_id: int):
         )
 
     await database.set_admin_message(app_id, sent.message_id)
+
+
+async def notify_admin_slot_selected(bot, app_id: int, slot: str):
+    """Nomzod suhbat vaqtini tanlaganda admin guruhga qisqa xabar yuboradi."""
+    if not ADMIN_GROUP_ID:
+        return
+
+    app = await database.get_application(app_id)
+    if not app:
+        return
+
+    await bot.send_message(
+        chat_id=int(ADMIN_GROUP_ID),
+        text=(
+            f"📅 <b>{app['full_name']}</b> (@{app['username'] or '—'}) suhbat uchun "
+            f"vaqtni tanladi: <b>{slot}</b>"
+        ),
+    )
 
 
 @router.callback_query(F.data.startswith("decision:"))

@@ -26,6 +26,29 @@ def is_negative_answer(text: str) -> bool:
     return normalized in NEGATIVE_WORDS
 
 
+# --- Topgrading: "Haqiqat zardobi" savoli ---
+# Barcha vakansiyalarga oxirida avtomatik qo'shiladigan umumiy savol. Bu yerda maqsad
+# oddiy — noloyiq nomzodlar bu savoldan cho'chib botni tark etadi (o'z-o'zini filtrlaydi),
+# haqiqiy professionallar esa xotirjam va aniq javob beradi. AI javobning ishonchliligini
+# (aniq ism/raqam bor-yo'qligi, ishonch darajasi) baholaydi.
+REFERENCE_CHECK_QUESTION = {
+    "key": "reference_check",
+    "text": (
+        "So'nggi savol. Sizning tajribangiz bizga juda yoqdi. 👏\n\n"
+        "Keyingi bosqichda biz oldingi rahbaringizga qo'ng'iroq qilishimiz mumkin. "
+        "Agar hozir undan siz haqingizda so'rasak, u sizni 10 balldan nechchiga baholaydi "
+        "va nima uchun? (Iltimos, imkon qadar aniq va rostgo'y javob bering.)"
+    ),
+    "ai_score": True,
+}
+
+
+def get_questions(vacancy_key: str) -> list[dict]:
+    """Berilgan vakansiyaning savollarini, oxiriga Topgrading savoli qo'shilgan holda qaytaradi."""
+    base_questions = VACANCIES[vacancy_key]["questions"]
+    return [*base_questions, REFERENCE_CHECK_QUESTION]
+
+
 VACANCIES = {
     "sales": {
         "title": "🧑‍💼 Sotuv menejeri",
@@ -41,16 +64,33 @@ VACANCIES = {
                 "hard_filter": True,
             },
             {
-                "key": "experience_details",
-                "text": "Qayerda va qancha muddat sotuv qilgansiz? Qisqacha yozing.",
+                # Scorecard: kelajakdagi vazifa aniq raqamda beriladi — "tajribam bor"
+                # kabi umumiy javob emas, konkret reja so'raladi.
+                "key": "scorecard_plan",
+                "text": (
+                    "Bizning kompaniya keyingi chorakda sotuvni kamida $20,000 ga "
+                    "oshirishi kerak. Ishga kelganingizdan keyin birinchi 30 kun ichida "
+                    "bunga qanday hissa qo'shasiz? Aniq rejangizni 3 ta qadamda yozing."
+                ),
+                "ai_score": True,
             },
             {
-                "key": "crm",
-                "text": "Qanday CRM tizimlarida ishlagansiz? (Bitrix24, amoCRM va h.k.)",
+                # Behavioral: A-Player "Men" tilida va aniq raqam bilan gapiradi.
+                "key": "achievement",
+                "text": (
+                    "Oldingi ish joyingizda erishgan eng katta va aniq yutug'ingizni "
+                    "yozing (iloji bo'lsa, raqamlar bilan)."
+                ),
+                "ai_score": True,
             },
             {
-                "key": "hard_client",
-                "text": "Qiyin mijoz bilan qanday ishlaysiz? Bitta real holatni yozib bering.",
+                # Behavioral: "intellektual kamtarlik" — xatoni tan olish va undan
+                # o'rganish qobiliyatini o'lchaydi.
+                "key": "mistake_lesson",
+                "text": (
+                    "Ishingizda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va "
+                    "undan qanday dars oldingiz?"
+                ),
                 "ai_score": True,
             },
         ],
@@ -73,8 +113,21 @@ VACANCIES = {
                 "hard_filter": True,
             },
             {
-                "key": "style",
-                "text": "Sizga qaysi dizayn yo'nalishi (uslub) yaqinroq va nega?",
+                # Scorecard: o'lchanadigan chiqish hajmi + sifat nazorati bo'yicha reja.
+                "key": "scorecard_output",
+                "text": (
+                    "Bizning brend uchun ijtimoiy tarmoqlarda oyiga kamida 20 ta post "
+                    "dizayni tayyorlashingiz kerak bo'ladi. Birinchi haftada ishni "
+                    "qanday tashkil qilasiz va sifatni qanday ta'minlaysiz?"
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "achievement",
+                "text": (
+                    "Eng faxrlanadigan loyihangizni tasvirlab bering — u qanday aniq "
+                    "natija (masalan, mijoz sotuvi, engagement o'sishi) keltirdi?"
+                ),
                 "ai_score": True,
             },
         ],
@@ -92,13 +145,26 @@ VACANCIES = {
                 "text": "Qaysi platformalarda (Instagram, Telegram, TikTok) tajribangiz bor?",
             },
             {
-                "key": "content_plan",
-                "text": "Kontent-reja tuzish tajribangiz bormi? (Ha/Yo'q)",
-                "hard_filter": True,
+                # Scorecard: aniq o'sish maqsadi + amalga oshirish rejasi.
+                "key": "scorecard_growth",
+                "text": (
+                    "Bizning Instagram sahifamizni 3 oy ichida kamida 5,000 ta yangi "
+                    "obunachiga olib chiqishingiz kerak. Buni qanday aniq qadamlar "
+                    "bilan amalga oshirasiz?"
+                ),
+                "ai_score": True,
             },
             {
                 "key": "cases",
-                "text": "Oldingi ishlaringizdan eng yaxshi natija bergan case'ni qisqacha yozib bering.",
+                "text": (
+                    "Oldingi ishlaringizdan eng yaxshi natija bergan case'ni raqamlar "
+                    "bilan yozib bering (masalan: \"Reels 100,000 ko'rishga yetdi\")."
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "mistake_lesson",
+                "text": "SMMda qilgan eng katta xatoyingiz nima edi va undan qanday xulosa chiqardingiz?",
                 "ai_score": True,
             },
         ],

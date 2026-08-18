@@ -8,7 +8,7 @@ from aiogram.types import Message
 from services import database
 from services.ai_scoring import score_answer
 from states import ApplyForm
-from vacancies import VACANCIES, is_negative_answer
+from vacancies import VACANCIES, get_questions, is_negative_answer
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -19,13 +19,14 @@ async def ask_current_question(message: Message, state: FSMContext):
     data = await state.get_data()
     vacancy_key = data["vacancy_key"]
     idx = data["question_index"]
-    questions = VACANCIES[vacancy_key]["questions"]
+    questions = get_questions(vacancy_key)
 
     if idx >= len(questions):
         await finish_questions(message, state)
         return
 
-    await message.answer(questions[idx]["text"])
+    total = len(questions)
+    await message.answer(f"<b>Savol {idx + 1}/{total}</b>\n\n{questions[idx]['text']}")
     await state.set_state(ApplyForm.answering_questions)
 
 
@@ -34,9 +35,13 @@ async def handle_answer(message: Message, state: FSMContext):
     data = await state.get_data()
     vacancy_key = data["vacancy_key"]
     idx = data["question_index"]
-    questions = VACANCIES[vacancy_key]["questions"]
+    questions = get_questions(vacancy_key)
     q = questions[idx]
     answer_text = message.text.strip()
+
+    if not answer_text:
+        await message.answer("Iltimos, savolga matn ko'rinishida javob yozing.")
+        return
 
     # --- Hard filter: salbiy javob bo'lsa, darhol xushmuomalalik bilan rad etamiz ---
     if q.get("hard_filter") and is_negative_answer(answer_text):
@@ -65,12 +70,18 @@ async def handle_answer(message: Message, state: FSMContext):
 
     ai_scores = data.get("ai_scores", {})
     if q.get("ai_score"):
-        score = await score_answer(q["text"], answer_text)
-        if score is not None:
-            ai_scores[q["key"]] = score
+        result = await score_answer(q["text"], answer_text)
+        if result is not None:
+            ai_scores[q["key"]] = result
 
     await state.update_data(answers=answers, ai_scores=ai_scores, question_index=idx + 1)
     await ask_current_question(message, state)
+
+
+@router.message(ApplyForm.answering_questions)
+async def handle_wrong_answer_type(message: Message):
+    """Savol kutilayotganda matndan boshqa narsa (rasm, stiker va h.k.) yuborilsa."""
+    await message.answer("Iltimos, javobingizni oddiy matn ko'rinishida yozing. ✍️")
 
 
 async def finish_questions(message: Message, state: FSMContext):
@@ -94,6 +105,7 @@ async def complete_application(
     video_file_id: str | None = None,
 ):
     from handlers.admin import notify_admin_group
+    from handlers.sell import maybe_send_sell_pitch
 
     data = await state.get_data()
     vacancy = VACANCIES[data["vacancy_key"]]
@@ -119,3 +131,9 @@ async def complete_application(
         await notify_admin_group(message.bot, app_id)
     except Exception:
         logger.exception("Admin guruhga xabar yuborib bo'lmadi (app_id=%s).", app_id)
+
+    # --- Sell bosqichi: agar nomzod yuqori ball olsa, avtomatik taklif yuboriladi ---
+    try:
+        await maybe_send_sell_pitch(message, app_id, data.get("ai_scores", {}))
+    except Exception:
+        logger.exception("Sell xabarini yuborib bo'lmadi (app_id=%s).", app_id)

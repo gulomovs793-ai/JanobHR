@@ -108,6 +108,28 @@ git push -u origin main
 `.env` va `data.db` fayllari `.gitignore`da bo'lgani uchun repo'ga tushmaydi
 — tokenlaringiz xavfsiz qoladi.
 
+## AI-HR tizimi: "A-Player" filtri
+
+Bot oddiy anketa yig'uvchidan farqli o'laroq, quyidagi bosqichlarni avtomatik bajaradi
+("Who" va "Work Rules!" kitoblaridagi tamoyillar asosida):
+
+1. **Scorecard savollari** — `ai_score: True` belgilangan savollar orqali nomzod
+   aniq raqam va reja bilan javob berishi kutiladi.
+2. **AI tahlil (Natijadorlik / Mas'uliyat / Aniqlik)** — har bir AI-baholanadigan
+   javob 3 mezon bo'yicha 0-100 ballga baholanadi va 🟢/🟡/🔴 verdikt chiqariladi.
+3. **Qizil bayroqlar** — AI "qurbon sindromi", "abstrakt javob" va ortiqcha
+   "men"chilikni avtomatik aniqlaydi va admin guruhga ko'rsatadi.
+4. **Topgrading ("Haqiqat zardobi")** — barcha vakansiyalarga oxirida avtomatik
+   qo'shiladigan reference-check savoli; noloyiq nomzodlar odatda shu yerda
+   botni tark etadi.
+5. **Sell bosqichi** — o'rtacha ball `SELL_SCORE_THRESHOLD` dan yuqori (standart: 80)
+   va jiddiy bayroqsiz bo'lgan nomzodlarga bot avtomatik kompaniya taqdimoti va
+   suhbat vaqtini tanlash tugmalarini yuboradi (`.env`dagi `COMPANY_PITCH_TEXT`,
+   `COMPANY_PITCH_IMAGE_URL`, `INTERVIEW_SLOTS` orqali sozlanadi).
+
+Bu tizim to'liq ishlashi uchun `AI_API_KEY` (va OpenAI-compatible bo'lmagan
+provayderlar uchun `AI_API_BASE`/`AI_MODEL`) sozlangan bo'lishi shart.
+
 ## Yangi vakansiya qo'shish
 
 `vacancies.py` faylidagi `VACANCIES` lug'atiga yangi kalit qo'shing —

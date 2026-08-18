@@ -21,6 +21,12 @@ _RED_FLAG_LABELS = {
     "narsissizm": "Ortiqcha \"men\"chilik (jamoa hissasini tan olmaydi)",
 }
 
+# Telegram oddiy matnli xabarlar uchun 4096 belgigacha ruxsat beradi (rasm/fayl/video
+# caption'lari uchun esa atigi 1024). Shu sabab, to'liq tahlilni HAR DOIM alohida
+# oddiy xabar sifatida yuboramiz (fayl/video caption'iga emas) va xavfsizlik uchun
+# shu chegaradan pastroq qilib qisqartiramiz.
+_MAX_TEXT_LENGTH = 3800
+
 
 def _format_application_text(app: dict) -> str:
     lines = [
@@ -29,7 +35,12 @@ def _format_application_text(app: dict) -> str:
         "",
     ]
     for value in app["answers"].values():
-        lines.append(f"• {value}")
+        text = str(value)
+        # Bitta javob juda uzun bo'lib qolsa (masalan nomzod juda batafsil yozsa),
+        # xabar limitidan chiqib ketmasligi uchun qisqartiramiz.
+        if len(text) > 500:
+            text = text[:500] + "…"
+        lines.append(f"• {text}")
 
     ai_scores = app.get("ai_scores") or {}
     aggregate = aggregate_scores(ai_scores)
@@ -48,7 +59,6 @@ def _format_application_text(app: dict) -> str:
             for v in ai_scores.values()
             if isinstance(v, dict) and v.get("izoh", "").strip()
         ]
-        # Takrorlanmaydigan, bo'sh bo'lmagan izohlarni ko'rsatamiz (ko'pi bilan 3 tasi).
         seen = []
         for note in notes:
             if note not in seen:
@@ -59,7 +69,10 @@ def _format_application_text(app: dict) -> str:
     if app.get("selected_slot"):
         lines.append(f"📅 Nomzod tanlagan vaqt: {app['selected_slot']}")
 
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    if len(text) > _MAX_TEXT_LENGTH:
+        text = text[:_MAX_TEXT_LENGTH] + "\n\n… (xabar qisqartirildi, to'liq matn bazada saqlangan)"
+    return text
 
 
 async def notify_admin_group(bot, app_id: int):
@@ -71,34 +84,42 @@ async def notify_admin_group(bot, app_id: int):
     if not app:
         return
 
+    chat_id = int(ADMIN_GROUP_ID)
+
+    # 1) Fayl (agar bo'lsa) — QISQA caption bilan, tugmasiz. Telegram caption
+    #    uzunligi atigi 1024 belgi bilan cheklangani uchun to'liq tahlilni bu
+    #    yerga sig'dirishga urinmaymiz.
+    if app.get("resume_file_id"):
+        try:
+            await bot.send_document(
+                chat_id=chat_id,
+                document=app["resume_file_id"],
+                caption=f"📄 {app['full_name']} — {app['vacancy_title']}",
+            )
+        except Exception:
+            logger.exception("Rezyume faylini yuborib bo'lmadi (app_id=%s).", app_id)
+    elif app.get("video_file_id"):
+        try:
+            await bot.send_video(
+                chat_id=chat_id,
+                video=app["video_file_id"],
+                caption=f"🎥 {app['full_name']} — {app['vacancy_title']}",
+            )
+        except Exception:
+            logger.exception("Video-vizitkani yuborib bo'lmadi (app_id=%s).", app_id)
+
+    # 2) To'liq tahlil + qaror tugmalari — HAR DOIM alohida oddiy xabar sifatida
+    #    (4096 belgigacha joy bor).
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Suhbatga chaqirish", callback_data=f"decision:accept:{app_id}")
     builder.button(text="❌ Rad etish", callback_data=f"decision:reject:{app_id}")
     builder.adjust(2)
 
-    text = _format_application_text(app)
-    chat_id = int(ADMIN_GROUP_ID)
-
-    if app.get("resume_file_id"):
-        sent = await bot.send_document(
-            chat_id=chat_id,
-            document=app["resume_file_id"],
-            caption=text,
-            reply_markup=builder.as_markup(),
-        )
-    elif app.get("video_file_id"):
-        sent = await bot.send_video(
-            chat_id=chat_id,
-            video=app["video_file_id"],
-            caption=text,
-            reply_markup=builder.as_markup(),
-        )
-    else:
-        sent = await bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            reply_markup=builder.as_markup(),
-        )
+    sent = await bot.send_message(
+        chat_id=chat_id,
+        text=_format_application_text(app),
+        reply_markup=builder.as_markup(),
+    )
 
     await database.set_admin_message(app_id, sent.message_id)
 
@@ -162,6 +183,8 @@ async def handle_decision(callback: CallbackQuery):
     try:
         base_caption = callback.message.caption or callback.message.text or ""
         new_text = f"{base_caption}\n\n{result_label}"
+        if len(new_text) > 4096:
+            new_text = new_text[:4090] + "…"
         if callback.message.caption is not None:
             await callback.message.edit_caption(caption=new_text)
         else:

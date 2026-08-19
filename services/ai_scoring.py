@@ -215,6 +215,79 @@ async def check_relevance(question: str, answer: str) -> Optional[bool]:
     return content.strip().upper().startswith("HA")
 
 
+_QUESTION_GENERATION_PROMPT = """Sen professional HR maslahatchisan. "Scorecard" va "Behavioral" \
+intervyu metodologiyasidan foydalanib, berilgan lavozim uchun {count} ta Telegram-bot \
+intervyu savoli tuzasan (o'zbek tilida).
+
+Talablar:
+1. Kamida bitta savol "hard_filter" bo'lsin — oddiy Ha/Yo'q formatida javob talab qiladigan,
+   nomzodning shu soha bo'yicha minimal tajribasi bor-yo'qligini so'raydigan savol.
+2. Kamida bitta savol "scorecard" uslubida bo'lsin: lavozimning eng muhim, o'lchanadigan
+   natijasi haqida ANIQ RAQAMLI maqsad qo'yib ("Kompaniya X oyda Y natijaga erishishi kerak"),
+   nomzoddan shu maqsadga qanday erishishini so'ra.
+3. Kamida bitta "yutuq" (achievement) savoli va bitta "eng jiddiy xato va undan olingan dars"
+   savoli bo'lsin (ikkalasi ham "behavioral" savollar, A-Player'larni "Men" tilida gapirishini
+   aniqlash uchun).
+4. Qolgan savollar kasbga oid amaliy/texnik bilim va vaziyat-asosli savollar bo'lsin.
+5. Har bir ochiq (fikr-mulohaza talab qiladigan, ko'p so'zli javob kutiladigan) savolga
+   "ai_score": true qo'y. Oddiy faktik/ro'yxat savollariga (masalan "qanday vositalardan
+   foydalanasiz") "ai_score" qo'shmasang ham bo'ladi.
+6. Har bir savol uchun qisqa, lotin harflarida, pastki chiziqli "key" o'ylab top (masalan
+   "scorecard_plan", "achievement", "mistake_lesson").
+
+FAQAT quyidagi JSON massiv formatida javob ber, boshqa hech qanday matn yozma:
+[{{"key": "...", "text": "...", "hard_filter": true}}, {{"key": "...", "text": "...", "ai_score": true}}, ...]
+"""
+
+
+async def generate_questions(job_title: str, description: str, count: int = 9) -> Optional[list[dict]]:
+    """Berilgan lavozim uchun Scorecard/Behavioral uslubidagi savollar ro'yxatini
+    AI orqali generatsiya qiladi. Muvaffaqiyatsiz bo'lsa (yoki hech qanday provayder
+    sozlanmagan bo'lsa) None qaytaradi — admin bunday holda savollarni qo'lda kiritishi
+    kerak bo'ladi.
+    """
+    system_prompt = _QUESTION_GENERATION_PROMPT.format(count=count)
+    user_prompt = f"Lavozim: {job_title}\nQisqacha tavsif: {description or '(tavsif berilmagan)'}"
+
+    content = await _call_ai(system_prompt, user_prompt, max_tokens=1500)
+    if content is None:
+        return None
+
+    try:
+        content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
+        parsed = json.loads(content)
+        if not isinstance(parsed, list):
+            raise ValueError("AI ro'yxat (list) qaytarishi kerak edi")
+
+        questions = []
+        seen_keys = set()
+        for i, item in enumerate(parsed):
+            text = str(item.get("text", "")).strip()
+            if not text:
+                continue
+            key = str(item.get("key", f"savol_{i+1}")).strip().lower().replace(" ", "_") or f"savol_{i+1}"
+            # Kalitlar takrorlanmasligi kerak (bazada ustun nomi sifatida ishlatilmaydi,
+            # lekin javoblar lug'atida kalit bo'lgani uchun noyob bo'lishi shart).
+            original_key = key
+            n = 2
+            while key in seen_keys:
+                key = f"{original_key}_{n}"
+                n += 1
+            seen_keys.add(key)
+
+            q = {"key": key, "text": text}
+            if item.get("hard_filter"):
+                q["hard_filter"] = True
+            if item.get("ai_score"):
+                q["ai_score"] = True
+            questions.append(q)
+
+        return questions or None
+    except Exception:
+        logger.exception("AI savol generatsiyasi javobini o'qib bo'lmadi: %s", content)
+        return None
+
+
 class AggregateResult(TypedDict):
     avg_score: int
     verdict: str  # "yashil" | "sariq" | "qizil"

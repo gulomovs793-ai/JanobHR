@@ -7,15 +7,22 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from services import database
 from states import ApplyForm
-from vacancies import vacancy_keyboard_rows
 
 router = Router(name="start")
 
 
 async def _show_vacancy_menu(message: Message, state: FSMContext, greeting: str):
+    vacancies = await database.list_vacancies(active_only=True)
+
+    if not vacancies:
+        await message.answer(
+            f"{greeting}\n\nHozircha ochiq vakansiyalar yo'q. Iltimos, keyinroq qayta urinib ko'ring."
+        )
+        return
+
     builder = InlineKeyboardBuilder()
-    for key, title in vacancy_keyboard_rows():
-        builder.button(text=title, callback_data=f"vacancy:{key}")
+    for v in vacancies:
+        builder.button(text=v["title"], callback_data=f"vacancy:{v['key']}")
     builder.adjust(1)
 
     await message.answer(f"{greeting}\n\nQuyidagi vakansiyalardan birini tanlang:", reply_markup=builder.as_markup())

@@ -10,6 +10,17 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_GROUP_ID = os.getenv("ADMIN_GROUP_ID", "")
 
+# --- Admin bot (vakansiyalarni boshqarish, statistika) ---
+# Alohida Telegram bot — @BotFather'dan yangi bot yaratib, tokenini shu yerga
+# qo'ying. Bo'sh qoldirilsa, admin bot ishga tushmaydi (asosiy nomzod-bot
+# muammosiz davom etadi).
+ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
+# Vergul bilan ajratilgan Telegram user ID'lar ro'yxati — faqat shu ID'lar admin
+# botdan foydalana oladi. O'z ID'ingizni bilish uchun @userinfobot'ga /start yuboring.
+ADMIN_USER_IDS = {
+    int(uid.strip()) for uid in os.getenv("ADMIN_USER_IDS", "").split(",") if uid.strip().isdigit()
+}
+
 AI_API_KEY = os.getenv("AI_API_KEY", "")
 AI_API_BASE = os.getenv("AI_API_BASE", "https://api.openai.com/v1")
 AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")

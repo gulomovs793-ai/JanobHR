@@ -9,7 +9,7 @@ from config import MAX_ANSWER_CHARS
 from services import database
 from services.ai_scoring import check_relevance, score_answer
 from states import ApplyForm
-from vacancies import VACANCIES, get_questions, is_negative_answer
+from vacancies import is_negative_answer
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -18,9 +18,8 @@ router = Router(name="questions")
 
 async def ask_current_question(message: Message, state: FSMContext):
     data = await state.get_data()
-    vacancy_key = data["vacancy_key"]
     idx = data["question_index"]
-    questions = get_questions(vacancy_key)
+    questions = data["vacancy_questions"]
 
     if idx >= len(questions):
         await finish_questions(message, state)
@@ -34,7 +33,7 @@ async def ask_current_question(message: Message, state: FSMContext):
 async def _reject_and_save(
     message: Message,
     state: FSMContext,
-    vacancy_key: str,
+    data: dict,
     answers: dict,
     ai_scores: dict,
     reject_text: str,
@@ -42,14 +41,13 @@ async def _reject_and_save(
 ):
     """Nomzodni xushmuomalalik bilan rad etadi, arizani baribir bazaga yozadi (statistika
     uchun) va suhbat holatini tozalaydi."""
-    vacancy = VACANCIES[vacancy_key]
     await message.answer(reject_text)
     await database.save_application(
         user_id=message.from_user.id,
         username=message.from_user.username or "",
         full_name=message.from_user.full_name,
-        vacancy_key=vacancy_key,
-        vacancy_title=vacancy["title"],
+        vacancy_key=data["vacancy_key"],
+        vacancy_title=data["vacancy_title"],
         answers=answers,
         ai_scores=ai_scores,
         resume_file_id=None,
@@ -86,9 +84,8 @@ _MAX_IRRELEVANT_RETRIES = 2
 @router.message(ApplyForm.answering_questions, F.text)
 async def handle_answer(message: Message, state: FSMContext):
     data = await state.get_data()
-    vacancy_key = data["vacancy_key"]
     idx = data["question_index"]
-    questions = get_questions(vacancy_key)
+    questions = data["vacancy_questions"]
     q = questions[idx]
     answer_text = message.text.strip()
 
@@ -108,10 +105,9 @@ async def handle_answer(message: Message, state: FSMContext):
     if q.get("hard_filter") and is_negative_answer(answer_text):
         answers = data.get("answers", {})
         answers[q["key"]] = answer_text
-        vacancy = VACANCIES[vacancy_key]
         await _reject_and_save(
-            message, state, vacancy_key, answers, data.get("ai_scores", {}),
-            vacancy["reject_message"], "rejected_hard_filter",
+            message, state, data, answers, data.get("ai_scores", {}),
+            data["vacancy_reject_message"], "rejected_hard_filter",
         )
         return
 
@@ -144,7 +140,7 @@ async def handle_answer(message: Message, state: FSMContext):
         retry_count = data.get("irrelevant_retry_count", 0) + 1
         if retry_count > _MAX_IRRELEVANT_RETRIES:
             await _reject_and_save(
-                message, state, vacancy_key, answers, ai_scores,
+                message, state, data, answers, ai_scores,
                 _IRRELEVANT_REJECT_TEXT, "rejected_irrelevant",
             )
             return
@@ -169,9 +165,8 @@ async def handle_wrong_answer_type(message: Message):
 async def finish_questions(message: Message, state: FSMContext):
     """Barcha savollar tugagach chaqiriladi: kerak bo'lsa fayl, keyin aloqa ma'lumotlari."""
     data = await state.get_data()
-    vacancy = VACANCIES[data["vacancy_key"]]
 
-    if vacancy.get("resume_required"):
+    if data.get("vacancy_resume_required"):
         await message.answer(
             "Rahmat! Endi, iltimos, rezyumeingizni (PDF fayl) yoki qisqa video-vizitkangizni yuboring."
         )
@@ -189,7 +184,6 @@ async def complete_application(message: Message, state: FSMContext):
     from handlers.sell import maybe_send_sell_pitch
 
     data = await state.get_data()
-    vacancy = VACANCIES[data["vacancy_key"]]
 
     app_id = await database.save_application(
         user_id=message.from_user.id,
@@ -197,7 +191,7 @@ async def complete_application(message: Message, state: FSMContext):
         full_name=data.get("candidate_full_name") or message.from_user.full_name,
         phone_number=data.get("candidate_phone", ""),
         vacancy_key=data["vacancy_key"],
-        vacancy_title=vacancy["title"],
+        vacancy_title=data["vacancy_title"],
         answers=data.get("answers", {}),
         ai_scores=data.get("ai_scores", {}),
         resume_file_id=data.get("resume_file_id"),

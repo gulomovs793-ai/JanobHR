@@ -130,23 +130,35 @@ Bot oddiy anketa yig'uvchidan farqli o'laroq, quyidagi bosqichlarni avtomatik ba
 Bu tizim to'liq ishlashi uchun `AI_API_KEY` (va OpenAI-compatible bo'lmagan
 provayderlar uchun `AI_API_BASE`/`AI_MODEL`) sozlangan bo'lishi shart.
 
+## Admin bot — vakansiyalarni boshqarish va statistika
+
+Nomzod-botdan tashqari, **alohida admin bot** mavjud (bitta xizmat ichida, bir xil
+ma'lumotlar bazasini baham ko'radi):
+
+- **📋 Vakansiyalar** — barcha vakansiyalarni ko'rish, faollashtirish/faolsizlantirish,
+  o'chirish.
+- **➕ Yangi vakansiya** — istalgan kasb uchun (quruvchi, buxgalter, haydovchi va h.k.)
+  yangi vakansiya yaratish. Savollar AI orqali Scorecard/Behavioral metodologiyasi
+  bo'yicha avtomatik taklif qilinadi, yoki admin ularni to'liq qo'lda kiritishi mumkin.
+- **📊 Statistika** — umumiy va har bir vakansiya bo'yicha: jami ariza, qabul qilingan,
+  rad etilgan (sabab bo'yicha taqsimlangan).
+
+### Sozlash
+
+1. @BotFather'da `/newbot` bilan **ikkinchi** bot yarating.
+2. @userinfobot orqali o'z Telegram user ID'ingizni oling.
+3. `.env`ga (yoki Render Environment'ga) qo'shing:
+   ```
+   ADMIN_BOT_TOKEN=<yangi bot tokeni>
+   ADMIN_USER_IDS=<sizning user ID'ingiz>
+   ```
+4. Qayta deploy qiling. Yangi botga `/start` yuboring.
+
 ## Yangi vakansiya qo'shish
 
-`vacancies.py` faylidagi `VACANCIES` lug'atiga yangi kalit qo'shing —
-boshqa hech qanday kodni o'zgartirish shart emas:
-
-```python
-"backend_dev": {
-    "title": "💻 Backend dasturchi",
-    "reject_message": "...",
-    "questions": [
-        {"key": "stack", "text": "Qaysi texnologik stackda ishlaysiz?"},
-        {"key": "exp", "text": "Kasbiy tajribangiz bormi? (Ha/Yo'q)", "hard_filter": True},
-        {"key": "project", "text": "Eng murakkab loyihangizni tasvirlab bering.", "ai_score": True},
-    ],
-    "resume_required": True,
-},
-```
+Endi vakansiyalar `vacancies.py`da emas, ma'lumotlar bazasida saqlanadi va
+yuqoridagi **Admin bot** orqali (➕ Yangi vakansiya) qo'shiladi/tahrirlanadi —
+kodga tegishning hojati yo'q.
 
 ## Mijozga sotish uchun eslatma
 

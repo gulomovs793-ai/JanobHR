@@ -12,7 +12,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 
-from config import BOT_TOKEN, SQLITE_PATH
+from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, BOT_TOKEN, SQLITE_PATH
 from services.database import init_db
 from services.storage import SQLiteStorage
 from handlers import start, vacancy, questions, files, admin, sell, contact
@@ -46,12 +46,7 @@ def _build_session():
     return session
 
 
-async def main():
-    await init_db()
-
-    fsm_storage = SQLiteStorage(SQLITE_PATH)
-    await fsm_storage.init()
-
+def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     bot = Bot(
         token=BOT_TOKEN,
         session=_build_session(),
@@ -69,9 +64,53 @@ async def main():
     dp.include_router(files.router)
     dp.include_router(contact.router)
 
-    logger.info("Janob HR bot ishga tushdi ✅")
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    return bot, dp
+
+
+def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
+    from admin_bot.middleware import AdminOnlyMiddleware
+    from admin_bot import handlers_menu, handlers_vacancy_list, handlers_vacancy_edit
+
+    bot = Bot(
+        token=ADMIN_BOT_TOKEN,
+        session=_build_session(),
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    dp = Dispatcher(storage=fsm_storage)
+    dp.update.outer_middleware(AdminOnlyMiddleware())
+
+    dp.include_router(handlers_menu.router)
+    dp.include_router(handlers_vacancy_list.router)
+    dp.include_router(handlers_vacancy_edit.router)
+
+    return bot, dp
+
+
+async def main():
+    await init_db()
+
+    fsm_storage = SQLiteStorage(SQLITE_PATH)
+    await fsm_storage.init()
+
+    candidate_bot, candidate_dp = _build_candidate_bot(fsm_storage)
+    logger.info("Janob HR (nomzod) bot ishga tushdi ✅")
+    await candidate_bot.delete_webhook(drop_pending_updates=True)
+    polling_tasks = [candidate_dp.start_polling(candidate_bot)]
+
+    if ADMIN_BOT_TOKEN:
+        if not ADMIN_USER_IDS:
+            logger.warning(
+                "ADMIN_BOT_TOKEN sozlangan, lekin ADMIN_USER_IDS bo'sh — hech kim admin "
+                "botdan foydalana olmaydi. .env'da ADMIN_USER_IDS'ni to'ldiring."
+            )
+        admin_bot, admin_dp = _build_admin_bot(fsm_storage)
+        logger.info("Janob HR Admin bot ishga tushdi ✅ (ruxsat etilgan adminlar: %d)", len(ADMIN_USER_IDS))
+        await admin_bot.delete_webhook(drop_pending_updates=True)
+        polling_tasks.append(admin_dp.start_polling(admin_bot))
+    else:
+        logger.info("ADMIN_BOT_TOKEN sozlanmagan — admin bot ishga tushirilmadi (ixtiyoriy).")
+
+    await asyncio.gather(*polling_tasks)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_GROUP_ID
 from services import database
 from services.ai_scoring import aggregate_scores
-from vacancies import get_questions
+from vacancies import build_questions
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -29,7 +29,7 @@ _RED_FLAG_LABELS = {
 _MAX_TEXT_LENGTH = 3800
 
 
-def _format_application_text(app: dict) -> str:
+async def _format_application_text(app: dict) -> str:
     lines = [
         f"🆕 <b>Yangi anketa</b> — {app['vacancy_title']}",
         f"👤 {app['full_name']} (@{app['username'] or '—'}, id: {app['user_id']})",
@@ -51,8 +51,11 @@ def _format_application_text(app: dict) -> str:
 
     # Ushbu vakansiyada nechta savol AI orqali baholanishi kerak edi — shunga
     # qarab, AI umuman ishlamagan holatni ("aggregate is None") va qisman
-    # ishlagan holatni bir-biridan ajratamiz.
-    expected_keys = [q["key"] for q in get_questions(app["vacancy_key"]) if q.get("ai_score")]
+    # ishlagan holatni bir-biridan ajratamiz. Vakansiya keyinchalik o'chirilgan
+    # yoki tahrirlangan bo'lishi mumkin — shunday holatda bu tekshiruvni
+    # o'tkazib yuboramiz (aggregate mavjud bo'lsa, baribir ko'rsatamiz).
+    vacancy = await database.get_vacancy(app["vacancy_key"])
+    expected_keys = [q["key"] for q in build_questions(vacancy) if q.get("ai_score")] if vacancy else []
     valid_count = sum(
         1 for k in expected_keys
         if isinstance(ai_scores.get(k), dict) and "score" in ai_scores[k]
@@ -136,7 +139,7 @@ async def notify_admin_group(bot, app_id: int):
 
     sent = await bot.send_message(
         chat_id=chat_id,
-        text=_format_application_text(app),
+        text=await _format_application_text(app),
         reply_markup=builder.as_markup(),
     )
 

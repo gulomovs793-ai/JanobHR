@@ -31,10 +31,119 @@ CREATE TABLE IF NOT EXISTS applications (
 );
 """
 
+_CREATE_VACANCIES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS vacancies (
+    key TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    reject_message TEXT NOT NULL,
+    questions TEXT NOT NULL,
+    resume_required INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+"""
+
+# Birinchi marta ishga tushirilganda (vacancies jadvali bo'sh bo'lsa) standart
+# 3 ta namunaviy vakansiya bilan to'ldiramiz — bular oddiy boshlang'ich nuqta,
+# admin bot orqali istalganini tahrirlash, o'chirish yoki yangisini qo'shish mumkin.
+_DEFAULT_VACANCIES = [
+    {
+        "key": "sales",
+        "title": "🧑‍💼 Sotuv menejeri",
+        "reject_message": (
+            "Anketangiz uchun rahmat! Hozircha ushbu tajriba talablarimizga to'liq mos "
+            "kelmayapti, shu sababli ushbu bosqichda davom eta olmaymiz. "
+            "Boshqa vakansiyalarimizni kuzatib boring — omad tilaymiz! 🙏"
+        ),
+        "resume_required": False,
+        "questions": [
+            {"key": "experience", "text": "Oldin sotuv sohasida ishlaganmisiz? (Ha/Yo'q)", "hard_filter": True},
+            {"key": "experience_details", "text": "Qayerda va qancha muddat sotuv qilgansiz? Qisqacha yozing."},
+            {"key": "crm", "text": "Qanday CRM tizimlarida ishlagansiz? (Bitrix24, amoCRM va h.k.)"},
+            {"key": "scorecard_plan", "text": (
+                "Bizning kompaniya keyingi chorakda sotuvni kamida $20,000 ga oshirishi kerak. "
+                "Ishga kelganingizdan keyin birinchi 30 kun ichida bunga qanday hissa qo'shasiz? "
+                "Aniq rejangizni 3 ta qadamda yozing."
+            ), "ai_score": True},
+            {"key": "achievement", "text": (
+                "Oldingi ish joyingizda erishgan eng katta va aniq yutug'ingizni yozing "
+                "(iloji bo'lsa, raqamlar bilan)."
+            ), "ai_score": True},
+            {"key": "mistake_lesson", "text": (
+                "Ishingizda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va undan qanday dars oldingiz?"
+            ), "ai_score": True},
+            {"key": "hard_client", "text": "Qiyin mijoz bilan qanday ishlaysiz? Bitta real holatni yozib bering.", "ai_score": True},
+            {"key": "teamwork", "text": "Jamoada ishlash tajribangizni bitta real misol bilan tushuntiring.", "ai_score": True},
+            {"key": "motivation", "text": "Nega aynan bizning kompaniyada ishlashni xohlaysiz?", "ai_score": True},
+            {"key": "salary_expectation", "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)"},
+        ],
+    },
+    {
+        "key": "designer",
+        "title": "🎨 Dizayner",
+        "reject_message": (
+            "Anketangiz uchun rahmat! Hozircha tajribangiz talablarimizga mos kelmayapti. "
+            "Portfolioingizni boyitib, keyinroq qayta murojaat qilishingiz mumkin. Omad! 🙏"
+        ),
+        "resume_required": True,
+        "questions": [
+            {"key": "tool", "text": "Figma yoki Adobe (Photoshop/Illustrator) dasturlaridan qaysi birida ishlaysiz?"},
+            {"key": "portfolio", "text": "Portfolio (ishlaringiz namunasi) linkini yuboring.", "hard_filter": True},
+            {"key": "scorecard_output", "text": (
+                "Bizning brend uchun ijtimoiy tarmoqlarda oyiga kamida 20 ta post dizayni "
+                "tayyorlashingiz kerak bo'ladi. Birinchi haftada ishni qanday tashkil qilasiz "
+                "va sifatni qanday ta'minlaysiz?"
+            ), "ai_score": True},
+            {"key": "achievement", "text": (
+                "Eng faxrlanadigan loyihangizni tasvirlab bering — u qanday aniq natija "
+                "(masalan, mijoz sotuvi, engagement o'sishi) keltirdi?"
+            ), "ai_score": True},
+            {"key": "mistake_lesson", "text": "Dizaynda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va undan qanday dars oldingiz?", "ai_score": True},
+            {"key": "style", "text": "Sizga qaysi dizayn yo'nalishi (uslub) yaqinroq va nega?", "ai_score": True},
+            {"key": "deadline_handling", "text": "Bir vaqtning o'zida bir nechta muhim topshiriq kelib qolsa, ularni qanday tartibga solasiz?", "ai_score": True},
+            {"key": "feedback_handling", "text": "Mijoz yoki rahbar ishingizni qattiq tanqid qilsa, munosabatingiz qanday bo'ladi?", "ai_score": True},
+            {"key": "salary_expectation", "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)"},
+        ],
+    },
+    {
+        "key": "smm",
+        "title": "📱 SMM mutaxassis",
+        "reject_message": (
+            "Anketangiz uchun rahmat! Hozircha tajribangiz talablarimizga mos kelmayapti. "
+            "Boshqa vakansiyalarimizni kuzatib boring — omad tilaymiz! 🙏"
+        ),
+        "resume_required": False,
+        "questions": [
+            {"key": "platforms", "text": "Qaysi platformalarda (Instagram, Telegram, TikTok) tajribangiz bor?"},
+            {"key": "content_plan", "text": "Kontent-reja tuzish tajribangiz bormi? (Ha/Yo'q)", "hard_filter": True},
+            {"key": "scorecard_growth", "text": (
+                "Bizning Instagram sahifamizni 3 oy ichida kamida 5,000 ta yangi obunachiga "
+                "olib chiqishingiz kerak. Buni qanday aniq qadamlar bilan amalga oshirasiz?"
+            ), "ai_score": True},
+            {"key": "cases", "text": (
+                "Oldingi ishlaringizdan eng yaxshi natija bergan case'ni raqamlar bilan yozib "
+                "bering (masalan: \"Reels 100,000 ko'rishga yetdi\")."
+            ), "ai_score": True},
+            {"key": "mistake_lesson", "text": "SMMda qilgan eng katta xatoyingiz nima edi va undan qanday xulosa chiqardingiz?", "ai_score": True},
+            {"key": "trend_reaction", "text": (
+                "Ijtimoiy tarmoqlarda tez o'zgaruvchi trendlarga qanday moslashasiz? "
+                "Oxirgi kuzatgan va ishlatgan trendingizni ayting."
+            ), "ai_score": True},
+            {"key": "crisis_management", "text": (
+                "Agar brend haqida salbiy komment yoki kichik inqiroziy vaziyat yuzaga kelsa, "
+                "birinchi qadamingiz nima bo'ladi?"
+            ), "ai_score": True},
+            {"key": "tools", "text": "Qanday dizayn/analitika vositalaridan (Canva, Meta Business Suite va h.k.) foydalanasiz?"},
+            {"key": "salary_expectation", "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)"},
+        ],
+    },
+]
+
 
 async def init_db():
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(_CREATE_TABLE_SQL)
+        await db.execute(_CREATE_VACANCIES_TABLE_SQL)
 
         # Yengil migratsiya: eski (allaqachon mavjud) bazalarga yangi ustunlarni
         # xavfsiz qo'shib boramiz — CREATE TABLE IF NOT EXISTS eski jadvalni
@@ -47,6 +156,26 @@ async def init_db():
         if "phone_number" not in existing_columns:
             await db.execute("ALTER TABLE applications ADD COLUMN phone_number TEXT")
             logger.info("Migratsiya: 'phone_number' ustuni qo'shildi.")
+
+        # Birinchi marta ishga tushirilganda vakansiyalar jadvali bo'sh bo'lsa,
+        # standart 3 ta namunaviy vakansiya bilan to'ldiramiz.
+        cursor = await db.execute("SELECT COUNT(*) FROM vacancies")
+        (vacancy_count,) = await cursor.fetchone()
+        if vacancy_count == 0:
+            created_at = datetime.now(timezone.utc).isoformat()
+            for v in _DEFAULT_VACANCIES:
+                await db.execute(
+                    """
+                    INSERT INTO vacancies (key, title, reject_message, questions, resume_required, active, created_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?)
+                    """,
+                    (
+                        v["key"], v["title"], v["reject_message"],
+                        json.dumps(v["questions"], ensure_ascii=False),
+                        int(v["resume_required"]), created_at,
+                    ),
+                )
+            logger.info("Migratsiya: %d ta standart vakansiya urug'landi.", len(_DEFAULT_VACANCIES))
 
         await db.commit()
     logger.info("Ma'lumotlar bazasi tayyor: %s", SQLITE_PATH)
@@ -203,3 +332,145 @@ async def count_slot_bookings(slot: str) -> int:
         )
         row = await cursor.fetchone()
     return row[0] if row else 0
+
+
+# ============================= VAKANSIYALAR (admin bot) =============================
+
+def _row_to_vacancy(row) -> dict:
+    v = dict(row)
+    v["questions"] = json.loads(v["questions"])
+    v["resume_required"] = bool(v["resume_required"])
+    v["active"] = bool(v["active"])
+    return v
+
+
+async def list_vacancies(active_only: bool = True) -> list[dict]:
+    query = "SELECT * FROM vacancies"
+    if active_only:
+        query += " WHERE active = 1"
+    query += " ORDER BY created_at DESC"
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(query)
+        rows = await cursor.fetchall()
+    return [_row_to_vacancy(r) for r in rows]
+
+
+async def get_vacancy(key: str) -> Optional[dict]:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM vacancies WHERE key = ?", (key,))
+        row = await cursor.fetchone()
+    return _row_to_vacancy(row) if row else None
+
+
+def make_vacancy_key(title: str) -> str:
+    """Lavozim nomidan ma'lumotlar bazasi uchun lotin-harfli, pastki chiziqli kalit yasaydi."""
+    import re
+    import unicodedata
+
+    normalized = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", normalized).strip("_").lower()
+    # Telegram callback_data 64 baytgacha cheklangan (bu kalit "vac:<key>" kabi
+    # prefikslar bilan ishlatiladi), shuning uchun xavfsizlik uchun qisqartiramiz.
+    slug = slug[:40]
+    return slug or "vakansiya"
+
+
+async def create_vacancy(
+    *, key: str, title: str, reject_message: str, questions: list, resume_required: bool
+) -> None:
+    created_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO vacancies (key, title, reject_message, questions, resume_required, active, created_at)
+            VALUES (?, ?, ?, ?, ?, 1, ?)
+            """,
+            (key, title, reject_message, json.dumps(questions, ensure_ascii=False), int(resume_required), created_at),
+        )
+        await db.commit()
+
+
+async def update_vacancy(key: str, **fields) -> None:
+    """fields: title, reject_message, questions (list), resume_required (bool), active (bool)."""
+    if not fields:
+        return
+    set_clauses = []
+    values = []
+    for field, value in fields.items():
+        if field == "questions":
+            value = json.dumps(value, ensure_ascii=False)
+        elif field in ("resume_required", "active"):
+            value = int(value)
+        set_clauses.append(f"{field} = ?")
+        values.append(value)
+    values.append(key)
+
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            f"UPDATE vacancies SET {', '.join(set_clauses)} WHERE key = ?", values
+        )
+        await db.commit()
+
+
+async def delete_vacancy(key: str) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute("DELETE FROM vacancies WHERE key = ?", (key,))
+        await db.commit()
+
+
+# ============================= STATISTIKA (admin bot) =============================
+
+# Nomzod uchun "yakuniy" hisoblanadigan holatlar (jarayon tugagan).
+_TERMINAL_REJECTED_STATUSES = {"rejected_hard_filter", "rejected_irrelevant", "declined"}
+
+
+async def get_overall_stats() -> dict:
+    """Umumiy statistika: jami ariza, holat bo'yicha taqsimot."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute("SELECT status, COUNT(*) FROM applications GROUP BY status")
+        rows = await cursor.fetchall()
+
+    by_status = {status: count for status, count in rows}
+    total = sum(by_status.values())
+    rejected_total = sum(by_status.get(s, 0) for s in _TERMINAL_REJECTED_STATUSES)
+
+    return {
+        "total": total,
+        "pending": by_status.get("pending", 0),
+        "accepted": by_status.get("accepted", 0),
+        "declined_by_admin": by_status.get("declined", 0),
+        "rejected_hard_filter": by_status.get("rejected_hard_filter", 0),
+        "rejected_irrelevant": by_status.get("rejected_irrelevant", 0),
+        "rejected_total": rejected_total,
+        "by_status": by_status,
+    }
+
+
+async def get_vacancy_stats() -> list[dict]:
+    """Har bir vakansiya bo'yicha ariza sonlari (vakansiya o'chirilgan bo'lsa ham,
+    tarixiy statistika saqlanib qoladi — vacancy_title'dan foydalanamiz)."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT vacancy_key, vacancy_title, status, COUNT(*) FROM applications "
+            "GROUP BY vacancy_key, vacancy_title, status"
+        )
+        rows = await cursor.fetchall()
+
+    per_vacancy: dict[str, dict] = {}
+    for vacancy_key, vacancy_title, status, count in rows:
+        entry = per_vacancy.setdefault(
+            vacancy_key,
+            {"vacancy_key": vacancy_key, "vacancy_title": vacancy_title, "total": 0,
+             "pending": 0, "accepted": 0, "rejected": 0},
+        )
+        entry["total"] += count
+        if status == "pending":
+            entry["pending"] += count
+        elif status == "accepted":
+            entry["accepted"] += count
+        elif status in _TERMINAL_REJECTED_STATUSES:
+            entry["rejected"] += count
+
+    return sorted(per_vacancy.values(), key=lambda e: -e["total"])

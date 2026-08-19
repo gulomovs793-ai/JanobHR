@@ -2,6 +2,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class ApplyForm(StatesGroup):
+    choosing_language = State()
     choosing_vacancy = State()
     waiting_resume_upfront = State()
     answering_questions = State()

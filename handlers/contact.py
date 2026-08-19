@@ -10,6 +10,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 
+from i18n import DEFAULT_LANG, t
 from states import ApplyForm
 
 logger = logging.getLogger("janob_hr_bot")
@@ -22,46 +23,48 @@ _PHONE_DIGITS_RE = re.compile(r"\d")
 
 async def ask_full_name(message: Message, state: FSMContext):
     """Savollar (va fayl, agar kerak bo'lsa) tugagach chaqiriladi."""
-    await message.answer(
-        "Deyarli tayyor! 🙌 Iltimos, to'liq ism-familiyangizni yozing "
-        "(masalan: Aliyev Vali)."
-    )
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+    await message.answer(t("ask_full_name", lang))
     await state.set_state(ApplyForm.waiting_full_name)
 
 
 @router.message(ApplyForm.waiting_full_name, F.text)
 async def handle_full_name(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
     full_name = message.text.strip()
 
     if len(full_name) < 3 or not any(ch.isalpha() for ch in full_name):
-        await message.answer("Iltimos, to'liq ism va familiyangizni yozing (masalan: Aliyev Vali).")
+        await message.answer(t("name_too_short", lang))
         return
 
     await state.update_data(candidate_full_name=full_name)
 
     keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 Raqamni ulashish", request_contact=True)]],
+        keyboard=[[KeyboardButton(text=t("share_phone_button", lang), request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
-    await message.answer(
-        "Rahmat! Endi telefon raqamingizni ulashing — pastdagi tugmani bosing, "
-        "yoki qo'lda yozib yuboring (masalan: +998901234567).",
-        reply_markup=keyboard,
-    )
+    await message.answer(t("ask_phone", lang), reply_markup=keyboard)
     await state.set_state(ApplyForm.waiting_phone)
 
 
 @router.message(ApplyForm.waiting_full_name)
-async def handle_wrong_name_type(message: Message):
-    await message.answer("Iltimos, ism-familiyangizni oddiy matn ko'rinishida yozing.")
+async def handle_wrong_name_type(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+    await message.answer(t("wrong_name_type", lang))
 
 
 async def _finish_contact_collection(message: Message, state: FSMContext, phone: str):
     from handlers.questions import complete_application
 
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+
     await state.update_data(candidate_phone=phone)
-    await message.answer("Rahmat! ✅", reply_markup=ReplyKeyboardRemove())
+    await message.answer(t("contact_thanks", lang), reply_markup=ReplyKeyboardRemove())
     await complete_application(message, state)
 
 
@@ -72,21 +75,20 @@ async def handle_phone_contact(message: Message, state: FSMContext):
 
 @router.message(ApplyForm.waiting_phone, F.text)
 async def handle_phone_text(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
     text = message.text.strip()
     digit_count = len(_PHONE_DIGITS_RE.findall(text))
 
     if digit_count < 7:
-        await message.answer(
-            "Bu telefon raqamiga o'xshamayapti. Iltimos, pastdagi tugmani bosing yoki "
-            "raqamni to'liq formatda yozing (masalan: +998901234567)."
-        )
+        await message.answer(t("phone_invalid", lang))
         return
 
     await _finish_contact_collection(message, state, text)
 
 
 @router.message(ApplyForm.waiting_phone)
-async def handle_wrong_phone_type(message: Message):
-    await message.answer(
-        "Iltimos, telefon raqamingizni pastdagi tugma orqali yuboring yoki matn ko'rinishida yozing."
-    )
+async def handle_wrong_phone_type(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+    await message.answer(t("wrong_phone_type", lang))

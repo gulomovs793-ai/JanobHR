@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import MAX_ANSWER_CHARS
+from i18n import DEFAULT_LANG, t
 from services import database
 from services.ai_scoring import check_relevance, score_answer
 from states import ApplyForm
@@ -19,6 +20,7 @@ router = Router(name="questions")
 
 async def ask_current_question(message: Message, state: FSMContext):
     data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
     idx = data["question_index"]
     questions = data["vacancy_questions"]
     prefilled_keys = set(data.get("prefilled_from_resume", []))
@@ -35,7 +37,7 @@ async def ask_current_question(message: Message, state: FSMContext):
         return
 
     total = len(questions)
-    await message.answer(f"<b>Savol {idx + 1}/{total}</b>\n\n{questions[idx]['text']}")
+    await message.answer(t("question_progress", lang, idx=idx + 1, total=total, text=questions[idx]["text"]))
     await state.set_state(ApplyForm.answering_questions)
 
 
@@ -62,21 +64,10 @@ async def _reject_and_save(
         resume_file_id=None,
         video_file_id=None,
         status=status,
+        lang=data.get("lang", DEFAULT_LANG),
     )
     await state.clear()
 
-
-_IRRELEVANT_RETRY_TEXT = (
-    "Kechirasiz, javobingiz savolga unchalik mos kelmadi. 🤔\n\n"
-    "Iltimos, quyidagi savolga qayta, aniqroq javob bering:\n\n"
-    "{question_text}"
-)
-
-_IRRELEVANT_REJECT_TEXT = (
-    "Kechirasiz, bir necha marta savolga mos javob bera olmadingiz. ⚠️\n\n"
-    "Iltimos, keyinroq /start orqali qaytadan urinib ko'ring va savollarga jiddiy, "
-    "mavzuga oid javob bering."
-)
 
 # Oddiy faktik savollarda ("qaysi platforma/dastur ishlatasiz" kabi) bundan qisqa
 # javoblar AI orqali tekshirilmaydi — bir so'zlik to'g'ri javoblarni ("Instagram",
@@ -95,31 +86,23 @@ _MAX_IRRELEVANT_RETRIES = 2
 # to'liqroq ma'lumot bilan yetib boradi.
 _FOLLOWUP_SCORE_THRESHOLD = 50
 
-_FOLLOWUP_PROMPT_TEXT = (
-    "Javobingiz biroz umumiy chiqdi. 🤔 Iltimos, aniqroq misol, raqam yoki qadam bilan "
-    "kengaytirib qayta yozing.\n\nAgar shu javobingiz bilan davom etmoqchi bo'lsangiz, "
-    "pastdagi tugmani bosing."
-)
-
 
 @router.message(ApplyForm.answering_questions, F.text)
 async def handle_answer(message: Message, state: FSMContext):
     data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
     idx = data["question_index"]
     questions = data["vacancy_questions"]
     q = questions[idx]
     answer_text = message.text.strip()
 
     if not answer_text:
-        await message.answer("Iltimos, savolga matn ko'rinishida javob yozing.")
+        await message.answer(t("answer_empty", lang))
         return
 
     # --- Uzunlik chegarasi: juda uzun javoblar o'qishni va AI tahlilini qiyinlashtiradi ---
     if len(answer_text) > MAX_ANSWER_CHARS:
-        await message.answer(
-            f"Javobingiz juda uzun ({len(answer_text)} belgi). Iltimos, fikringizni "
-            f"qisqaroq — taxminan {MAX_ANSWER_CHARS} belgigacha — qilib qayta yozing. ✍️"
-        )
+        await message.answer(t("answer_too_long", lang, length=len(answer_text), max=MAX_ANSWER_CHARS))
         return
 
     # --- Agar bu — oldin so'ralgan aniqlashtiruvchi savolga javob bo'lsa, uni
@@ -181,12 +164,12 @@ async def handle_answer(message: Message, state: FSMContext):
         if retry_count > _MAX_IRRELEVANT_RETRIES:
             await _reject_and_save(
                 message, state, data, answers, ai_scores,
-                _IRRELEVANT_REJECT_TEXT, "rejected_irrelevant",
+                t("irrelevant_reject", lang), "rejected_irrelevant",
             )
             return
 
         await state.update_data(irrelevant_retry_count=retry_count)
-        await message.answer(_IRRELEVANT_RETRY_TEXT.format(question_text=q["text"]))
+        await message.answer(t("irrelevant_retry", lang, question_text=q["text"]))
         return
 
     # --- Javob mavzuga oid, lekin sifati past/abstrakt bo'lsa — bitta marta
@@ -204,8 +187,8 @@ async def handle_answer(message: Message, state: FSMContext):
             followup_asked_indices=followup_indices, awaiting_followup_for=idx,
         )
         builder = InlineKeyboardBuilder()
-        builder.button(text="✅ Shu javobim bilan davom etaman", callback_data="followup:skip")
-        await message.answer(_FOLLOWUP_PROMPT_TEXT, reply_markup=builder.as_markup())
+        builder.button(text=t("followup_skip_button", lang), callback_data="followup:skip")
+        await message.answer(t("followup_prompt", lang), reply_markup=builder.as_markup())
         return
 
     await state.update_data(
@@ -237,14 +220,17 @@ async def skip_followup(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(ApplyForm.answering_questions)
-async def handle_wrong_answer_type(message: Message):
+async def handle_wrong_answer_type(message: Message, state: FSMContext):
     """Savol kutilayotganda matndan boshqa narsa (rasm, stiker va h.k.) yuborilsa."""
-    await message.answer("Iltimos, javobingizni oddiy matn ko'rinishida yozing. ✍️")
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+    await message.answer(t("wrong_answer_type", lang))
 
 
 async def finish_questions(message: Message, state: FSMContext):
     """Barcha savollar tugagach chaqiriladi — rezyume/portfolio so'raladi (ixtiyoriy)."""
     data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
 
     # Agar rezyume savollardan OLDIN allaqachon olingan bo'lsa, qayta so'ramaymiz.
     if data.get("resume_file_id") or data.get("video_file_id"):
@@ -254,14 +240,9 @@ async def finish_questions(message: Message, state: FSMContext):
         return
 
     builder = InlineKeyboardBuilder()
-    builder.button(text="⏭ O'tkazib yuborish", callback_data="skip_resume")
+    builder.button(text=t("skip_button", lang), callback_data="skip_resume")
 
-    await message.answer(
-        "Deyarli tugadi! Agar mavjud bo'lsa, rezyume (PDF fayl), video-vizitka yoki "
-        "portfolio havolangizni (link) yuboring — bu ixtiyoriy, xohlasangiz o'tkazib "
-        "yuborishingiz mumkin.",
-        reply_markup=builder.as_markup(),
-    )
+    await message.answer(t("finish_resume_prompt", lang), reply_markup=builder.as_markup())
     await state.set_state(ApplyForm.waiting_file)
 
 
@@ -271,6 +252,7 @@ async def complete_application(message: Message, state: FSMContext):
     from handlers.sell import maybe_send_sell_pitch
 
     data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
 
     app_id = await database.save_application(
         user_id=message.from_user.id,
@@ -284,9 +266,10 @@ async def complete_application(message: Message, state: FSMContext):
         resume_file_id=data.get("resume_file_id"),
         video_file_id=data.get("video_file_id"),
         status="pending",
+        lang=lang,
     )
 
-    await message.answer("✅ Anketangiz qabul qilindi! Tez orada siz bilan bog'lanamiz. Rahmat!")
+    await message.answer(t("application_submitted", lang))
     await state.set_state(ApplyForm.finished)
     await state.clear()
 
@@ -297,6 +280,6 @@ async def complete_application(message: Message, state: FSMContext):
 
     # --- Sell bosqichi: agar nomzod yuqori ball olsa, avtomatik taklif yuboriladi ---
     try:
-        await maybe_send_sell_pitch(message, app_id, data.get("ai_scores", {}))
+        await maybe_send_sell_pitch(message, app_id, data.get("ai_scores", {}), lang)
     except Exception:
         logger.exception("Sell xabarini yuborib bo'lmadi (app_id=%s).", app_id)

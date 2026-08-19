@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from handlers.contact import ask_full_name
+from i18n import DEFAULT_LANG, t
 from states import ApplyForm
 
 router = Router(name="files")
@@ -24,12 +25,14 @@ async def handle_video(message: Message, state: FSMContext):
 @router.message(ApplyForm.waiting_file, F.text)
 async def handle_portfolio_link(message: Message, state: FSMContext):
     """Nomzod fayl o'rniga matn/havola (masalan portfolio linki) yuborishi mumkin."""
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+
     text = message.text.strip()
     if not text:
-        await message.answer("Iltimos, fayl, portfolio havolasi yuboring, yoki tugmani bosib o'tkazib yuboring.")
+        await message.answer(t("portfolio_link_empty", lang))
         return
 
-    data = await state.get_data()
     answers = data.get("answers", {})
     answers["portfolio_link"] = text
     await state.update_data(answers=answers)
@@ -47,8 +50,7 @@ async def skip_resume(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(ApplyForm.waiting_file)
-async def handle_wrong_file(message: Message):
-    await message.answer(
-        "Iltimos, PDF fayl, video yoki portfolio havolasini yuboring — "
-        "yoki yuqoridagi \"O'tkazib yuborish\" tugmasini bosing."
-    )
+async def handle_wrong_file(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+    await message.answer(t("wrong_file_type", lang))

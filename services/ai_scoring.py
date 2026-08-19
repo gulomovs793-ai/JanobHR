@@ -374,6 +374,62 @@ async def extract_resume_data(resume_text: str, questions: list[dict]) -> Option
         return None
 
 
+_VACANCY_TRANSLATION_PROMPT = """Sen professional tarjimonsan. Senga JSON ko'rinishida ish \
+vakansiyasi savollari va rad etish xabari beriladi (o'zbek tilida). Ularni tabiiy, professional \
+rus tiliga tarjima qil.
+
+QAT'IY QOIDALAR:
+- Har bir savolning "key" maydonini O'ZGARTIRMA — aynan shu ko'rinishda qayta qaytar.
+- Faqat "text" maydonlarini (savol matnlarini) va "reject_message"ni tarjima qil.
+- "hard_filter" va "ai_score" bayroqlarini o'zgartirmasdan saqlab qol (agar mavjud bo'lsa).
+- Tarjima ma'noni to'liq saqlashi, lekin rus tilida tabiiy eshitilishi kerak (so'zma-so'z emas).
+
+FAQAT quyidagi JSON formatida javob ber, boshqa hech narsa yozma:
+{{"questions": [{{"key": "...", "text": "...", ...boshqa maydonlar o'zgarishsiz...}}, ...], \
+"reject_message": "..."}}
+
+Tarjima qilinadigan ma'lumot:
+{payload}
+"""
+
+
+async def translate_vacancy_content(questions: list[dict], reject_message: str) -> Optional[dict]:
+    """Vakansiya savollari va rad etish xabarini rus tiliga tarjima qiladi (key va
+    hard_filter/ai_score bayroqlarini o'zgartirmasdan). Muvaffaqiyatsiz bo'lsa None
+    qaytaradi — chaqiruvchi bunday holda o'zbekcha versiyani ishlatishi kerak.
+    """
+    payload = json.dumps(
+        {"questions": questions, "reject_message": reject_message}, ensure_ascii=False,
+    )
+    system_prompt = _VACANCY_TRANSLATION_PROMPT.format(payload=payload)
+
+    content = await _call_ai(system_prompt, "Tarjima qil.", max_tokens=2500)
+    if content is None:
+        return None
+
+    try:
+        content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
+        parsed = json.loads(content)
+
+        translated_questions = parsed.get("questions")
+        reject_message_ru = str(parsed.get("reject_message", "")).strip()
+        if not isinstance(translated_questions, list) or not reject_message_ru:
+            raise ValueError("Tarjima natijasi to'liq emas")
+
+        # Xavfsizlik: kalitlar soni va tartibi asl savollar bilan mos kelishini
+        # tekshiramiz — mos kelmasa, tarjimani ishonchsiz deb hisoblaymiz.
+        original_keys = [q["key"] for q in questions]
+        translated_keys = [q.get("key") for q in translated_questions]
+        if translated_keys != original_keys:
+            logger.warning("Tarjima kalitlari asl savollar bilan mos kelmadi, bekor qilinadi.")
+            return None
+
+        return {"questions": translated_questions, "reject_message": reject_message_ru}
+    except Exception:
+        logger.exception("Vakansiya tarjimasi javobini o'qib bo'lmadi: %s", content)
+        return None
+
+
 class AggregateResult(TypedDict):
     avg_score: int
     verdict: str  # "yashil" | "sariq" | "qizil"

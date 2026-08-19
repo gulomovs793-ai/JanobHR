@@ -136,6 +136,18 @@ Bot oddiy anketa yig'uvchidan farqli o'laroq, quyidagi bosqichlarni avtomatik ba
 Bu tizim to'liq ishlashi uchun `AI_API_KEY` (va OpenAI-compatible bo'lmagan
 provayderlar uchun `AI_API_BASE`/`AI_MODEL`) sozlangan bo'lishi shart.
 
+## Ikki tillilik (o'zbek / rus)
+
+Nomzod-bot `/start`da til tanlashni so'raydi (🇺🇿 O'zbek / 🇷🇺 Русский). Botning
+o'z matnlari (`i18n.py`) ikkala tilda tayyor. Vakansiyaga oid dinamik matn
+(savollar, rad etish xabari) esa rus tili tanlangan **birinchi** nomzodda AI
+orqali avtomatik tarjima qilinadi va bazada saqlanadi (`questions_ru`,
+`reject_message_ru`) — keyingi rus tilidagi nomzodlar uchun qayta tarjima
+qilinmaydi. Vakansiya admin tomonidan tahrirlansa, eski tarjima keshi
+avtomatik bekor qilinadi va keyingi safar qayta tarjima qilinadi.
+
+Admin bot ikki tillilikka ega emas — u faqat o'zbek tilida ishlaydi.
+
 ## Admin bot — arizalarni ko'rib chiqish, vakansiyalarni boshqarish, statistika
 
 **Muhim: bu bot endi ixtiyoriy emas.** Nomzod arizalari (✅/❌ tugmalari bilan)

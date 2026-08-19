@@ -39,6 +39,8 @@ async def _format_application_text(app: dict) -> str:
     ]
     if app.get("phone_number"):
         lines.append(f"📞 {app['phone_number']}")
+    if app.get("lang") == "ru":
+        lines.append("🌐 Til: Rus tilida murojaat qilgan")
     lines.append("")
 
     ai_scores = app.get("ai_scores") or {}

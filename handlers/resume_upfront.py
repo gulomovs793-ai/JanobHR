@@ -16,6 +16,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from i18n import DEFAULT_LANG, t
 from services.ai_scoring import extract_resume_data
 from services.pdf_reader import extract_pdf_text
 from states import ApplyForm
@@ -28,14 +29,12 @@ _MIN_RESUME_TEXT_LEN = 50
 
 
 async def ask_resume_upfront(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+
     builder = InlineKeyboardBuilder()
-    builder.button(text="⏭ O'tkazib yuborish", callback_data="skip_resume_upfront")
-    await message.answer(
-        "Agar tayyor rezyumeingiz (PDF) bo'lsa, avval shuni yuboring — men undan "
-        "ba'zi ma'lumotlarni o'qib, sizga bir nechta savolni qayta berishning hojatini "
-        "yo'q qilaman. 📄\n\nBo'lmasa, bemalol o'tkazib yuborishingiz mumkin.",
-        reply_markup=builder.as_markup(),
-    )
+    builder.button(text=t("skip_button", lang), callback_data="skip_resume_upfront")
+    await message.answer(t("resume_upfront_prompt", lang), reply_markup=builder.as_markup())
     await state.set_state(ApplyForm.waiting_resume_upfront)
 
 
@@ -57,6 +56,9 @@ async def skip_resume(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ApplyForm.waiting_resume_upfront, F.document)
 async def handle_resume_pdf(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+
     is_pdf = (message.document.mime_type == "application/pdf") or (
         message.document.file_name or ""
     ).lower().endswith(".pdf")
@@ -66,11 +68,11 @@ async def handle_resume_pdf(message: Message, state: FSMContext):
         # sifatida saqlaymiz — keyinroq savollardan keyin ham so'raladi, hech
         # narsa yo'qolmaydi.
         await state.update_data(resume_file_id=message.document.file_id)
-        await message.answer("Fayl saqlandi. Endi savollarga o'tamiz.")
+        await message.answer(t("resume_saved_plain", lang))
         await _proceed_to_questions(message, state)
         return
 
-    wait_msg = await message.answer("📄 Rezyumeni o'qimoqdaman...")
+    wait_msg = await message.answer(t("resume_reading", lang))
 
     try:
         buffer = await message.bot.download(message.document)
@@ -84,14 +86,10 @@ async def handle_resume_pdf(message: Message, state: FSMContext):
     if len(pdf_text) < _MIN_RESUME_TEXT_LEN:
         # Skanerlangan/matnsiz PDF bo'lishi mumkin — baribir faylni saqlab qoldik,
         # shunchaki avtomatik to'ldirish ishlamaydi.
-        await wait_msg.edit_text(
-            "Faylni saqladim, lekin undan matn o'qib bo'lmadi (skanerlangan rasm "
-            "bo'lishi mumkin). Hammasi joyida — savollarni odatdagidek davom ettiramiz."
-        )
+        await wait_msg.edit_text(t("resume_no_text", lang))
         await _proceed_to_questions(message, state)
         return
 
-    data = await state.get_data()
     questions = data["vacancy_questions"]
     # Faqat ODDIY FAKTIK savollar (ai_score va hard_filter BELGILANMAGAN)
     # rezyumedan to'ldirilishi mumkin.
@@ -100,10 +98,7 @@ async def handle_resume_pdf(message: Message, state: FSMContext):
     extracted = await extract_resume_data(pdf_text, eligible) if eligible else None
 
     if not extracted:
-        await wait_msg.edit_text(
-            "Faylni saqladim, lekin undan avtomatik to'ldirish uchun yetarli ma'lumot "
-            "topa olmadim. Savollarni odatdagidek davom ettiramiz."
-        )
+        await wait_msg.edit_text(t("resume_no_match", lang))
         await _proceed_to_questions(message, state)
         return
 
@@ -111,11 +106,12 @@ async def handle_resume_pdf(message: Message, state: FSMContext):
     prefilled_texts = []
     key_by_text = {q["key"]: q["text"] for q in eligible}
     for key, value in extracted["answers"].items():
-        answers[key] = f"{value} (rezyumedan)"
+        answers[key] = f"{value} ({'из резюме' if lang == 'ru' else 'rezyumedan'})"
         prefilled_texts.append(key_by_text.get(key, key))
 
     if extracted.get("summary"):
-        answers["_resume_summary"] = f"📄 Rezyume xulosasi: {extracted['summary']}"
+        summary_label = "Резюме (кратко)" if lang == "ru" else "Rezyume xulosasi"
+        answers["_resume_summary"] = f"📄 {summary_label}: {extracted['summary']}"
 
     await state.update_data(
         answers=answers,
@@ -123,33 +119,32 @@ async def handle_resume_pdf(message: Message, state: FSMContext):
     )
 
     if prefilled_texts:
-        skipped_list = "\n".join(f"✓ {t}" for t in prefilled_texts)
-        await wait_msg.edit_text(
-            f"✅ Rezyumeni o'qib chiqdim!\n\n"
-            f"Quyidagi savollarni rezyumedan javob sifatida oldim, ularni qayta "
-            f"so'ramayman:\n{skipped_list}\n\n"
-            "Qolgan savollarni davom ettiramiz."
-        )
+        skipped_list = "\n".join(f"✓ {txt}" for txt in prefilled_texts)
+        await wait_msg.edit_text(t("resume_extracted_with_list", lang, skipped_list=skipped_list))
     else:
-        await wait_msg.edit_text("✅ Rezyumeni o'qib chiqdim. Savollarni davom ettiramiz.")
+        await wait_msg.edit_text(t("resume_extracted_no_list", lang))
 
     await _proceed_to_questions(message, state)
 
 
 @router.message(ApplyForm.waiting_resume_upfront, F.video)
 async def handle_video_upfront(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
     await state.update_data(video_file_id=message.video.file_id)
-    await message.answer("Video saqlandi. Endi savollarga o'tamiz.")
+    await message.answer(t("video_saved_upfront", lang))
     await _proceed_to_questions(message, state)
 
 
 @router.message(ApplyForm.waiting_resume_upfront, F.text)
 async def handle_text_upfront(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+
     text = message.text.strip()
     if text:
-        data = await state.get_data()
         answers = data.get("answers", {})
         answers["portfolio_link"] = text
         await state.update_data(answers=answers)
-    await message.answer("Qabul qilindi. Endi savollarga o'tamiz.")
+    await message.answer(t("text_saved_upfront", lang))
     await _proceed_to_questions(message, state)

@@ -1,23 +1,23 @@
-"""Janob HR Bot — /start, /cancel: nomzodni kutib olish va oqimni boshqarish."""
-from aiogram import Router
+"""Janob HR Bot — /start, /cancel: til tanlash, nomzodni kutib olish va oqimni boshqarish."""
+from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from i18n import CHOOSE_LANGUAGE_PROMPT, DEFAULT_LANG, LANGUAGES, t
 from services import database
 from states import ApplyForm
 
 router = Router(name="start")
 
 
-async def _show_vacancy_menu(message: Message, state: FSMContext, greeting: str):
+async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str):
     vacancies = await database.list_vacancies(active_only=True)
+    greeting = t("greeting", lang)
 
     if not vacancies:
-        await message.answer(
-            f"{greeting}\n\nHozircha ochiq vakansiyalar yo'q. Iltimos, keyinroq qayta urinib ko'ring."
-        )
+        await message.answer(t("no_vacancies", lang, greeting=greeting))
         return
 
     builder = InlineKeyboardBuilder()
@@ -25,7 +25,9 @@ async def _show_vacancy_menu(message: Message, state: FSMContext, greeting: str)
         builder.button(text=v["title"], callback_data=f"vacancy:{v['key']}")
     builder.adjust(1)
 
-    await message.answer(f"{greeting}\n\nQuyidagi vakansiyalardan birini tanlang:", reply_markup=builder.as_markup())
+    await message.answer(
+        t("vacancy_list_prompt", lang, greeting=greeting), reply_markup=builder.as_markup()
+    )
     await state.set_state(ApplyForm.choosing_vacancy)
 
 
@@ -33,45 +35,53 @@ async def _show_vacancy_menu(message: Message, state: FSMContext, greeting: str)
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
 
+    builder = InlineKeyboardBuilder()
+    for code, label in LANGUAGES.items():
+        builder.button(text=label, callback_data=f"lang:{code}")
+    builder.adjust(1)
+
+    await message.answer(CHOOSE_LANGUAGE_PROMPT, reply_markup=builder.as_markup())
+    await state.set_state(ApplyForm.choosing_language)
+
+
+@router.callback_query(ApplyForm.choosing_language, F.data.startswith("lang:"))
+async def choose_language(callback: CallbackQuery, state: FSMContext):
+    lang = callback.data.split(":", 1)[1]
+    if lang not in LANGUAGES:
+        lang = DEFAULT_LANG
+
+    await state.update_data(lang=lang)
+    await callback.message.delete()
+
     # --- Takroriy ariza himoyasi: nomzodning ko'rib chiqilayotgan arizasi bo'lsa,
     # unga yangi anketa boshlash o'rniga hozirgi holatini eslatamiz. ---
-    pending = await database.get_pending_application_for_user(message.from_user.id)
+    pending = await database.get_pending_application_for_user(callback.from_user.id)
     if pending:
-        await message.answer(
-            f"👋 Assalomu alaykum! Sizning <b>{pending['vacancy_title']}</b> vakansiyasiga "
-            "yuborgan arizangiz hozircha ko'rib chiqilmoqda.\n\n"
-            "Natija haqida tez orada shu yerda xabar beramiz — hozircha yangi ariza "
-            "topshirishning hojati yo'q. Agar shoshilinch savolingiz bo'lsa, operator bilan "
-            "bog'laning."
+        await callback.message.answer(
+            t("pending_application_notice", lang, vacancy_title=pending["vacancy_title"])
         )
+        await callback.answer()
         return
 
-    await _show_vacancy_menu(
-        message, state,
-        "👔 Xush kelibsiz — bu <b>Janob HR</b>!\n\n"
-        "Men sun'iy intellekt yordamida arizangizni professional va xolis tahlil qilaman. "
-        "Jarayon shunchaki: vakansiyani tanlaysiz, bir necha savolga javob berasiz — "
-        "qolganini men bajaraman.",
-    )
+    await _show_vacancy_menu(callback.message, state, lang)
+    await callback.answer()
 
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
     current_state = await state.get_state()
     if current_state is None:
-        await message.answer("Hozir bekor qilinadigan faol ariza yo'q. /start bilan boshlashingiz mumkin.")
+        await message.answer(t("cancel_no_active", lang))
         return
 
     await state.clear()
-    await message.answer("❌ Ariza bekor qilindi. Qaytadan boshlash uchun /start yuboring.")
+    await message.answer(t("cancel_done", lang))
 
 
 @router.message(Command("help"))
-async def cmd_help(message: Message):
-    await message.answer(
-        "👔 <b>Janob HR</b>\n\n"
-        "🤖 AI asosidagi ishga qabul qiluvchi yordamchi.\n\n"
-        "/start — vakansiyaga ariza topshirishni boshlash\n"
-        "/cancel — joriy arizani bekor qilish\n"
-        "/help — shu xabarni ko'rsatish"
-    )
+async def cmd_help(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+    await message.answer(t("help_text", lang))

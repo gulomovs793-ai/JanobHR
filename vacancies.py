@@ -25,7 +25,7 @@ def is_negative_answer(text: str) -> bool:
 # oddiy — noloyiq nomzodlar bu savoldan cho'chib botni tark etadi (o'z-o'zini filtrlaydi),
 # haqiqiy professionallar esa xotirjam va aniq javob beradi. AI javobning ishonchliligini
 # (aniq ism/raqam bor-yo'qligi, ishonch darajasi) baholaydi.
-REFERENCE_CHECK_QUESTION = {
+REFERENCE_CHECK_QUESTION_UZ = {
     "key": "reference_check",
     "text": (
         "So'nggi savol. Sizning tajribangiz bizga juda yoqdi. 👏\n\n"
@@ -36,7 +36,19 @@ REFERENCE_CHECK_QUESTION = {
     "ai_score": True,
 }
 
+REFERENCE_CHECK_QUESTION_RU = {
+    "key": "reference_check",
+    "text": (
+        "Последний вопрос. Нам очень понравился ваш опыт. 👏\n\n"
+        "На следующем этапе мы можем позвонить вашему бывшему руководителю. Если бы мы "
+        "сейчас спросили его о вас, на сколько баллов из 10 он бы вас оценил и почему? "
+        "(Пожалуйста, ответьте максимально точно и честно.)"
+    ),
+    "ai_score": True,
+}
 
-def build_questions(vacancy: dict) -> list[dict]:
+
+def build_questions(vacancy: dict, lang: str = "uz") -> list[dict]:
     """Vakansiyaning (bazadan olingan) savollariga Topgrading savolini qo'shib qaytaradi."""
-    return [*vacancy["questions"], REFERENCE_CHECK_QUESTION]
+    ref_question = REFERENCE_CHECK_QUESTION_RU if lang == "ru" else REFERENCE_CHECK_QUESTION_UZ
+    return [*vacancy["questions"], ref_question]

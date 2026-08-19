@@ -11,6 +11,7 @@ import logging
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
+from i18n import DEFAULT_LANG, t
 from services import bot_registry, database
 
 logger = logging.getLogger("janob_hr_bot")
@@ -32,15 +33,13 @@ async def handle_decision(callback: CallbackQuery):
         await callback.answer("Bu anketa bo'yicha qaror allaqachon qabul qilingan.", show_alert=True)
         return
 
+    lang = app.get("lang", DEFAULT_LANG)
+
     if action == "accept":
         new_status = "accepted"
         result_label = "✅ Suhbatga chaqirildi"
     else:
         new_status = "declined"
-        candidate_text = (
-            "Vaqt ajratganingiz uchun rahmat. Hozircha ushbu lavozim bo'yicha boshqa "
-            "nomzodni tanladik. Kelajakda boshqa vakansiyalarimizni kuzatib boring!"
-        )
         result_label = "❌ Rad etildi"
 
     await database.update_status(app_id, new_status)
@@ -51,13 +50,14 @@ async def handle_decision(callback: CallbackQuery):
             if action == "accept":
                 from handlers.sell import send_slot_offer
 
-                intro = (
-                    "🎉 Tabriklaymiz! Sizning nomzodingiz ma'qullandi.\n\n"
-                    "Endi suhbat uchun qulay vaqtni tanlang:"
+                await send_slot_offer(
+                    candidate_bot, app["user_id"], app_id,
+                    t("decision_accept_intro", lang), lang,
                 )
-                await send_slot_offer(candidate_bot, app["user_id"], app_id, intro)
             else:
-                await candidate_bot.send_message(chat_id=app["user_id"], text=candidate_text)
+                await candidate_bot.send_message(
+                    chat_id=app["user_id"], text=t("decision_decline_text", lang)
+                )
         except Exception:
             logger.exception("Nomzodga xabar yuborib bo'lmadi (user_id=%s).", app["user_id"])
     else:

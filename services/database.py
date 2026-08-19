@@ -186,6 +186,22 @@ async def init_db():
             await db.execute("ALTER TABLE applications ADD COLUMN admin_messages TEXT NOT NULL DEFAULT '[]'")
             logger.info("Migratsiya: 'admin_messages' ustuni qo'shildi.")
 
+        # Vakansiya savollari/rad etish xabarining rus tiliga tarjima keshi —
+        # rus tilida so'ragan BIRINCHI nomzodda AI orqali tarjima qilinadi va
+        # shu ustunlarga saqlanadi, keyingi nomzodlar uchun qayta tarjima
+        # qilinmaydi.
+        cursor = await db.execute("PRAGMA table_info(vacancies)")
+        vacancy_columns = {row[1] for row in await cursor.fetchall()}
+        if "questions_ru" not in vacancy_columns:
+            await db.execute("ALTER TABLE vacancies ADD COLUMN questions_ru TEXT")
+            logger.info("Migratsiya: 'questions_ru' ustuni qo'shildi.")
+        if "reject_message_ru" not in vacancy_columns:
+            await db.execute("ALTER TABLE vacancies ADD COLUMN reject_message_ru TEXT")
+            logger.info("Migratsiya: 'reject_message_ru' ustuni qo'shildi.")
+        if "lang" not in existing_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN lang TEXT NOT NULL DEFAULT 'uz'")
+            logger.info("Migratsiya: 'lang' ustuni qo'shildi.")
+
         # Birinchi marta ishga tushirilganda vakansiyalar jadvali bo'sh bo'lsa,
         # standart 3 ta namunaviy vakansiya bilan to'ldiramiz.
         cursor = await db.execute("SELECT COUNT(*) FROM vacancies")
@@ -223,6 +239,7 @@ async def save_application(
     video_file_id: Optional[str],
     status: str,
     phone_number: str = "",
+    lang: str = "uz",
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
@@ -231,8 +248,8 @@ async def save_application(
             INSERT INTO applications (
                 user_id, username, full_name, vacancy_key, vacancy_title,
                 answers, ai_scores, resume_file_id, video_file_id, status,
-                phone_number, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                phone_number, lang, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -246,6 +263,7 @@ async def save_application(
                 video_file_id,
                 status,
                 phone_number,
+                lang,
                 created_at,
             ),
         )
@@ -422,6 +440,56 @@ async def get_vacancy(key: str) -> Optional[dict]:
     return _row_to_vacancy(row) if row else None
 
 
+async def get_vacancy_localized(key: str, lang: str) -> Optional[dict]:
+    """`get_vacancy`ga o'xshaydi, lekin lang="ru" bo'lsa, savollar va rad etish
+    xabarini rus tiliga tarjima qilingan holda qaytaradi.
+
+    Tarjima birinchi so'ralganda AI orqali qilinadi va `questions_ru` /
+    `reject_message_ru` ustunlariga saqlanadi — keyingi rus tilidagi
+    nomzodlar uchun bazadan to'g'ridan-to'g'ri o'qiladi (qayta AI so'rovi
+    yuborilmaydi). Tarjima muvaffaqiyatsiz bo'lsa, o'zbekcha versiya qaytadi.
+    """
+    vacancy = await get_vacancy(key)
+    if not vacancy or lang != "ru":
+        return vacancy
+
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT questions_ru, reject_message_ru FROM vacancies WHERE key = ?", (key,)
+        )
+        row = await cursor.fetchone()
+
+    if row and row["questions_ru"]:
+        vacancy = dict(vacancy)
+        vacancy["questions"] = json.loads(row["questions_ru"])
+        vacancy["reject_message"] = row["reject_message_ru"] or vacancy["reject_message"]
+        return vacancy
+
+    from services.ai_scoring import translate_vacancy_content
+
+    translated = await translate_vacancy_content(vacancy["questions"], vacancy["reject_message"])
+    if not translated:
+        logger.warning("Vakansiya (%s) rus tiliga tarjima qilinmadi, o'zbekcha qoladi.", key)
+        return vacancy
+
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE vacancies SET questions_ru = ?, reject_message_ru = ? WHERE key = ?",
+            (
+                json.dumps(translated["questions"], ensure_ascii=False),
+                translated["reject_message"],
+                key,
+            ),
+        )
+        await db.commit()
+
+    vacancy = dict(vacancy)
+    vacancy["questions"] = translated["questions"]
+    vacancy["reject_message"] = translated["reject_message"]
+    return vacancy
+
+
 def make_vacancy_key(title: str) -> str:
     """Lavozim nomidan ma'lumotlar bazasi uchun lotin-harfli, pastki chiziqli kalit yasaydi."""
     import re
@@ -463,6 +531,14 @@ async def update_vacancy(key: str, **fields) -> None:
             value = int(value)
         set_clauses.append(f"{field} = ?")
         values.append(value)
+
+    # Savollar yoki rad etish xabari o'zgartirilsa, eski rus tili tarjimasi
+    # eskirib qoladi — uni bekor qilamiz, keyingi rus tilidagi nomzodda
+    # qayta (yangilangan matn asosida) tarjima qilinadi.
+    if "questions" in fields or "reject_message" in fields:
+        set_clauses.append("questions_ru = NULL")
+        set_clauses.append("reject_message_ru = NULL")
+
     values.append(key)
 
     async with aiosqlite.connect(SQLITE_PATH) as db:

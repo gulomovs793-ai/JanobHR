@@ -28,7 +28,6 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext):
         vacancy_key=key,
         vacancy_title=vacancy["title"],
         vacancy_reject_message=vacancy["reject_message"],
-        vacancy_resume_required=vacancy["resume_required"],
         vacancy_questions=build_questions(vacancy),
         question_index=0,
         answers={},

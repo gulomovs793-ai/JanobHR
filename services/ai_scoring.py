@@ -234,6 +234,12 @@ Talablar:
    foydalanasiz") "ai_score" qo'shmasang ham bo'ladi.
 6. Har bir savol uchun qisqa, lotin harflarida, pastki chiziqli "key" o'ylab top (masalan
    "scorecard_plan", "achievement", "mistake_lesson").
+7. Kamida bitta savol nomzodning da'vo qilingan tajribasi HAQIQIYLIGINI tekshirishga
+   xizmat qilsin — bunday savol umumiy tushunchani bilgan har qanday odam emas, balki
+   FAQAT haqiqiy amaliy tajribaga ega odam aniq va batafsil javob bera oladigan, sohaga
+   xos texnik/amaliy tafsilotni so'rasin (masalan, aniq dastur funksiyasi nomi, real
+   ish jarayonining tafsiloti, yoki soha ichidagi maxsus atama/protsedura). Maqsad —
+   faqat kitobdan o'qib bilgan yoki tajribasini o'ylab topgan nomzodlarni ajratib olish.
 
 FAQAT quyidagi JSON massiv formatida javob ber, boshqa hech qanday matn yozma:
 [{{"key": "...", "text": "...", "hard_filter": true}}, {{"key": "...", "text": "...", "ai_score": true}}, ...]

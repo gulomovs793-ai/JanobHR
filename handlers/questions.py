@@ -163,19 +163,19 @@ async def handle_wrong_answer_type(message: Message):
 
 
 async def finish_questions(message: Message, state: FSMContext):
-    """Barcha savollar tugagach chaqiriladi: kerak bo'lsa fayl, keyin aloqa ma'lumotlari."""
-    data = await state.get_data()
+    """Barcha savollar tugagach chaqiriladi — rezyume/portfolio so'raladi (ixtiyoriy)."""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-    if data.get("vacancy_resume_required"):
-        await message.answer(
-            "Rahmat! Endi, iltimos, rezyumeingizni (PDF fayl) yoki qisqa video-vizitkangizni yuboring."
-        )
-        await state.set_state(ApplyForm.waiting_file)
-        return
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⏭ O'tkazib yuborish", callback_data="skip_resume")
 
-    from handlers.contact import ask_full_name
-
-    await ask_full_name(message, state)
+    await message.answer(
+        "Deyarli tugadi! Agar mavjud bo'lsa, rezyume (PDF fayl), video-vizitka yoki "
+        "portfolio havolangizni (link) yuboring — bu ixtiyoriy, xohlasangiz o'tkazib "
+        "yuborishingiz mumkin.",
+        reply_markup=builder.as_markup(),
+    )
+    await state.set_state(ApplyForm.waiting_file)
 
 
 async def complete_application(message: Message, state: FSMContext):

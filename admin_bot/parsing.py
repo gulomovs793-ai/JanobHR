@@ -55,11 +55,7 @@ def parse_manual_questions(text: str) -> list[dict]:
 def format_questions_preview(questions: list[dict], limit: int = 20) -> str:
     lines = []
     for i, q in enumerate(questions[:limit], 1):
-        marker = ""
-        if q.get("hard_filter"):
-            marker += " 🔒"
-        if q.get("ai_score"):
-            marker += " 🤖"
+        marker = " 🔒" if q.get("hard_filter") else ""
         lines.append(f"{i}. {q['text']}{marker}")
     if len(questions) > limit:
         lines.append(f"… va yana {len(questions) - limit} ta savol")

@@ -104,7 +104,7 @@ async def _generate_and_show(message: Message, state: FSMContext):
     await wait_msg.edit_text(
         f"🤖 <b>AI taklif qilgan savollar</b> ({len(questions)} ta):\n\n"
         f"{format_questions_preview(questions)}\n\n"
-        "🔒 — majburiy filtr savoli, 🤖 — AI chuqur tahlil qiladi.",
+        "🔒 — majburiy filtr savoli (salbiy javobda nomzod avtomatik rad etiladi).",
         reply_markup=_review_keyboard(),
     )
     await state.set_state(AdminForm.reviewing_ai_questions)
@@ -148,8 +148,8 @@ async def switch_to_manual(callback: CallbackQuery, state: FSMContext):
 async def accept_ai_questions(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     await state.update_data(final_questions=data.get("pending_questions", []))
-    await _ask_resume_required(callback.message, state)
-    await callback.answer()
+    await callback.answer("Saqlanmoqda...")
+    await _finalize_vacancy(callback.message, state)
 
 
 # ============================= 4) QO'LDA KIRITISH =============================
@@ -162,41 +162,20 @@ async def receive_manual_questions(message: Message, state: FSMContext):
         return
 
     await state.update_data(final_questions=questions)
-    await message.answer(
-        f"✅ {len(questions)} ta savol qabul qilindi:\n\n{format_questions_preview(questions)}"
-    )
-    await _ask_resume_required(message, state)
+    await _finalize_vacancy(message, state)
 
 
-# ============================= 5) REZYUME KERAKMI? + YAKUNLASH =============================
+# ============================= 5) YAKUNLASH (saqlash) =============================
 
-async def _ask_resume_required(message: Message, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    builder.button(text="Ha", callback_data="resume:yes")
-    builder.button(text="Yo'q", callback_data="resume:no")
-    builder.adjust(2)
-    await message.answer(
-        "Nomzoddan rezyume (PDF) yoki video-vizitka talab qilinsinmi?",
-        reply_markup=builder.as_markup(),
-    )
-    await state.set_state(AdminForm.creating_resume_required)
-
-
-@router.callback_query(AdminForm.creating_resume_required, F.data.startswith("resume:"))
-async def finalize_vacancy(callback: CallbackQuery, state: FSMContext):
-    resume_required = callback.data.split(":", 1)[1] == "yes"
+async def _finalize_vacancy(message: Message, state: FSMContext):
     data = await state.get_data()
     title = data["vacancy_title"]
     questions = data.get("final_questions", [])
     editing_key = data.get("editing_vacancy_key")
 
     if editing_key:
-        await database.update_vacancy(
-            editing_key, title=title, questions=questions, resume_required=resume_required,
-        )
-        await callback.message.edit_text(
-            f"✅ <b>{title}</b> vakansiyasi yangilandi ({len(questions)} ta savol)."
-        )
+        await database.update_vacancy(editing_key, title=title, questions=questions)
+        result_text = f"✅ <b>{title}</b> vakansiyasi yangilandi ({len(questions)} ta savol)."
     else:
         base_key = database.make_vacancy_key(title)
         key = base_key
@@ -205,11 +184,14 @@ async def finalize_vacancy(callback: CallbackQuery, state: FSMContext):
             key = f"{base_key}_{n}"
             n += 1
 
+        # Rezyume/portfolio so'rash endi barcha vakansiyalar uchun universal va
+        # ixtiyoriy (handlers/questions.py'da), shuning uchun bu yerda alohida
+        # so'ralmaydi — standart True qiymati saqlanadi, lekin amalda ishlatilmaydi.
         await database.create_vacancy(
             key=key, title=title, reject_message=_DEFAULT_REJECT_MESSAGE,
-            questions=questions, resume_required=resume_required,
+            questions=questions, resume_required=True,
         )
-        await callback.message.edit_text(
+        result_text = (
             f"✅ Yangi vakansiya yaratildi: <b>{title}</b> ({len(questions)} ta savol).\n\n"
             "Nomzodlar botiga /start yuborib, darhol ko'rishlari mumkin."
         )
@@ -220,8 +202,7 @@ async def finalize_vacancy(callback: CallbackQuery, state: FSMContext):
     builder.button(text="📋 Vakansiyalar ro'yxati", callback_data="menu:vacancies")
     builder.button(text="🏠 Bosh menyu", callback_data="menu:main")
     builder.adjust(1)
-    await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
-    await callback.answer()
+    await message.answer(result_text, reply_markup=builder.as_markup())
 
 
 # ============================= 6) TO'G'RIDAN-TO'G'RI QO'LDA TAHRIRLASH =============================
@@ -245,3 +226,79 @@ async def start_manual_edit(callback: CallbackQuery, state: FSMContext):
     )
     await state.set_state(AdminForm.entering_manual_questions)
     await callback.answer()
+
+
+# ============================= 7) BITTA SAVOLNI ALOHIDA TAHRIRLASH =============================
+
+@router.callback_query(F.data.startswith("vaceditlist:"))
+async def show_question_picker(callback: CallbackQuery):
+    key = callback.data.split(":", 1)[1]
+    vacancy = await database.get_vacancy(key)
+    if not vacancy:
+        await callback.answer("Bu vakansiya topilmadi.", show_alert=True)
+        return
+
+    builder = InlineKeyboardBuilder()
+    for i, q in enumerate(vacancy["questions"]):
+        label = q["text"] if len(q["text"]) <= 45 else q["text"][:45] + "…"
+        builder.button(text=f"{i + 1}. {label}", callback_data=f"vaceditq:{key}:{i}")
+    builder.button(text="⬅️ Orqaga", callback_data=f"vac:{key}")
+    builder.adjust(1)
+
+    await callback.message.edit_text(
+        f"✏️ <b>{vacancy['title']}</b> — qaysi savolni tahrirlaysiz?",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("vaceditq:"))
+async def start_edit_single_question(callback: CallbackQuery, state: FSMContext):
+    _, key, idx_str = callback.data.split(":")
+    idx = int(idx_str)
+    vacancy = await database.get_vacancy(key)
+    if not vacancy or idx >= len(vacancy["questions"]):
+        await callback.answer("Bu savol topilmadi.", show_alert=True)
+        return
+
+    current = vacancy["questions"][idx]
+    await state.update_data(editing_vacancy_key=key, editing_question_index=idx)
+    await callback.message.edit_text(
+        f"✏️ <b>{idx + 1}-savol</b>\n\nJoriy matn:\n<i>{current['text']}</i>\n\n"
+        "Yangi matnni yozing. Ixtiyoriy ravishda oxiriga belgi qo'shishingiz mumkin:\n"
+        "  <code>| filter</code> — majburiy filtr savoli\n"
+        "  <code>| score</code> — AI chuqur tahlil qiladi\n\n"
+        "Hech qanday belgi qo'shmasangiz, oddiy savol bo'lib qoladi."
+    )
+    await state.set_state(AdminForm.editing_single_question)
+    await callback.answer()
+
+
+@router.message(AdminForm.editing_single_question, F.text)
+async def receive_single_question_edit(message: Message, state: FSMContext):
+    data = await state.get_data()
+    key = data["editing_vacancy_key"]
+    idx = data["editing_question_index"]
+
+    parsed = parse_manual_questions(message.text)
+    if not parsed:
+        await message.answer("Savol matni bo'sh bo'lmasligi kerak. Qaytadan yozing.")
+        return
+
+    vacancy = await database.get_vacancy(key)
+    if not vacancy or idx >= len(vacancy["questions"]):
+        await message.answer("Bu vakansiya yoki savol endi topilmadi.")
+        await state.clear()
+        return
+
+    new_question = parsed[0]
+    new_question["key"] = vacancy["questions"][idx].get("key", new_question["key"])
+    updated_questions = list(vacancy["questions"])
+    updated_questions[idx] = new_question
+
+    await database.update_vacancy(key, questions=updated_questions)
+    await state.clear()
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ Vakansiyaga qaytish", callback_data=f"vac:{key}")
+    await message.answer(f"✅ {idx + 1}-savol yangilandi.", reply_markup=builder.as_markup())

@@ -307,6 +307,73 @@ async def generate_questions(job_title: str, description: str, count: int = 9) -
         return None
 
 
+_RESUME_EXTRACTION_PROMPT = """Sen rezyume (CV) tahlilchisan. Senga nomzodning rezyume matni va \
+Telegram-bot savollari ro'yxati beriladi.
+
+Vazifang ikkita qism:
+1. "summary" — rezyume asosida nomzodning tajribasi, ta'limi va asosiy ko'nikmalari haqida \
+QISQA (2-3 gap, o'zbek tilida) xulosa yoz.
+2. "answers" — quyida berilgan savollar ro'yxatini ko'rib chiq. FAQAT agar rezyumeda o'sha \
+savolga ANIQ va ishonchli javob mavjud bo'lsa (masalan qaysi dastur/CRM ishlatgani, qancha \
+yillik tajribasi borligi, qaysi tillarni bilishi kabi ODDIY FAKTIK ma'lumotlar), savol \
+kalitini va rezyumedan olingan qisqa javobni qo'sh. Agar rezyumeda aniq javob bo'lmasa yoki \
+taxmin qilishga to'g'ri kelsa, o'sha savolni UMUMAN QO'SHMA — bo'sh taxmin qilishdan ko'ra, \
+savolni o'tkazib yuborish yaxshiroq.
+
+MUHIM: bu FAQAT oddiy faktik savollar uchun. Agar savol nomzoddan reja, misol, tahlil yoki \
+fikr-mulohaza talab qilsa (masalan "qanday reja tuzasiz", "eng katta yutug'ingiz nima"), buni \
+HECH QACHON rezyumedan taxmin qilib to'ldirma — bunday savollar nomzodning o'zidan so'ralishi SHART.
+
+Savollar ro'yxati:
+{questions_list}
+
+FAQAT quyidagi JSON formatida javob ber, boshqa hech narsa yozma:
+{{"summary": "...", "answers": {{"<savol_key>": "<rezyumedan olingan qisqa javob>", ...}}}}
+"""
+
+
+async def extract_resume_data(resume_text: str, questions: list[dict]) -> Optional[dict]:
+    """Rezyume matnidan qisqa xulosa va (faqat oddiy faktik) savollarga tayyor javoblarni
+    chiqarib beradi. `questions` — faqat "ai_score" va "hard_filter" BELGILANMAGAN
+    savollar ro'yxati bo'lishi kerak (chaqiruvchi shuni ta'minlashi kerak) — Scorecard/
+    Behavioral savollar rezyumedan hech qachon to'ldirilmaydi.
+
+    Muvaffaqiyatsiz bo'lsa yoki rezyume matni juda qisqa/bo'sh bo'lsa, None qaytaradi.
+    """
+    resume_text = (resume_text or "").strip()
+    if len(resume_text) < 50 or not questions:
+        return None
+
+    questions_list = "\n".join(f'- key="{q["key"]}": {q["text"]}' for q in questions)
+    system_prompt = _RESUME_EXTRACTION_PROMPT.format(questions_list=questions_list)
+    # Rezyume matnini oqilona uzunlikda cheklaymiz (token byudjetini tejash uchun).
+    user_prompt = resume_text[:6000]
+
+    content = await _call_ai(system_prompt, user_prompt, max_tokens=1200)
+    if content is None:
+        return None
+
+    try:
+        content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
+        parsed = json.loads(content)
+        summary = str(parsed.get("summary", "")).strip()
+        raw_answers = parsed.get("answers") or {}
+
+        valid_keys = {q["key"] for q in questions}
+        answers = {
+            k: str(v).strip()
+            for k, v in raw_answers.items()
+            if k in valid_keys and str(v).strip()
+        }
+
+        if not summary and not answers:
+            return None
+        return {"summary": summary, "answers": answers}
+    except Exception:
+        logger.exception("Rezyume tahlili javobini o'qib bo'lmadi: %s", content)
+        return None
+
+
 class AggregateResult(TypedDict):
     avg_score: int
     verdict: str  # "yashil" | "sariq" | "qizil"

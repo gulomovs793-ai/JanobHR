@@ -21,6 +21,14 @@ async def ask_current_question(message: Message, state: FSMContext):
     data = await state.get_data()
     idx = data["question_index"]
     questions = data["vacancy_questions"]
+    prefilled_keys = set(data.get("prefilled_from_resume", []))
+
+    # Rezyumedan avtomatik to'ldirilgan (oddiy faktik) savollarni o'tkazib
+    # yuboramiz — ular allaqachon `answers`da bor.
+    while idx < len(questions) and questions[idx]["key"] in prefilled_keys:
+        idx += 1
+    if idx != data["question_index"]:
+        await state.update_data(question_index=idx)
 
     if idx >= len(questions):
         await finish_questions(message, state)
@@ -236,7 +244,14 @@ async def handle_wrong_answer_type(message: Message):
 
 async def finish_questions(message: Message, state: FSMContext):
     """Barcha savollar tugagach chaqiriladi — rezyume/portfolio so'raladi (ixtiyoriy)."""
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    data = await state.get_data()
+
+    # Agar rezyume savollardan OLDIN allaqachon olingan bo'lsa, qayta so'ramaymiz.
+    if data.get("resume_file_id") or data.get("video_file_id"):
+        from handlers.contact import ask_full_name
+
+        await ask_full_name(message, state)
+        return
 
     builder = InlineKeyboardBuilder()
     builder.button(text="⏭ O'tkazib yuborish", callback_data="skip_resume")

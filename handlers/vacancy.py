@@ -3,7 +3,6 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
-from handlers.questions import ask_current_question
 from services import database
 from states import ApplyForm
 from vacancies import build_questions
@@ -37,5 +36,8 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext):
         awaiting_followup_for=None,
     )
     await callback.message.edit_text(f"Siz tanladingiz: <b>{vacancy['title']}</b>")
-    await ask_current_question(callback.message, state)
+
+    from handlers.resume_upfront import ask_resume_upfront
+
+    await ask_resume_upfront(callback.message, state)
     await callback.answer()

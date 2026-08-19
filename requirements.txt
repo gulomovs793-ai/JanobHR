@@ -4,3 +4,4 @@ aiosqlite==0.20.0
 requests==2.32.3
 firebase-admin==6.5.0
 openpyxl==3.1.5
+pypdf==5.9.0

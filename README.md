@@ -126,6 +126,12 @@ Bot oddiy anketa yig'uvchidan farqli o'laroq, quyidagi bosqichlarni avtomatik ba
    va jiddiy bayroqsiz bo'lgan nomzodlarga bot avtomatik kompaniya taqdimoti va
    suhbat vaqtini tanlash tugmalarini yuboradi (`.env`dagi `COMPANY_PITCH_TEXT`,
    `COMPANY_PITCH_IMAGE_URL`, `INTERVIEW_SLOTS` orqali sozlanadi).
+6. **Rezyume avtomatik o'qish** — vakansiya tanlangach, nomzoddan ixtiyoriy PDF
+   rezyume so'raladi. Agar yuborsa, AI undan matn chiqarib, FAQAT oddiy faktik
+   savollarni (masalan "qaysi CRM ishlatasiz") avtomatik to'ldiradi — ular qayta
+   so'ralmaydi. Scorecard/Behavioral (`ai_score`) va `hard_filter` savollar
+   rezyumedan HECH QACHON to'ldirilmaydi — ular har doim nomzodning o'zidan
+   so'raladi (bu tizimning asosiy tamoyili: CV emas, haqiqiy javob muhim).
 
 Bu tizim to'liq ishlashi uchun `AI_API_KEY` (va OpenAI-compatible bo'lmagan
 provayderlar uchun `AI_API_BASE`/`AI_MODEL`) sozlangan bo'lishi shart.

@@ -22,7 +22,9 @@ def _main_menu_keyboard():
 
 async def show_main_menu(message: Message):
     await message.answer(
-        "🤖 <b>Janob HR — Admin panel</b>\n\nQuyidagilardan birini tanlang:",
+        "👔 <b>Janob HR — Admin panel</b>\n\n"
+        "HR jarayoningizni shu yerdan boshqaring: vakansiyalar, arizalar, "
+        "suhbat rejasi va statistika.\n\nQuyidagilardan birini tanlang:",
         reply_markup=_main_menu_keyboard(),
     )
 
@@ -43,7 +45,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
-        "🤖 <b>Janob HR — Admin panel</b>\n\nQuyidagilardan birini tanlang:",
+        "👔 <b>Janob HR — Admin panel</b>\n\nQuyidagilardan birini tanlang:",
         reply_markup=_main_menu_keyboard(),
     )
     await callback.answer()

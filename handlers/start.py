@@ -48,7 +48,10 @@ async def cmd_start(message: Message, state: FSMContext):
 
     await _show_vacancy_menu(
         message, state,
-        "👋 Assalomu alaykum! <b>Janob HR</b> bot orqali vakansiyaga ariza topshirishingiz mumkin.",
+        "👔 Xush kelibsiz — bu <b>Janob HR</b>!\n\n"
+        "Men sun'iy intellekt yordamida arizangizni professional va xolis tahlil qilaman. "
+        "Jarayon shunchaki: vakansiyani tanlaysiz, bir necha savolga javob berasiz — "
+        "qolganini men bajaraman.",
     )
 
 
@@ -66,7 +69,8 @@ async def cmd_cancel(message: Message, state: FSMContext):
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
-        "🤖 <b>Janob HR bot</b>\n\n"
+        "👔 <b>Janob HR</b>\n\n"
+        "🤖 AI asosidagi ishga qabul qiluvchi yordamchi.\n\n"
         "/start — vakansiyaga ariza topshirishni boshlash\n"
         "/cancel — joriy arizani bekor qilish\n"
         "/help — shu xabarni ko'rsatish"

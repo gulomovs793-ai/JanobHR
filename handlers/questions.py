@@ -3,7 +3,8 @@ import logging
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import MAX_ANSWER_CHARS
 from services import database
@@ -80,6 +81,18 @@ _SHORT_ANSWER_SKIP_CHARS = 20
 # necha marta "aloqasiz" chiqsa, arizani chindan rad etamiz).
 _MAX_IRRELEVANT_RETRIES = 2
 
+# Javob mavzuga oid, lekin sifati past yoki abstrakt bo'lsa (aniq raqam/misolsiz),
+# bot BITTA marta (har bir savol uchun ko'pi bilan bir marta) aniqlashtiruvchi
+# savol beradi — bu nomzodga fikrini kengaytirish imkonini beradi, adminga esa
+# to'liqroq ma'lumot bilan yetib boradi.
+_FOLLOWUP_SCORE_THRESHOLD = 50
+
+_FOLLOWUP_PROMPT_TEXT = (
+    "Javobingiz biroz umumiy chiqdi. 🤔 Iltimos, aniqroq misol, raqam yoki qadam bilan "
+    "kengaytirib qayta yozing.\n\nAgar shu javobingiz bilan davom etmoqchi bo'lsangiz, "
+    "pastdagi tugmani bosing."
+)
+
 
 @router.message(ApplyForm.answering_questions, F.text)
 async def handle_answer(message: Message, state: FSMContext):
@@ -101,6 +114,24 @@ async def handle_answer(message: Message, state: FSMContext):
         )
         return
 
+    # --- Agar bu — oldin so'ralgan aniqlashtiruvchi savolga javob bo'lsa, uni
+    # oldingi (abstrakt) javob o'rniga qo'yamiz va bir marta qayta baholaymiz. ---
+    if data.get("awaiting_followup_for") == idx:
+        answers = data.get("answers", {})
+        ai_scores = data.get("ai_scores", {})
+        answers[q["key"]] = answer_text
+
+        result = await score_answer(q["text"], answer_text)
+        if result is not None:
+            ai_scores[q["key"]] = result
+
+        await state.update_data(
+            answers=answers, ai_scores=ai_scores, question_index=idx + 1,
+            awaiting_followup_for=None, irrelevant_retry_count=0,
+        )
+        await ask_current_question(message, state)
+        return
+
     # --- Hard filter: salbiy javob bo'lsa, darhol xushmuomalalik bilan rad etamiz ---
     if q.get("hard_filter") and is_negative_answer(answer_text):
         answers = data.get("answers", {})
@@ -117,6 +148,7 @@ async def handle_answer(message: Message, state: FSMContext):
 
     # --- Har bir javob uchun: mavzuga/kasbga aloqadormi degan tekshiruv ---
     relevant = True
+    result = None
     if q.get("ai_score"):
         result = await score_answer(q["text"], answer_text)
         if result is not None:
@@ -149,11 +181,51 @@ async def handle_answer(message: Message, state: FSMContext):
         await message.answer(_IRRELEVANT_RETRY_TEXT.format(question_text=q["text"]))
         return
 
+    # --- Javob mavzuga oid, lekin sifati past/abstrakt bo'lsa — bitta marta
+    # aniqlashtiruvchi savol beramiz (har bir savol uchun faqat bir marta). ---
+    needs_followup = result is not None and (
+        result["score"] < _FOLLOWUP_SCORE_THRESHOLD or "abstrakt_javob" in result.get("red_flags", [])
+    )
+    already_followed_up = idx in data.get("followup_asked_indices", [])
+
+    if needs_followup and not already_followed_up:
+        followup_indices = data.get("followup_asked_indices", [])
+        followup_indices.append(idx)
+        await state.update_data(
+            answers=answers, ai_scores=ai_scores,
+            followup_asked_indices=followup_indices, awaiting_followup_for=idx,
+        )
+        builder = InlineKeyboardBuilder()
+        builder.button(text="✅ Shu javobim bilan davom etaman", callback_data="followup:skip")
+        await message.answer(_FOLLOWUP_PROMPT_TEXT, reply_markup=builder.as_markup())
+        return
+
     await state.update_data(
         answers=answers, ai_scores=ai_scores, question_index=idx + 1,
         irrelevant_retry_count=0,
     )
     await ask_current_question(message, state)
+
+
+@router.callback_query(ApplyForm.answering_questions, F.data == "followup:skip")
+async def skip_followup(callback: CallbackQuery, state: FSMContext):
+    """Nomzod aniqlashtiruvchi savolni o'tkazib, dastlabki javobi bilan davom etadi."""
+    data = await state.get_data()
+    idx = data.get("awaiting_followup_for")
+    if idx is None:
+        await callback.answer()
+        return
+
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    await state.update_data(
+        question_index=idx + 1, awaiting_followup_for=None, irrelevant_retry_count=0,
+    )
+    await ask_current_question(callback.message, state)
 
 
 @router.message(ApplyForm.answering_questions)

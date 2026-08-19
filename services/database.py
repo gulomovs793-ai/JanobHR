@@ -345,6 +345,27 @@ async def count_slot_bookings(slot: str) -> int:
     return row[0] if row else 0
 
 
+async def get_applications_for_vacancy(vacancy_key: str, limit: int = 300) -> list[dict]:
+    """Berilgan vakansiyaga tushgan barcha arizalarni (eng yangisi birinchi) qaytaradi.
+    Reyting (top-nomzodlar) va boshqa admin ko'rinishlari uchun ishlatiladi."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM applications WHERE vacancy_key = ? ORDER BY id DESC LIMIT ?",
+            (vacancy_key, limit),
+        )
+        rows = await cursor.fetchall()
+
+    apps = []
+    for row in rows:
+        app = dict(row)
+        app["answers"] = json.loads(app["answers"])
+        app["ai_scores"] = json.loads(app["ai_scores"])
+        app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
+        apps.append(app)
+    return apps
+
+
 # ============================= VAKANSIYALAR (admin bot) =============================
 
 def _row_to_vacancy(row) -> dict:

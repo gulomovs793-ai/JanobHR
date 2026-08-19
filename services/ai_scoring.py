@@ -311,6 +311,9 @@ class AggregateResult(TypedDict):
     avg_score: int
     verdict: str  # "yashil" | "sariq" | "qizil"
     red_flags: list[str]
+    avg_natijadorlik: int
+    avg_masuliyat: int
+    avg_aniqlik: int
 
 
 def aggregate_scores(ai_scores: dict) -> Optional[AggregateResult]:
@@ -324,6 +327,9 @@ def aggregate_scores(ai_scores: dict) -> Optional[AggregateResult]:
         return None
 
     avg_score = round(sum(v["score"] for v in valid) / len(valid))
+    avg_natijadorlik = round(sum(v.get("natijadorlik", 0) for v in valid) / len(valid))
+    avg_masuliyat = round(sum(v.get("masuliyat", 0) for v in valid) / len(valid))
+    avg_aniqlik = round(sum(v.get("aniqlik", 0) for v in valid) / len(valid))
 
     all_flags: list[str] = []
     for v in valid:
@@ -339,4 +345,7 @@ def aggregate_scores(ai_scores: dict) -> Optional[AggregateResult]:
     else:
         verdict = "yashil"
 
-    return AggregateResult(avg_score=avg_score, verdict=verdict, red_flags=all_flags)
+    return AggregateResult(
+        avg_score=avg_score, verdict=verdict, red_flags=all_flags,
+        avg_natijadorlik=avg_natijadorlik, avg_masuliyat=avg_masuliyat, avg_aniqlik=avg_aniqlik,
+    )

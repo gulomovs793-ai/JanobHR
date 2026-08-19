@@ -33,6 +33,8 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext):
         answers={},
         ai_scores={},
         irrelevant_retry_count=0,
+        followup_asked_indices=[],
+        awaiting_followup_for=None,
     )
     await callback.message.edit_text(f"Siz tanladingiz: <b>{vacancy['title']}</b>")
     await ask_current_question(callback.message, state)

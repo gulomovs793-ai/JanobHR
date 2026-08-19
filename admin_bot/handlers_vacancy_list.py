@@ -5,6 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from admin_bot.parsing import format_questions_preview
 from services import database
+from services.ai_scoring import aggregate_scores
 
 router = Router(name="admin_vacancy_list")
 
@@ -58,6 +59,7 @@ async def _show_vacancy_detail(callback: CallbackQuery, key: str):
     builder = InlineKeyboardBuilder()
     toggle_text = "🔴 Faolsizlantirish" if vacancy["active"] else "🟢 Faollashtirish"
     builder.button(text=toggle_text, callback_data=f"vactoggle:{key}")
+    builder.button(text="🏆 Eng yaxshi nomzodlar", callback_data=f"vacranking:{key}")
     builder.button(text="🔄 Savollarni AI bilan yangilash", callback_data=f"vacregen:{key}")
     builder.button(text="✏️ Bitta savolni tahrirlash", callback_data=f"vaceditlist:{key}")
     builder.button(text="✍️ Savollarni to'liq qayta yozish", callback_data=f"vacmanual:{key}")
@@ -115,3 +117,60 @@ async def delete_vacancy(callback: CallbackQuery):
     await database.delete_vacancy(key)
     await callback.answer("Vakansiya o'chirildi.", show_alert=True)
     await list_vacancies(callback)
+
+
+_VERDICT_EMOJI = {"yashil": "🟢", "sariq": "🟡", "qizil": "🔴"}
+_STATUS_LABELS = {
+    "pending": "⏳ Kutilmoqda",
+    "accepted": "✅ Qabul qilingan",
+    "declined": "❌ Rad etilgan",
+    "rejected_hard_filter": "❌ Talabga javob bermadi",
+    "rejected_irrelevant": "❌ Mavzuga mos kelmadi",
+}
+
+
+@router.callback_query(F.data.startswith("vacranking:"))
+async def show_ranking(callback: CallbackQuery):
+    key = callback.data.split(":", 1)[1]
+    vacancy = await database.get_vacancy(key)
+    if not vacancy:
+        await callback.answer("Bu vakansiya topilmadi.", show_alert=True)
+        return
+
+    apps = await database.get_applications_for_vacancy(key)
+
+    scored = []
+    for app in apps:
+        aggregate = aggregate_scores(app.get("ai_scores") or {})
+        if aggregate:
+            scored.append((aggregate, app))
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ Orqaga", callback_data=f"vac:{key}")
+
+    if not scored:
+        await callback.message.edit_text(
+            f"🏆 <b>{vacancy['title']}</b> — hozircha AI baholagan nomzod yo'q.",
+            reply_markup=builder.as_markup(),
+        )
+        await callback.answer()
+        return
+
+    scored.sort(key=lambda pair: pair[0]["avg_score"], reverse=True)
+
+    lines = [f"🏆 <b>{vacancy['title']}</b> — eng yaxshi nomzodlar:", ""]
+    for rank, (aggregate, app) in enumerate(scored[:15], 1):
+        emoji = _VERDICT_EMOJI.get(aggregate["verdict"], "⚪")
+        status_label = _STATUS_LABELS.get(app["status"], app["status"])
+        phone = f" | {app['phone_number']}" if app.get("phone_number") else ""
+        lines.append(
+            f"{rank}. {emoji} <b>{aggregate['avg_score']}/100</b> — {app['full_name']}"
+            f" (@{app['username'] or '—'}{phone})\n   {status_label}"
+        )
+
+    text = "\n".join(lines)
+    if len(text) > 3900:
+        text = text[:3900] + "\n\n… (ro'yxat qisqartirildi)"
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()

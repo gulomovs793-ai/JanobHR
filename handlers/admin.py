@@ -67,6 +67,11 @@ async def _format_application_text(app: dict) -> str:
         emoji = _VERDICT_EMOJI.get(aggregate["verdict"], "⚪")
         coverage = f" ({valid_count}/{len(expected_keys)} savol tahlil qilindi)" if valid_count < len(expected_keys) else ""
         lines.append(f"{emoji} <b>Yakuniy AI ball: {aggregate['avg_score']}/100</b>{coverage}")
+        lines.append(
+            f"📊 Natijadorlik: {aggregate['avg_natijadorlik']} | "
+            f"Mas'uliyat: {aggregate['avg_masuliyat']} | "
+            f"Aniqlik: {aggregate['avg_aniqlik']}"
+        )
 
         if aggregate["red_flags"]:
             flag_labels = [_RED_FLAG_LABELS.get(f, f) for f in aggregate["red_flags"]]

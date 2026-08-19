@@ -130,29 +130,40 @@ Bot oddiy anketa yig'uvchidan farqli o'laroq, quyidagi bosqichlarni avtomatik ba
 Bu tizim to'liq ishlashi uchun `AI_API_KEY` (va OpenAI-compatible bo'lmagan
 provayderlar uchun `AI_API_BASE`/`AI_MODEL`) sozlangan bo'lishi shart.
 
-## Admin bot — vakansiyalarni boshqarish va statistika
+## Admin bot — arizalarni ko'rib chiqish, vakansiyalarni boshqarish, statistika
 
-Nomzod-botdan tashqari, **alohida admin bot** mavjud (bitta xizmat ichida, bir xil
-ma'lumotlar bazasini baham ko'radi):
+**Muhim: bu bot endi ixtiyoriy emas.** Nomzod arizalari (✅/❌ tugmalari bilan)
+ENDI FAQAT shu bot orqali, har bir administratorga alohida shaxsiy xabar
+sifatida keladi — guruh/kanal endi umuman ishlatilmaydi. Ikkala bot bitta
+xizmat ichida, bir xil ma'lumotlar bazasini baham ko'radi:
 
+- **Arizalarni ko'rib chiqish** — har bir yangi ariza barcha adminlarga alohida
+  yuboriladi, ✅ Suhbatga chaqirish / ❌ Rad etish tugmalari bilan.
 - **📋 Vakansiyalar** — barcha vakansiyalarni ko'rish, faollashtirish/faolsizlantirish,
   o'chirish.
 - **➕ Yangi vakansiya** — istalgan kasb uchun (quruvchi, buxgalter, haydovchi va h.k.)
   yangi vakansiya yaratish. Savollar AI orqali Scorecard/Behavioral metodologiyasi
-  bo'yicha avtomatik taklif qilinadi, yoki admin ularni to'liq qo'lda kiritishi mumkin.
+  bo'yicha avtomatik taklif qilinadi (bitta savolni alohida tahrirlash ham mumkin),
+  yoki admin ularni to'liq qo'lda kiritishi mumkin.
 - **📊 Statistika** — umumiy va har bir vakansiya bo'yicha: jami ariza, qabul qilingan,
   rad etilgan (sabab bo'yicha taqsimlangan).
 
-### Sozlash
+### Sozlash (SHART)
 
 1. @BotFather'da `/newbot` bilan **ikkinchi** bot yarating.
 2. @userinfobot orqali o'z Telegram user ID'ingizni oling.
 3. `.env`ga (yoki Render Environment'ga) qo'shing:
    ```
    ADMIN_BOT_TOKEN=<yangi bot tokeni>
-   ADMIN_USER_IDS=<sizning user ID'ingiz>
+   ADMIN_USER_IDS=<sizning user ID'ingiz, bir nechta bo'lsa vergul bilan>
    ```
-4. Qayta deploy qiling. Yangi botga `/start` yuboring.
+4. Qayta deploy qiling.
+5. **Har bir admin** yangi botga o'zi `/start` yuborishi SHART — aks holda
+   Telegram bu foydalanuvchiga xabar yuborishga ruxsat bermaydi.
+
+Agar `ADMIN_BOT_TOKEN` yoki `ADMIN_USER_IDS` sozlanmagan bo'lsa, nomzod-bot
+baribir ishlayveradi, lekin **hech kim hech qanday ariza haqida xabar olmaydi**
+(faqat Render logida ogohlantirish chiqadi).
 
 ## Yangi vakansiya qo'shish
 

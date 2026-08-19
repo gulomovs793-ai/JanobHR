@@ -145,6 +145,6 @@ async def handle_slot_choice(callback: CallbackQuery):
         logger.exception("Sell xabarini yangilab bo'lmadi (app_id=%s).", app_id)
 
     try:
-        await notify_admin_slot_selected(callback.bot, app_id, slot)
+        await notify_admin_slot_selected(app_id, slot)
     except Exception:
-        logger.exception("Admin guruhga vaqt tanlovi haqida xabar berib bo'lmadi (app_id=%s).", app_id)
+        logger.exception("Adminlarga vaqt tanlovi haqida xabar berib bo'lmadi (app_id=%s).", app_id)

@@ -156,6 +156,9 @@ async def init_db():
         if "phone_number" not in existing_columns:
             await db.execute("ALTER TABLE applications ADD COLUMN phone_number TEXT")
             logger.info("Migratsiya: 'phone_number' ustuni qo'shildi.")
+        if "admin_messages" not in existing_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN admin_messages TEXT NOT NULL DEFAULT '[]'")
+            logger.info("Migratsiya: 'admin_messages' ustuni qo'shildi.")
 
         # Birinchi marta ishga tushirilganda vakansiyalar jadvali bo'sh bo'lsa,
         # standart 3 ta namunaviy vakansiya bilan to'ldiramiz.
@@ -261,6 +264,7 @@ async def get_application(app_id: int) -> Optional[dict]:
     app = dict(row)
     app["answers"] = json.loads(app["answers"])
     app["ai_scores"] = json.loads(app["ai_scores"])
+    app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
     return app
 
 
@@ -281,14 +285,21 @@ async def get_pending_application_for_user(user_id: int) -> Optional[dict]:
     app = dict(row)
     app["answers"] = json.loads(app["answers"])
     app["ai_scores"] = json.loads(app["ai_scores"])
+    app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
     return app
 
 
-async def set_admin_message(app_id: int, message_id: int):
+async def add_admin_message(app_id: int, chat_id: int, message_id: int):
+    """Anketa nechta administratorga yuborilgan bo'lsa, har birining xabar ID'sini
+    ro'yxatga qo'shadi (keyinchalik shu ID orqali xabarni yangilash uchun)."""
+    app = await get_application(app_id)
+    messages = app["admin_messages"] if app else []
+    messages.append({"chat_id": chat_id, "message_id": message_id})
+
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            "UPDATE applications SET admin_message_id = ? WHERE id = ?",
-            (message_id, app_id),
+            "UPDATE applications SET admin_messages = ? WHERE id = ?",
+            (json.dumps(messages, ensure_ascii=False), app_id),
         )
         await db.commit()
 

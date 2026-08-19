@@ -180,7 +180,7 @@ async def finish_questions(message: Message, state: FSMContext):
 
 async def complete_application(message: Message, state: FSMContext):
     """handlers/contact.py orqali ism-familiya va telefon yig'ilgach chaqiriladi."""
-    from handlers.admin import notify_admin_group
+    from handlers.admin import notify_admins
     from handlers.sell import maybe_send_sell_pitch
 
     data = await state.get_data()
@@ -204,9 +204,9 @@ async def complete_application(message: Message, state: FSMContext):
     await state.clear()
 
     try:
-        await notify_admin_group(message.bot, app_id)
+        await notify_admins(app_id)
     except Exception:
-        logger.exception("Admin guruhga xabar yuborib bo'lmadi (app_id=%s).", app_id)
+        logger.exception("Adminlarga xabar yuborib bo'lmadi (app_id=%s).", app_id)
 
     # --- Sell bosqichi: agar nomzod yuqori ball olsa, avtomatik taklif yuboriladi ---
     try:

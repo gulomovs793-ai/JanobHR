@@ -13,9 +13,10 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 
 from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, BOT_TOKEN, SQLITE_PATH
+from services import bot_registry
 from services.database import init_db
 from services.storage import SQLiteStorage
-from handlers import start, vacancy, questions, files, admin, sell, contact
+from handlers import start, vacancy, questions, files, sell, contact
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger("janob_hr_bot")
@@ -54,9 +55,9 @@ def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     )
     dp = Dispatcher(storage=fsm_storage)
 
-    # Handlerlar tartibi muhim: admin (callback) va start eng birinchi bo'lishi shart emas,
-    # lekin har bir router o'z filtri (state/callback prefiksi) bilan ishlaydi.
-    dp.include_router(admin.router)
+    # Handlerlar tartibi muhim emas — har bir router o'z filtri (state/callback
+    # prefiksi) bilan ishlaydi. Qaror (qabul/rad) tugmalari endi Admin botda
+    # ishlanadi (admin_bot/handlers_decisions.py), shuning uchun bu yerda yo'q.
     dp.include_router(sell.router)
     dp.include_router(start.router)
     dp.include_router(vacancy.router)
@@ -69,7 +70,7 @@ def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
 
 def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     from admin_bot.middleware import AdminOnlyMiddleware
-    from admin_bot import handlers_menu, handlers_vacancy_list, handlers_vacancy_edit
+    from admin_bot import handlers_menu, handlers_vacancy_list, handlers_vacancy_edit, handlers_decisions
 
     bot = Bot(
         token=ADMIN_BOT_TOKEN,
@@ -82,6 +83,7 @@ def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     dp.include_router(handlers_menu.router)
     dp.include_router(handlers_vacancy_list.router)
     dp.include_router(handlers_vacancy_edit.router)
+    dp.include_router(handlers_decisions.router)
 
     return bot, dp
 
@@ -93,6 +95,7 @@ async def main():
     await fsm_storage.init()
 
     candidate_bot, candidate_dp = _build_candidate_bot(fsm_storage)
+    bot_registry.candidate_bot = candidate_bot
     logger.info("Janob HR (nomzod) bot ishga tushdi ✅")
     await candidate_bot.delete_webhook(drop_pending_updates=True)
     polling_tasks = [candidate_dp.start_polling(candidate_bot)]
@@ -101,14 +104,20 @@ async def main():
         if not ADMIN_USER_IDS:
             logger.warning(
                 "ADMIN_BOT_TOKEN sozlangan, lekin ADMIN_USER_IDS bo'sh — hech kim admin "
-                "botdan foydalana olmaydi. .env'da ADMIN_USER_IDS'ni to'ldiring."
+                "botdan foydalana olmaydi va HECH QANDAY ANKETA HECH KIMGA YUBORILMAYDI. "
+                ".env'da ADMIN_USER_IDS'ni to'ldiring."
             )
         admin_bot, admin_dp = _build_admin_bot(fsm_storage)
+        bot_registry.admin_bot = admin_bot
         logger.info("Janob HR Admin bot ishga tushdi ✅ (ruxsat etilgan adminlar: %d)", len(ADMIN_USER_IDS))
         await admin_bot.delete_webhook(drop_pending_updates=True)
         polling_tasks.append(admin_dp.start_polling(admin_bot))
     else:
-        logger.info("ADMIN_BOT_TOKEN sozlanmagan — admin bot ishga tushirilmadi (ixtiyoriy).")
+        logger.warning(
+            "ADMIN_BOT_TOKEN sozlanmagan — Admin bot ishga tushirilmadi. Nomzod arizalari "
+            "endi FAQAT Admin bot orqali yuboriladi, shuning uchun bu holatda HECH QANDAY "
+            "ANKETA HECH KIMGA YUBORILMAYDI. ADMIN_BOT_TOKEN va ADMIN_USER_IDS'ni sozlang."
+        )
 
     await asyncio.gather(*polling_tasks)
 

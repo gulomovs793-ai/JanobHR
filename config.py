@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+# ESKIRGAN: nomzod arizalari endi Admin bot orqali (ADMIN_BOT_TOKEN +
+# ADMIN_USER_IDS) yuboriladi, guruh/kanal endi ishlatilmaydi. Bu o'zgaruvchi
+# faqat orqaga moslik uchun qoldirilgan, kodda hech qayerda o'qilmaydi.
 ADMIN_GROUP_ID = os.getenv("ADMIN_GROUP_ID", "")
 
 # --- Admin bot (vakansiyalarni boshqarish, statistika) ---

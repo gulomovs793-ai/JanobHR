@@ -1,18 +1,21 @@
-"""Janob HR Bot — admin guruhga anketa yuborish va qaror (qabul/rad) tugmalari."""
+"""
+Janob HR Bot — anketa matnini formatlash va uni Admin botga (har bir
+administratorga shaxsiy xabar sifatida) yuborish.
+
+Qaror (qabul/rad) tugmalarini bosish logikasi endi shu yerda EMAS —
+u admin_bot/handlers_decisions.py'da, chunki tugmalar endi Admin bot orqali
+yuboriladi va bosilganda javob ham o'sha bot dispatcher'iga keladi.
+"""
 import logging
 
-from aiogram import F, Router
-from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import ADMIN_GROUP_ID
-from services import database
+from config import ADMIN_USER_IDS
+from services import bot_registry, database
 from services.ai_scoring import aggregate_scores
 from vacancies import build_questions
 
 logger = logging.getLogger("janob_hr_bot")
-
-router = Router(name="admin")
 
 _VERDICT_EMOJI = {"yashil": "🟢", "sariq": "🟡", "qizil": "🔴"}
 
@@ -40,8 +43,6 @@ async def _format_application_text(app: dict) -> str:
 
     for value in app["answers"].values():
         text = str(value)
-        # Bitta javob juda uzun bo'lib qolsa (masalan nomzod juda batafsil yozsa),
-        # xabar limitidan chiqib ketmasligi uchun qisqartiramiz.
         if len(text) > 500:
             text = text[:500] + "…"
         lines.append(f"• {text}")
@@ -49,11 +50,6 @@ async def _format_application_text(app: dict) -> str:
     ai_scores = app.get("ai_scores") or {}
     aggregate = aggregate_scores(ai_scores)
 
-    # Ushbu vakansiyada nechta savol AI orqali baholanishi kerak edi — shunga
-    # qarab, AI umuman ishlamagan holatni ("aggregate is None") va qisman
-    # ishlagan holatni bir-biridan ajratamiz. Vakansiya keyinchalik o'chirilgan
-    # yoki tahrirlangan bo'lishi mumkin — shunday holatda bu tekshiruvni
-    # o'tkazib yuboramiz (aggregate mavjud bo'lsa, baribir ko'rsatamiz).
     vacancy = await database.get_vacancy(app["vacancy_key"])
     expected_keys = [q["key"] for q in build_questions(vacancy) if q.get("ai_score")] if vacancy else []
     valid_count = sum(
@@ -97,119 +93,78 @@ async def _format_application_text(app: dict) -> str:
     return text
 
 
-async def notify_admin_group(bot, app_id: int):
-    if not ADMIN_GROUP_ID:
-        logger.warning("ADMIN_GROUP_ID sozlanmagan, anketa admin guruhga yuborilmadi.")
+async def notify_admins(app_id: int):
+    """Anketani Admin bot orqali har bir ADMIN_USER_IDS'dagi administratorga
+    shaxsiy xabar sifatida yuboradi (guruh/kanal endi ishlatilmaydi)."""
+    admin_bot = bot_registry.admin_bot
+
+    if not admin_bot:
+        logger.warning(
+            "Admin bot ishga tushirilmagan (ADMIN_BOT_TOKEN sozlanmagan) — "
+            "anketa hech kimga yuborilmadi (app_id=%s).", app_id,
+        )
+        return
+    if not ADMIN_USER_IDS:
+        logger.warning(
+            "ADMIN_USER_IDS bo'sh — anketa hech kimga yuborilmadi (app_id=%s).", app_id,
+        )
         return
 
     app = await database.get_application(app_id)
     if not app:
         return
 
-    chat_id = int(ADMIN_GROUP_ID)
-
-    # 1) Fayl (agar bo'lsa) — QISQA caption bilan, tugmasiz. Telegram caption
-    #    uzunligi atigi 1024 belgi bilan cheklangani uchun to'liq tahlilni bu
-    #    yerga sig'dirishga urinmaymiz.
-    if app.get("resume_file_id"):
-        try:
-            await bot.send_document(
-                chat_id=chat_id,
-                document=app["resume_file_id"],
-                caption=f"📄 {app['full_name']} — {app['vacancy_title']}",
-            )
-        except Exception:
-            logger.exception("Rezyume faylini yuborib bo'lmadi (app_id=%s).", app_id)
-    elif app.get("video_file_id"):
-        try:
-            await bot.send_video(
-                chat_id=chat_id,
-                video=app["video_file_id"],
-                caption=f"🎥 {app['full_name']} — {app['vacancy_title']}",
-            )
-        except Exception:
-            logger.exception("Video-vizitkani yuborib bo'lmadi (app_id=%s).", app_id)
-
-    # 2) To'liq tahlil + qaror tugmalari — HAR DOIM alohida oddiy xabar sifatida
-    #    (4096 belgigacha joy bor).
+    text = await _format_application_text(app)
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Suhbatga chaqirish", callback_data=f"decision:accept:{app_id}")
     builder.button(text="❌ Rad etish", callback_data=f"decision:reject:{app_id}")
     builder.adjust(2)
 
-    sent = await bot.send_message(
-        chat_id=chat_id,
-        text=await _format_application_text(app),
-        reply_markup=builder.as_markup(),
-    )
+    for admin_id in ADMIN_USER_IDS:
+        try:
+            # 1) Fayl (agar bo'lsa) — QISQA caption bilan, tugmasiz.
+            if app.get("resume_file_id"):
+                await admin_bot.send_document(
+                    chat_id=admin_id,
+                    document=app["resume_file_id"],
+                    caption=f"📄 {app['full_name']} — {app['vacancy_title']}",
+                )
+            elif app.get("video_file_id"):
+                await admin_bot.send_video(
+                    chat_id=admin_id,
+                    video=app["video_file_id"],
+                    caption=f"🎥 {app['full_name']} — {app['vacancy_title']}",
+                )
 
-    await database.set_admin_message(app_id, sent.message_id)
+            # 2) To'liq tahlil + qaror tugmalari.
+            sent = await admin_bot.send_message(
+                chat_id=admin_id, text=text, reply_markup=builder.as_markup(),
+            )
+            await database.add_admin_message(app_id, admin_id, sent.message_id)
+        except Exception:
+            logger.exception(
+                "Admin (id=%s) ga anketa yuborib bo'lmadi (app_id=%s). Admin botga "
+                "/start yuborganini tekshiring.", admin_id, app_id,
+            )
 
 
-async def notify_admin_slot_selected(bot, app_id: int, slot: str):
-    """Nomzod suhbat vaqtini tanlaganda admin guruhga qisqa xabar yuboradi."""
-    if not ADMIN_GROUP_ID:
+async def notify_admin_slot_selected(app_id: int, slot: str):
+    """Nomzod suhbat vaqtini tanlaganda Admin bot orqali barcha administratorlarga
+    qisqa xabar yuboradi."""
+    admin_bot = bot_registry.admin_bot
+    if not admin_bot or not ADMIN_USER_IDS:
         return
 
     app = await database.get_application(app_id)
     if not app:
         return
 
-    await bot.send_message(
-        chat_id=int(ADMIN_GROUP_ID),
-        text=(
-            f"📅 <b>{app['full_name']}</b> (@{app['username'] or '—'}) suhbat uchun "
-            f"vaqtni tanladi: <b>{slot}</b>"
-        ),
+    text = (
+        f"📅 <b>{app['full_name']}</b> (@{app['username'] or '—'}) suhbat uchun "
+        f"vaqtni tanladi: <b>{slot}</b>"
     )
-
-
-@router.callback_query(F.data.startswith("decision:"))
-async def handle_decision(callback: CallbackQuery):
-    _, action, app_id_str = callback.data.split(":")
-    app_id = int(app_id_str)
-
-    app = await database.get_application(app_id)
-    if not app:
-        await callback.answer("Anketa topilmadi.", show_alert=True)
-        return
-
-    if app["status"] != "pending":
-        await callback.answer("Bu anketa bo'yicha qaror allaqachon qabul qilingan.", show_alert=True)
-        return
-
-    if action == "accept":
-        new_status = "accepted"
-        candidate_text = (
-            "🎉 Tabriklaymiz! Sizning nomzodingiz ma'qullandi — tez orada suhbat vaqti "
-            "haqida siz bilan bog'lanamiz."
-        )
-        result_label = "✅ Suhbatga chaqirildi"
-    else:
-        new_status = "declined"
-        candidate_text = (
-            "Vaqt ajratganingiz uchun rahmat. Hozircha ushbu lavozim bo'yicha boshqa "
-            "nomzodni tanladik. Kelajakda boshqa vakansiyalarimizni kuzatib boring!"
-        )
-        result_label = "❌ Rad etildi"
-
-    await database.update_status(app_id, new_status)
-
-    try:
-        await callback.bot.send_message(chat_id=app["user_id"], text=candidate_text)
-    except Exception:
-        logger.exception("Nomzodga xabar yuborib bo'lmadi (user_id=%s).", app["user_id"])
-
-    await callback.answer(result_label)
-
-    try:
-        base_caption = callback.message.caption or callback.message.text or ""
-        new_text = f"{base_caption}\n\n{result_label}"
-        if len(new_text) > 4096:
-            new_text = new_text[:4090] + "…"
-        if callback.message.caption is not None:
-            await callback.message.edit_caption(caption=new_text)
-        else:
-            await callback.message.edit_text(new_text)
-    except Exception:
-        logger.exception("Admin xabarini yangilab bo'lmadi (app_id=%s).", app_id)
+    for admin_id in ADMIN_USER_IDS:
+        try:
+            await admin_bot.send_message(chat_id=admin_id, text=text)
+        except Exception:
+            logger.exception("Admin (id=%s) ga vaqt tanlovi haqida xabar berib bo'lmadi.", admin_id)

@@ -41,13 +41,26 @@ async def _format_application_text(app: dict) -> str:
         lines.append(f"📞 {app['phone_number']}")
     lines.append("")
 
-    for value in app["answers"].values():
+    ai_scores = app.get("ai_scores") or {}
+
+    # Har bir javobni, agar AI shu savolni baholagan bo'lsa, aynan O'SHA javobning
+    # tagida qisqa izoh bilan ko'rsatamiz — turli savollarga tegishli izohlarni
+    # bitta qatorga aralashtirib qo'yish o'rniga (bu chalkash bo'lardi).
+    for key, value in app["answers"].items():
         text = str(value)
         if len(text) > 500:
             text = text[:500] + "…"
         lines.append(f"• {text}")
 
-    ai_scores = app.get("ai_scores") or {}
+        result = ai_scores.get(key)
+        if isinstance(result, dict):
+            izoh = result.get("izoh", "").strip()
+            if izoh:
+                emoji = _VERDICT_EMOJI.get(result.get("verdict"), "⚪")
+                score = result.get("score")
+                score_part = f"{score}/100 — " if score is not None else ""
+                lines.append(f"   ↳ {emoji} <i>{score_part}{izoh}</i>")
+
     aggregate = aggregate_scores(ai_scores)
 
     vacancy = await database.get_vacancy(app["vacancy_key"])
@@ -76,18 +89,6 @@ async def _format_application_text(app: dict) -> str:
         if aggregate["red_flags"]:
             flag_labels = [_RED_FLAG_LABELS.get(f, f) for f in aggregate["red_flags"]]
             lines.append("🚩 Bayroqlar: " + "; ".join(flag_labels))
-
-        notes = [
-            v.get("izoh", "").strip()
-            for v in ai_scores.values()
-            if isinstance(v, dict) and v.get("izoh", "").strip()
-        ]
-        seen = []
-        for note in notes:
-            if note not in seen:
-                seen.append(note)
-        if seen:
-            lines.append("🤖 AI izohi: " + " / ".join(seen[:3]))
 
     if app.get("selected_slot"):
         lines.append(f"📅 Nomzod tanlagan vaqt: {app['selected_slot']}")

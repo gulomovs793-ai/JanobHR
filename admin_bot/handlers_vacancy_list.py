@@ -60,6 +60,7 @@ async def _show_vacancy_detail(callback: CallbackQuery, key: str):
     toggle_text = "🔴 Faolsizlantirish" if vacancy["active"] else "🟢 Faollashtirish"
     builder.button(text=toggle_text, callback_data=f"vactoggle:{key}")
     builder.button(text="🏆 Eng yaxshi nomzodlar", callback_data=f"vacranking:{key}")
+    builder.button(text="📥 Excel yuklab olish", callback_data=f"vacexport:{key}")
     builder.button(text="🔄 Savollarni AI bilan yangilash", callback_data=f"vacregen:{key}")
     builder.button(text="✏️ Bitta savolni tahrirlash", callback_data=f"vaceditlist:{key}")
     builder.button(text="✍️ Savollarni to'liq qayta yozish", callback_data=f"vacmanual:{key}")

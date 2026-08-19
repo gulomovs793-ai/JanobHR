@@ -34,10 +34,6 @@ async def handle_decision(callback: CallbackQuery):
 
     if action == "accept":
         new_status = "accepted"
-        candidate_text = (
-            "🎉 Tabriklaymiz! Sizning nomzodingiz ma'qullandi — tez orada suhbat vaqti "
-            "haqida siz bilan bog'lanamiz."
-        )
         result_label = "✅ Suhbatga chaqirildi"
     else:
         new_status = "declined"
@@ -52,7 +48,16 @@ async def handle_decision(callback: CallbackQuery):
     candidate_bot = bot_registry.candidate_bot
     if candidate_bot:
         try:
-            await candidate_bot.send_message(chat_id=app["user_id"], text=candidate_text)
+            if action == "accept":
+                from handlers.sell import send_slot_offer
+
+                intro = (
+                    "🎉 Tabriklaymiz! Sizning nomzodingiz ma'qullandi.\n\n"
+                    "Endi suhbat uchun qulay vaqtni tanlang:"
+                )
+                await send_slot_offer(candidate_bot, app["user_id"], app_id, intro)
+            else:
+                await candidate_bot.send_message(chat_id=app["user_id"], text=candidate_text)
         except Exception:
             logger.exception("Nomzodga xabar yuborib bo'lmadi (user_id=%s).", app["user_id"])
     else:

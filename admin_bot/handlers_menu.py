@@ -14,6 +14,7 @@ def _main_menu_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text="📋 Vakansiyalar", callback_data="menu:vacancies")
     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
+    builder.button(text="📅 Suhbat vaqtlari", callback_data="menu:interview")
     builder.button(text="📊 Statistika", callback_data="menu:stats")
     builder.adjust(1)
     return builder.as_markup()

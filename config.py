@@ -64,19 +64,8 @@ COMPANY_PITCH_TEXT = os.getenv(
 )
 COMPANY_PITCH_IMAGE_URL = os.getenv("COMPANY_PITCH_IMAGE_URL", "")
 
-# Vergul bilan ajratilgan suhbat vaqti variantlari (nomzod shulardan birini tanlaydi).
-INTERVIEW_SLOTS = [
-    slot.strip()
-    for slot in os.getenv(
-        "INTERVIEW_SLOTS", "Ertaga soat 14:00,Ertaga soat 16:00,Bu hafta ichida qulay payt"
-    ).split(",")
-    if slot.strip()
-]
-
-# Har bir vaqt oralig'iga necha nafar nomzod qabul qilinishi mumkin. Standart — 1
-# (bir vaqtda faqat bitta suhbat o'tkazish mumkin bo'lgan holat uchun). Guruh
-# suhbatlari o'tkaziladigan bo'lsa, buni oshirish mumkin.
-SLOT_CAPACITY = int(os.getenv("SLOT_CAPACITY", "1"))
+# ESKIRGAN: suhbat vaqtlari, sig'imi, manzil va intervyuchi kontakti endi
+# ma'lumotlar bazasida (Admin bot > 📅 Suhbat vaqtlari orqali) boshqariladi.
 
 if not BOT_TOKEN:
     raise RuntimeError(

@@ -43,6 +43,30 @@ CREATE TABLE IF NOT EXISTS vacancies (
 );
 """
 
+_CREATE_INTERVIEW_SLOTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS interview_slots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    capacity INTEGER NOT NULL DEFAULT 1,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+"""
+
+# Suhbat manzili, intervyuchi kontakti va eslatma matni — bitta qatorli
+# (id=1) global sozlama jadvali. Barcha vakansiyalar uchun umumiy.
+_CREATE_INTERVIEW_SETTINGS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS interview_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    location_text TEXT,
+    location_lat REAL,
+    location_lng REAL,
+    interviewer_name TEXT,
+    interviewer_phone TEXT,
+    notes TEXT
+);
+"""
+
 # Birinchi marta ishga tushirilganda (vacancies jadvali bo'sh bo'lsa) standart
 # 3 ta namunaviy vakansiya bilan to'ldiramiz — bular oddiy boshlang'ich nuqta,
 # admin bot orqali istalganini tahrirlash, o'chirish yoki yangisini qo'shish mumkin.
@@ -144,6 +168,8 @@ async def init_db():
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(_CREATE_TABLE_SQL)
         await db.execute(_CREATE_VACANCIES_TABLE_SQL)
+        await db.execute(_CREATE_INTERVIEW_SLOTS_TABLE_SQL)
+        await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
 
         # Yengil migratsiya: eski (allaqachon mavjud) bazalarga yangi ustunlarni
         # xavfsiz qo'shib boramiz — CREATE TABLE IF NOT EXISTS eski jadvalni
@@ -449,6 +475,89 @@ async def update_vacancy(key: str, **fields) -> None:
 async def delete_vacancy(key: str) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute("DELETE FROM vacancies WHERE key = ?", (key,))
+        await db.commit()
+
+
+# ============================= SUHBAT VAQTLARI (admin bot) =============================
+
+async def list_interview_slots(active_only: bool = True) -> list[dict]:
+    query = "SELECT * FROM interview_slots"
+    if active_only:
+        query += " WHERE active = 1"
+    query += " ORDER BY id ASC"
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(query)
+        rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def add_interview_slot(label: str, capacity: int = 1) -> int:
+    created_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO interview_slots (label, capacity, active, created_at) VALUES (?, ?, 1, ?)",
+            (label, capacity, created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def delete_interview_slot(slot_id: int):
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute("DELETE FROM interview_slots WHERE id = ?", (slot_id,))
+        await db.commit()
+
+
+async def get_available_interview_slots() -> list[dict]:
+    """Faol va hali joyi bor (band bo'lganlar soni < sig'imi) vaqtlarni qaytaradi.
+    Har biri: id, label, capacity, booked."""
+    slots = await list_interview_slots(active_only=True)
+    result = []
+    for slot in slots:
+        booked = await count_slot_bookings(slot["label"])
+        if booked < slot["capacity"]:
+            result.append({**slot, "booked": booked})
+    return result
+
+
+async def get_interview_settings() -> dict:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM interview_settings WHERE id = 1")
+        row = await cursor.fetchone()
+    if not row:
+        return {
+            "location_text": None, "location_lat": None, "location_lng": None,
+            "interviewer_name": None, "interviewer_phone": None, "notes": None,
+        }
+    return dict(row)
+
+
+async def update_interview_settings(**fields):
+    if not fields:
+        return
+    current = await get_interview_settings()
+    merged = {**current, **fields}
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO interview_settings
+                (id, location_text, location_lat, location_lng, interviewer_name, interviewer_phone, notes)
+            VALUES (1, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                location_text = excluded.location_text,
+                location_lat = excluded.location_lat,
+                location_lng = excluded.location_lng,
+                interviewer_name = excluded.interviewer_name,
+                interviewer_phone = excluded.interviewer_phone,
+                notes = excluded.notes
+            """,
+            (
+                merged.get("location_text"), merged.get("location_lat"), merged.get("location_lng"),
+                merged.get("interviewer_name"), merged.get("interviewer_phone"), merged.get("notes"),
+            ),
+        )
         await db.commit()
 
 

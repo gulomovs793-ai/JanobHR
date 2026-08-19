@@ -165,6 +165,26 @@ Agar `ADMIN_BOT_TOKEN` yoki `ADMIN_USER_IDS` sozlanmagan bo'lsa, nomzod-bot
 baribir ishlayveradi, lekin **hech kim hech qanday ariza haqida xabar olmaydi**
 (faqat Render logida ogohlantirish chiqadi).
 
+### 📅 Suhbat vaqtlari (sana+soat, manzil, intervyuchi kontakti)
+
+Admin bot > **📅 Suhbat vaqtlari** bo'limida (kodga tegmasdan):
+- Bir nechta suhbat vaqti qo'shish mumkin (masalan "22-avgust, soat 14:00"),
+  har biriga alohida sig'im (nechta nomzod qabul qilinishi) bilan.
+- Uchrashuv manzilini xarita (Telegram location) yoki matn ko'rinishida sozlash.
+- Suhbatni o'tkazadigan insonning ismi va telefon raqamini kiritish.
+- Nomzodga yuboriladigan eslatma matnini (masalan "kechikmang") yozish.
+
+Bu vaqtlar ikki holatda nomzodga taklif qilinadi: (1) admin "✅ Suhbatga
+chaqirish" tugmasini bosganda, va (2) agar nomzod juda yuqori AI ball olsa
+(avtomatik "Sell" bosqichi). Nomzod vaqtni tanlagach, manzil + intervyuchi
+kontakti + eslatma avtomatik yuboriladi.
+
+### 📥 Excel eksport
+
+Har bir vakansiya sahifasida **"📥 Excel yuklab olish"** tugmasi — barcha
+nomzodlarni AI ball bo'yicha saralab, `.xlsx` fayl qilib beradi (ism, telefon,
+ball, verdikt, holat, javoblar va h.k.).
+
 ## Yangi vakansiya qo'shish
 
 Endi vakansiyalar `vacancies.py`da emas, ma'lumotlar bazasida saqlanadi va

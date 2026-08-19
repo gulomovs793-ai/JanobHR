@@ -70,7 +70,10 @@ def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
 
 def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     from admin_bot.middleware import AdminOnlyMiddleware
-    from admin_bot import handlers_menu, handlers_vacancy_list, handlers_vacancy_edit, handlers_decisions
+    from admin_bot import (
+        handlers_menu, handlers_vacancy_list, handlers_vacancy_edit,
+        handlers_decisions, handlers_interview, handlers_export,
+    )
 
     bot = Bot(
         token=ADMIN_BOT_TOKEN,
@@ -84,6 +87,8 @@ def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     dp.include_router(handlers_vacancy_list.router)
     dp.include_router(handlers_vacancy_edit.router)
     dp.include_router(handlers_decisions.router)
+    dp.include_router(handlers_interview.router)
+    dp.include_router(handlers_export.router)
 
     return bot, dp
 

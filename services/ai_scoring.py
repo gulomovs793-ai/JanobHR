@@ -78,7 +78,20 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> Opt
                         )
                         continue  # navbatdagi provayderga o'tamiz
                     data = await resp.json()
-                    return data["choices"][0]["message"]["content"].strip()
+                    content = data["choices"][0]["message"]["content"]
+                    if not content or not content.strip():
+                        # HTTP 200 keldi, lekin matn bo'sh — bu odatda "fikrlash"
+                        # (reasoning) modellari max_tokens byudjetini ichki fikrlashga
+                        # sarflab, ko'rinadigan javob yozishga ulgurmaganda sodir
+                        # bo'ladi. Bu holatni MUVAFFAQIYAT deb hisoblamaymiz —
+                        # navbatdagi provayderga o'tamiz.
+                        finish_reason = data.get("choices", [{}])[0].get("finish_reason")
+                        logger.warning(
+                            "AI provayder (%s) bo'sh javob qaytardi (finish_reason=%s), "
+                            "keyingi provayderga o'tamiz.", label, finish_reason,
+                        )
+                        continue
+                    return content.strip()
         except Exception:
             logger.exception("AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi.", label)
             continue  # navbatdagi provayderga o'tamiz
@@ -137,7 +150,7 @@ FAQAT quyidagi JSON formatida javob ber, boshqa hech qanday matn, izoh yoki mark
 
 async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
     content = await _call_ai(
-        _SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=300
+        _SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=700
     )
     if content is None:
         return None
@@ -208,7 +221,7 @@ async def check_relevance(question: str, answer: str) -> Optional[bool]:
     chaqiruvchi tekshiruvni o'tkazib yuborishi kerak (botni AI'siz ham ishlashi uchun).
     """
     content = await _call_ai(
-        _RELEVANCE_SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=5
+        _RELEVANCE_SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=50
     )
     if content is None:
         return None
@@ -255,7 +268,7 @@ async def generate_questions(job_title: str, description: str, count: int = 9) -
     system_prompt = _QUESTION_GENERATION_PROMPT.format(count=count)
     user_prompt = f"Lavozim: {job_title}\nQisqacha tavsif: {description or '(tavsif berilmagan)'}"
 
-    content = await _call_ai(system_prompt, user_prompt, max_tokens=1500)
+    content = await _call_ai(system_prompt, user_prompt, max_tokens=2500)
     if content is None:
         return None
 

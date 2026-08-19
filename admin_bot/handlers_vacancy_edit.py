@@ -110,9 +110,19 @@ async def _generate_and_show(message: Message, state: FSMContext):
     await state.set_state(AdminForm.reviewing_ai_questions)
 
 
+async def _show_review(message: Message, questions: list[dict]):
+    await message.answer(
+        f"<b>Savollar ro'yxati</b> ({len(questions)} ta):\n\n"
+        f"{format_questions_preview(questions)}\n\n"
+        "🔒 — majburiy filtr savoli (salbiy javobda nomzod avtomatik rad etiladi).",
+        reply_markup=_review_keyboard(),
+    )
+
+
 def _review_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Saqlash", callback_data="aiq:save")
+    builder.button(text="✏️ Bitta savolni tahrirlash", callback_data="aiq:editlist")
     builder.button(text="🔄 Qayta generatsiya qilish", callback_data="aiq:regen")
     builder.button(text="✍️ O'zim yozaman", callback_data="aiq:manual")
     builder.button(text="❌ Bekor qilish", callback_data="menu:main")
@@ -150,6 +160,80 @@ async def accept_ai_questions(callback: CallbackQuery, state: FSMContext):
     await state.update_data(final_questions=data.get("pending_questions", []))
     await callback.answer("Saqlanmoqda...")
     await _finalize_vacancy(callback.message, state)
+
+
+@router.callback_query(AdminForm.reviewing_ai_questions, F.data == "aiq:editlist")
+async def show_pending_question_picker(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    questions = data.get("pending_questions", [])
+
+    builder = InlineKeyboardBuilder()
+    for i, q in enumerate(questions):
+        label = q["text"] if len(q["text"]) <= 45 else q["text"][:45] + "…"
+        builder.button(text=f"{i + 1}. {label}", callback_data=f"aiq:editq:{i}")
+    builder.button(text="⬅️ Orqaga", callback_data="aiq:back")
+    builder.adjust(1)
+
+    await callback.message.edit_text(
+        "✏️ Qaysi savolni tahrirlaysiz?", reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminForm.reviewing_ai_questions, F.data == "aiq:back")
+async def back_to_review_from_picker(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    questions = data.get("pending_questions", [])
+    await callback.message.edit_text(
+        f"<b>Savollar ro'yxati</b> ({len(questions)} ta):\n\n"
+        f"{format_questions_preview(questions)}\n\n"
+        "🔒 — majburiy filtr savoli (salbiy javobda nomzod avtomatik rad etiladi).",
+        reply_markup=_review_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminForm.reviewing_ai_questions, F.data.startswith("aiq:editq:"))
+async def start_edit_pending_question(callback: CallbackQuery, state: FSMContext):
+    idx = int(callback.data.split(":")[2])
+    data = await state.get_data()
+    questions = data.get("pending_questions", [])
+    if idx >= len(questions):
+        await callback.answer("Bu savol topilmadi.", show_alert=True)
+        return
+
+    await state.update_data(editing_pending_index=idx)
+    await callback.message.edit_text(
+        f"✏️ <b>{idx + 1}-savol</b>\n\nJoriy matn:\n<i>{questions[idx]['text']}</i>\n\n"
+        "Yangi matnni yozing. Ixtiyoriy ravishda oxiriga belgi qo'shishingiz mumkin:\n"
+        "  <code>| filter</code> — majburiy filtr savoli\n"
+        "  <code>| score</code> — AI chuqur tahlil qiladi\n\n"
+        "Hech qanday belgi qo'shmasangiz, oddiy savol bo'lib qoladi."
+    )
+    await state.set_state(AdminForm.editing_pending_question)
+    await callback.answer()
+
+
+@router.message(AdminForm.editing_pending_question, F.text)
+async def receive_pending_question_edit(message: Message, state: FSMContext):
+    data = await state.get_data()
+    idx = data["editing_pending_index"]
+    questions = list(data.get("pending_questions", []))
+
+    parsed = parse_manual_questions(message.text)
+    if not parsed:
+        await message.answer("Savol matni bo'sh bo'lmasligi kerak. Qaytadan yozing.")
+        return
+
+    new_question = parsed[0]
+    if idx < len(questions):
+        new_question["key"] = questions[idx].get("key", new_question["key"])
+        questions[idx] = new_question
+
+    await state.update_data(pending_questions=questions)
+    await state.set_state(AdminForm.reviewing_ai_questions)
+    await message.answer(f"✅ {idx + 1}-savol yangilandi.")
+    await _show_review(message, questions)
 
 
 # ============================= 4) QO'LDA KIRITISH =============================

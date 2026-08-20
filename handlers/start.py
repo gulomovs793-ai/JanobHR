@@ -13,7 +13,7 @@ router = Router(name="start")
 
 
 async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str):
-    vacancies = await database.list_vacancies(active_only=True)
+    vacancies = await database.list_vacancies_localized(lang, active_only=True)
     greeting = t("greeting", lang)
 
     if not vacancies:

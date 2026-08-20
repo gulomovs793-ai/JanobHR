@@ -403,6 +403,23 @@ Tarjima qilinadigan ma'lumot:
 """
 
 
+_SIMPLE_TRANSLATION_PROMPT = """Sen tarjimonsan. Senga qisqa matn (odatda lavozim nomi) \
+beriladi — uni o'zbek tilidan rus tiliga tabiiy, professional tarzda tarjima qil.
+
+FAQAT tarjima qilingan matnni yoz — hech qanday izoh, tirnoq belgisi yoki qo'shimcha \
+so'z qo'shma. Agar matnda emoji bo'lsa, uni saqlab qol."""
+
+
+async def translate_simple_text(text: str) -> Optional[str]:
+    """Qisqa matn (masalan lavozim nomi) uchun yengil tarjima. Muvaffaqiyatsiz bo'lsa
+    None qaytadi."""
+    content = await _call_ai(_SIMPLE_TRANSLATION_PROMPT, text, max_tokens=100)
+    if content is None:
+        return None
+    cleaned = content.strip().strip('"').strip("'").strip()
+    return cleaned or None
+
+
 async def translate_vacancy_content(questions: list[dict], reject_message: str) -> Optional[dict]:
     """Vakansiya savollari va rad etish xabarini rus tiliga tarjima qiladi (key va
     hard_filter/ai_score bayroqlarini o'zgartirmasdan). Muvaffaqiyatsiz bo'lsa None

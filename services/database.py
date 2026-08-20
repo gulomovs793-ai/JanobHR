@@ -198,6 +198,9 @@ async def init_db():
         if "reject_message_ru" not in vacancy_columns:
             await db.execute("ALTER TABLE vacancies ADD COLUMN reject_message_ru TEXT")
             logger.info("Migratsiya: 'reject_message_ru' ustuni qo'shildi.")
+        if "title_ru" not in vacancy_columns:
+            await db.execute("ALTER TABLE vacancies ADD COLUMN title_ru TEXT")
+            logger.info("Migratsiya: 'title_ru' ustuni qo'shildi.")
         if "lang" not in existing_columns:
             await db.execute("ALTER TABLE applications ADD COLUMN lang TEXT NOT NULL DEFAULT 'uz'")
             logger.info("Migratsiya: 'lang' ustuni qo'shildi.")
@@ -440,6 +443,48 @@ async def list_vacancies(active_only: bool = True) -> list[dict]:
     return [_row_to_vacancy(r) for r in rows]
 
 
+async def _get_localized_title(key: str, title_uz: str, lang: str) -> str:
+    """Vakansiya nomini (title) rus tiliga tarjima qilib, `title_ru` ustuniga keshlaydi.
+    Bir marta tarjima qilingandan keyin qayta AI so'rovi yuborilmaydi."""
+    if lang != "ru":
+        return title_uz
+
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT title_ru FROM vacancies WHERE key = ?", (key,))
+        row = await cursor.fetchone()
+
+    if row and row["title_ru"]:
+        return row["title_ru"]
+
+    from services.ai_scoring import translate_simple_text
+
+    translated = await translate_simple_text(title_uz)
+    if not translated:
+        return title_uz
+
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute("UPDATE vacancies SET title_ru = ? WHERE key = ?", (translated, key))
+        await db.commit()
+
+    return translated
+
+
+async def list_vacancies_localized(lang: str, active_only: bool = True) -> list[dict]:
+    """`list_vacancies`ga o'xshaydi, lekin lang="ru" bo'lsa, har bir vakansiya nomini
+    rus tiliga tarjima qilingan holda qaytaradi (birinchi safar AI orqali, keyin keshdan)."""
+    vacancies = await list_vacancies(active_only=active_only)
+    if lang != "ru":
+        return vacancies
+
+    result = []
+    for v in vacancies:
+        v = dict(v)
+        v["title"] = await _get_localized_title(v["key"], v["title"], lang)
+        result.append(v)
+    return result
+
+
 async def get_vacancy(key: str) -> Optional[dict]:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -449,10 +494,10 @@ async def get_vacancy(key: str) -> Optional[dict]:
 
 
 async def get_vacancy_localized(key: str, lang: str) -> Optional[dict]:
-    """`get_vacancy`ga o'xshaydi, lekin lang="ru" bo'lsa, savollar va rad etish
+    """`get_vacancy`ga o'xshaydi, lekin lang="ru" bo'lsa, nomi, savollari va rad etish
     xabarini rus tiliga tarjima qilingan holda qaytaradi.
 
-    Tarjima birinchi so'ralganda AI orqali qilinadi va `questions_ru` /
+    Tarjima birinchi so'ralganda AI orqali qilinadi va `title_ru` / `questions_ru` /
     `reject_message_ru` ustunlariga saqlanadi — keyingi rus tilidagi
     nomzodlar uchun bazadan to'g'ridan-to'g'ri o'qiladi (qayta AI so'rovi
     yuborilmaydi). Tarjima muvaffaqiyatsiz bo'lsa, o'zbekcha versiya qaytadi.
@@ -460,6 +505,9 @@ async def get_vacancy_localized(key: str, lang: str) -> Optional[dict]:
     vacancy = await get_vacancy(key)
     if not vacancy or lang != "ru":
         return vacancy
+
+    vacancy = dict(vacancy)
+    vacancy["title"] = await _get_localized_title(key, vacancy["title"], lang)
 
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -469,7 +517,6 @@ async def get_vacancy_localized(key: str, lang: str) -> Optional[dict]:
         row = await cursor.fetchone()
 
     if row and row["questions_ru"]:
-        vacancy = dict(vacancy)
         vacancy["questions"] = json.loads(row["questions_ru"])
         vacancy["reject_message"] = row["reject_message_ru"] or vacancy["reject_message"]
         return vacancy
@@ -492,7 +539,6 @@ async def get_vacancy_localized(key: str, lang: str) -> Optional[dict]:
         )
         await db.commit()
 
-    vacancy = dict(vacancy)
     vacancy["questions"] = translated["questions"]
     vacancy["reject_message"] = translated["reject_message"]
     return vacancy
@@ -546,6 +592,8 @@ async def update_vacancy(key: str, **fields) -> None:
     if "questions" in fields or "reject_message" in fields:
         set_clauses.append("questions_ru = NULL")
         set_clauses.append("reject_message_ru = NULL")
+    if "title" in fields:
+        set_clauses.append("title_ru = NULL")
 
     values.append(key)
 

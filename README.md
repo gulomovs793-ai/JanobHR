@@ -134,12 +134,13 @@ Bot oddiy anketa yig'uvchidan farqli o'laroq, quyidagi bosqichlarni avtomatik ba
    so'raladi (bu tizimning asosiy tamoyili: CV emas, haqiqiy javob muhim).
 7. **Ovozli javob (1-2 ta eng muhim savolga)** — har bir vakansiyada odatda
    bitta (ko'pi bilan ikkita) `voice: true` belgili savol bo'ladi — bunga
-   nomzod OVOZLI XABAR orqali javob berishi so'raladi. Ovoz Groq Whisper
-   orqali matnga o'giriladi, so'ng XUDDI ODDIY MATNLI JAVOB kabi bir xil AI
-   tahlildan (aniqlik, mas'uliyat, natijadorlik, ishonchlilik) o'tadi. Bu
-   javobning tayyorlab kelinmagan, tabiiy va ishonchliroq bo'lishini
-   ta'minlaydi. Ishlashi uchun `AI_API_KEY_2` (Groq) sozlangan bo'lishi shart
-   — bo'lmasa, savol oddiy matnli savolga aylanadi.
+   nomzod MAJBURIY ravishda OVOZLI XABAR orqali javob beradi (matn qabul
+   qilinmaydi). Bu javob **AI orqali tahlil qilinmaydi va matnga
+   o'girilmaydi** — audio fayl xom holicha to'g'ridan-to'g'ri har bir
+   administratorga (Admin bot orqali, tinglash mumkin bo'lgan ovozli xabar
+   sifatida) yuboriladi, qaysi savolga tegishli ekani caption'da ko'rsatiladi.
+   Baholashni AI emas, admin shaxsan tinglab qiladi — bu jonli, tayyorlab
+   kelinmagan javobni talab qilib, ishonchlilikni oshiradi.
 
 Bu tizim to'liq ishlashi uchun `AI_API_KEY` (va OpenAI-compatible bo'lmagan
 provayderlar uchun `AI_API_BASE`/`AI_MODEL`) sozlangan bo'lishi shart.

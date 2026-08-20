@@ -147,7 +147,15 @@ TRANSLATIONS = {
             "deb hisoblasangiz, keyinroq /start orqali qaytadan, o'z so'zlaringiz bilan "
             "urinib ko'rishingiz mumkin."
         ),
-        "voice_question_hint": "\n\n🎙 Iltimos, shu savolga OVOZLI XABAR yuborib javob bering.",
+        "voice_question_hint": (
+            "\n\n🎙 <b>MAJBURIY:</b> shu savolga faqat OVOZLI XABAR orqali javob bering "
+            "(mikrofon tugmasini bosib yozib oling). Matn qabul qilinmaydi."
+        ),
+        "voice_required": (
+            "🎙 Bu savolga faqat ovozli xabar orqali javob berish mumkin.\n\n"
+            "Iltimos, Telegram'dagi mikrofon tugmasini bosib ushlab turing, javobingizni "
+            "gapiring, so'ng qo'yib yuboring."
+        ),
         "voice_transcribing": "🎙 Ovozli xabaringizni tinglayapman...",
         "voice_transcription_failed": (
             "Kechirasiz, ovozli xabaringizni tushuna olmadim. Iltimos, yana bir bor, "
@@ -286,7 +294,14 @@ TRANSLATIONS = {
             "это ошибкой, вы можете попробовать снова позже через /start, отвечая своими "
             "словами."
         ),
-        "voice_question_hint": "\n\n🎙 Пожалуйста, ответьте на этот вопрос ГОЛОСОВЫМ сообщением.",
+        "voice_question_hint": (
+            "\n\n🎙 <b>ОБЯЗАТЕЛЬНО:</b> ответьте на этот вопрос ТОЛЬКО голосовым сообщением "
+            "(зажмите кнопку микрофона). Текст не принимается."
+        ),
+        "voice_required": (
+            "🎙 На этот вопрос можно ответить только голосовым сообщением.\n\n"
+            "Пожалуйста, зажмите кнопку микрофона в Telegram, скажите ответ и отпустите."
+        ),
         "voice_transcribing": "🎙 Слушаю ваше голосовое сообщение...",
         "voice_transcription_failed": (
             "Извините, не удалось распознать ваше голосовое сообщение. Пожалуйста, "

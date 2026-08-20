@@ -103,6 +103,16 @@ _FOLLOWUP_SCORE_THRESHOLD = 50
 
 @router.message(ApplyForm.answering_questions, F.text)
 async def handle_text_answer(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+    idx = data["question_index"]
+    questions = data["vacancy_questions"]
+
+    if questions[idx].get("voice"):
+        # Bu savol MAJBURIY ravishda ovozli xabar talab qiladi — matn qabul qilinmaydi.
+        await message.answer(t("voice_required", lang))
+        return
+
     await _process_answer(message, state, message.text.strip())
 
 
@@ -309,6 +319,13 @@ async def handle_wrong_answer_type(message: Message, state: FSMContext):
     """Savol kutilayotganda matn/ovozdan boshqa narsa (rasm, stiker va h.k.) yuborilsa."""
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
+    idx = data["question_index"]
+    questions = data["vacancy_questions"]
+
+    if questions[idx].get("voice"):
+        await message.answer(t("voice_required", lang))
+        return
+
     await message.answer(t("wrong_answer_type", lang))
 
 

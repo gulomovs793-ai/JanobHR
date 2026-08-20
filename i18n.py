@@ -22,13 +22,14 @@ CHOOSE_LANGUAGE_PROMPT = "Assalomu alaykum! / Здравствуйте!\n\nIltim
 TRANSLATIONS = {
     "uz": {
         "greeting": (
-            "👔 Xush kelibsiz — bu <b>Janob HR</b>!\n\n"
-            "Men sun'iy intellekt yordamida arizangizni professional va xolis tahlil qilaman. "
-            "Jarayon shunchaki: vakansiyani tanlaysiz, bir necha savolga javob berasiz — "
-            "qolganini men bajaraman."
+            "👔 Assalomu alaykum! Men Janob HR.\n\n"
+            "Sizni kompaniyamizdagi mos lavozim bilan tanishtirish va ariza "
+            "topshirishingizga yordam berish uchun shu yerdaman.\n\n"
+            "Avval sizga mos vakansiyani tanlaymiz. Keyin bir nechta qisqa savollar "
+            "beraman.\n\nQaysi lavozimga qiziqyapsiz? 👇"
         ),
         "no_vacancies": "{greeting}\n\nHozircha ochiq vakansiyalar yo'q. Iltimos, keyinroq qayta urinib ko'ring.",
-        "vacancy_list_prompt": "{greeting}\n\nQuyidagi vakansiyalardan birini tanlang:",
+        "vacancy_list_prompt": "{greeting}",
         "pending_application_notice": (
             "👋 Assalomu alaykum! Sizning <b>{vacancy_title}</b> vakansiyasiga yuborgan "
             "arizangiz hozircha ko'rib chiqilmoqda.\n\nNatija haqida tez orada shu yerda "
@@ -149,13 +150,14 @@ TRANSLATIONS = {
     },
     "ru": {
         "greeting": (
-            "👔 Добро пожаловать — это <b>Janob HR</b>!\n\n"
-            "Я с помощью искусственного интеллекта профессионально и объективно "
-            "проанализирую вашу заявку. Всё просто: выбираете вакансию, отвечаете на "
-            "несколько вопросов — остальное сделаю я."
+            "👔 Здравствуйте! Я Janob HR.\n\n"
+            "Я здесь, чтобы познакомить вас с подходящей вакансией в нашей компании и "
+            "помочь подать заявку.\n\n"
+            "Сначала выберем подходящую вакансию. Затем задам несколько коротких "
+            "вопросов.\n\nКакая должность вас интересует? 👇"
         ),
         "no_vacancies": "{greeting}\n\nК сожалению, сейчас нет открытых вакансий. Пожалуйста, попробуйте позже.",
-        "vacancy_list_prompt": "{greeting}\n\nВыберите одну из вакансий ниже:",
+        "vacancy_list_prompt": "{greeting}",
         "pending_application_notice": (
             "👋 Здравствуйте! Ваша заявка на вакансию <b>{vacancy_title}</b> сейчас "
             "рассматривается.\n\nМы сообщим о результате здесь в ближайшее время — "

@@ -23,6 +23,7 @@ _RED_FLAG_LABELS = {
     "qurbon_sindromi": "Qurbon sindromi (aybni boshqaga yuklaydi)",
     "abstrakt_javob": "Abstrakt javob (aniq raqam/qadam yo'q)",
     "narsissizm": "Ortiqcha \"men\"chilik (jamoa hissasini tan olmaydi)",
+    "ai_yozgan": "⚠️ AI/ChatGPT orqali yozilgan bo'lishi shubhali",
 }
 
 # Telegram oddiy matnli xabarlar uchun 4096 belgigacha ruxsat beradi (rasm/fayl/video

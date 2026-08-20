@@ -135,6 +135,16 @@ Quyidagi "qizil bayroqlarni" alohida qidir va topilganlarini ro'yxatga qo'sh (to
   munosabatda bo'laman"), lekin hech qanday aniq qadam yoki raqam yo'q.
 - "narsissizm" — nomzod jamoaviy natijani ham faqat o'ziniki qilib ko'rsatadi, boshqalarning
   hissasini butunlay inkor etadi.
+- "ai_yozgan" — javob ChatGPT yoki shunga o'xshash AI chatbot orqali yozilgan/nusxa
+  ko'chirilgan bo'lishi mumkinligiga shubha bор. Quyidagi belgilarga e'tibor ber: odatiy
+  Telegram xabari uchun g'ayritabiiy darajada silliq, rasmiy va "muallifsiz" uslub;
+  sun'iy tarzda muvozanatlashtirilgan tuzilma (masalan "Birinchidan... Ikkinchidan...
+  Xulosa qilib aytganda..." kabi insho uslubi oddiy chatda kutilmaydi); shaxsiy his-tuyg'u,
+  o'ziga xos tafsilot yoki tabiiy tildagi kichik nomukammalliklar (imlo xatosi, so'zlashuv
+  uslubi) butunlay yo'qligi; savolga umuman aloqasi bo'lmagan haddan tashqari "to'liq"
+  va "universal" javob. DIQQAT: bu faqat kuchli shubha bo'lsa qo'shilsin — puxta va
+  bilimdon odam ham yaxshi yoza olishi mumkin, shuning uchun faqat bir nechta belgi
+  birga uchraganda ushbu bayroqni qo'sh, yolg'iz "yaxshi yozilgan" bo'lgani uchun emas.
 
 Uchala mezon o'rtachasi asosida yakuniy "verdict" tanla:
 - "yashil" — o'rtacha ball 75 dan yuqori va jiddiy qizil bayroq yo'q

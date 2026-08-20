@@ -10,12 +10,15 @@ from config import MAX_ANSWER_CHARS
 from i18n import DEFAULT_LANG, t
 from services import database
 from services.ai_scoring import check_relevance, score_answer
+from services.voice_transcription import transcribe_voice
 from states import ApplyForm
 from vacancies import is_negative_answer
 
 logger = logging.getLogger("janob_hr_bot")
 
 router = Router(name="questions")
+
+_MIN_TRANSCRIPT_CHARS = 5
 
 
 async def ask_current_question(message: Message, state: FSMContext):
@@ -37,7 +40,11 @@ async def ask_current_question(message: Message, state: FSMContext):
         return
 
     total = len(questions)
-    await message.answer(t("question_progress", lang, idx=idx + 1, total=total, text=questions[idx]["text"]))
+    question_text = questions[idx]["text"]
+    if questions[idx].get("voice"):
+        question_text += t("voice_question_hint", lang)
+
+    await message.answer(t("question_progress", lang, idx=idx + 1, total=total, text=question_text))
     await state.set_state(ApplyForm.answering_questions)
 
 
@@ -95,13 +102,43 @@ _FOLLOWUP_SCORE_THRESHOLD = 50
 
 
 @router.message(ApplyForm.answering_questions, F.text)
-async def handle_answer(message: Message, state: FSMContext):
+async def handle_text_answer(message: Message, state: FSMContext):
+    await _process_answer(message, state, message.text.strip())
+
+
+@router.message(ApplyForm.answering_questions, F.voice)
+async def handle_voice_answer(message: Message, state: FSMContext):
+    """Ovozli xabarni matnga o'girib, keyin XUDDI ODDIY MATNLI JAVOB kabi
+    bir xil tahlil quvuridan o'tkazadi (aniqlik, ishonchlilik, mavzuga
+    doirlik — barchasi mavjud AI baholash tizimi orqali)."""
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+
+    wait_msg = await message.answer(t("voice_transcribing", lang))
+
+    try:
+        buffer = await message.bot.download(message.voice)
+        transcript = await transcribe_voice(buffer.read(), lang=lang)
+    except Exception:
+        logger.exception("Ovozli xabarni yuklab/transkripsiya qilib bo'lmadi.")
+        transcript = None
+
+    if not transcript or len(transcript.strip()) < _MIN_TRANSCRIPT_CHARS:
+        await wait_msg.edit_text(t("voice_transcription_failed", lang))
+        return
+
+    await wait_msg.edit_text(t("voice_transcript_preview", lang, transcript=transcript.strip()))
+    await _process_answer(message, state, transcript.strip())
+
+
+async def _process_answer(message: Message, state: FSMContext, answer_text: str):
+    """Matnli yoki ovozdan transkripsiya qilingan javobni tahlil qiladi. Ikkalasi
+    ham shu yerga (aynan bir xil mantiq orqali) yo'naltiriladi."""
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
     idx = data["question_index"]
     questions = data["vacancy_questions"]
     q = questions[idx]
-    answer_text = message.text.strip()
 
     if not answer_text:
         await message.answer(t("answer_empty", lang))
@@ -269,7 +306,7 @@ async def skip_followup(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ApplyForm.answering_questions)
 async def handle_wrong_answer_type(message: Message, state: FSMContext):
-    """Savol kutilayotganda matndan boshqa narsa (rasm, stiker va h.k.) yuborilsa."""
+    """Savol kutilayotganda matn/ovozdan boshqa narsa (rasm, stiker va h.k.) yuborilsa."""
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
     await message.answer(t("wrong_answer_type", lang))

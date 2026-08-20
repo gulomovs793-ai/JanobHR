@@ -147,6 +147,18 @@ TRANSLATIONS = {
             "deb hisoblasangiz, keyinroq /start orqali qaytadan, o'z so'zlaringiz bilan "
             "urinib ko'rishingiz mumkin."
         ),
+        "voice_question_hint": "\n\n🎙 Iltimos, shu savolga OVOZLI XABAR yuborib javob bering.",
+        "voice_transcribing": "🎙 Ovozli xabaringizni tinglayapman...",
+        "voice_transcription_failed": (
+            "Kechirasiz, ovozli xabaringizni tushuna olmadim. Iltimos, yana bir bor, "
+            "aniqroq va sokin joyda yozib yuboring — yoki xohlasangiz, javobingizni "
+            "matn ko'rinishida yozing."
+        ),
+        "voice_too_short": (
+            "Ovozli xabaringiz juda qisqa yoki tushunarsiz chiqdi. Iltimos, savolga "
+            "to'liqroq javob berib, qayta yuboring."
+        ),
+        "voice_transcript_preview": "🎙 Eshitganim:\n<i>«{transcript}»</i>",
     },
     "ru": {
         "greeting": (
@@ -274,6 +286,17 @@ TRANSLATIONS = {
             "это ошибкой, вы можете попробовать снова позже через /start, отвечая своими "
             "словами."
         ),
+        "voice_question_hint": "\n\n🎙 Пожалуйста, ответьте на этот вопрос ГОЛОСОВЫМ сообщением.",
+        "voice_transcribing": "🎙 Слушаю ваше голосовое сообщение...",
+        "voice_transcription_failed": (
+            "Извините, не удалось распознать ваше голосовое сообщение. Пожалуйста, "
+            "запишите ещё раз, чётче и в тихом месте — или ответьте текстом."
+        ),
+        "voice_too_short": (
+            "Ваше голосовое сообщение слишком короткое или непонятное. Пожалуйста, "
+            "ответьте на вопрос более развёрнуто и отправьте ещё раз."
+        ),
+        "voice_transcript_preview": "🎙 Я услышал:\n<i>«{transcript}»</i>",
     },
 }
 

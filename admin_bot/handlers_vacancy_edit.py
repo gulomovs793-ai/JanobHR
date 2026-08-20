@@ -207,6 +207,7 @@ async def start_edit_pending_question(callback: CallbackQuery, state: FSMContext
         f"✏️ <b>{idx + 1}-savol</b>\n\nJoriy matn:\n<i>{questions[idx]['text']}</i>\n\n"
         "Yangi matnni yozing. Ixtiyoriy ravishda oxiriga belgi qo'shishingiz mumkin:\n"
         "  <code>| filter</code> — majburiy filtr savoli\n"
+        "  <code>| voice</code> — ovozli xabar orqali javob va AI tahlil\n"
         "  <code>| score</code> — AI chuqur tahlil qiladi\n\n"
         "Hech qanday belgi qo'shmasangiz, oddiy savol bo'lib qoladi."
     )
@@ -351,6 +352,7 @@ async def start_edit_single_question(callback: CallbackQuery, state: FSMContext)
         f"✏️ <b>{idx + 1}-savol</b>\n\nJoriy matn:\n<i>{current['text']}</i>\n\n"
         "Yangi matnni yozing. Ixtiyoriy ravishda oxiriga belgi qo'shishingiz mumkin:\n"
         "  <code>| filter</code> — majburiy filtr savoli\n"
+        "  <code>| voice</code> — ovozli xabar orqali javob va AI tahlil\n"
         "  <code>| score</code> — AI chuqur tahlil qiladi\n\n"
         "Hech qanday belgi qo'shmasangiz, oddiy savol bo'lib qoladi."
     )

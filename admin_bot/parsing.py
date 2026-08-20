@@ -4,10 +4,13 @@ from services.database import make_vacancy_key
 MANUAL_FORMAT_HELP = (
     "Har bir qatorga bitta savol yozing. Qator oxiriga (ixtiyoriy) belgi qo'shishingiz mumkin:\n"
     "  <code>| filter</code> — bu savol majburiy filtr (salbiy javobda nomzod avtomatik rad etiladi)\n"
-    "  <code>| score</code> — bu javob AI orqali chuqur tahlil qilinadi\n\n"
+    "  <code>| score</code> — bu javob AI orqali chuqur tahlil qilinadi\n"
+    "  <code>| voice</code> — bu savolga nomzod OVOZLI xabar orqali javob berishi so'raladi "
+    "(AI tahlili bilan birga, ko'pi bilan 1-2 ta savolga qo'llang)\n\n"
     "Misol:\n"
     "<code>Tajribangiz bormi? (Ha/Yo'q) | filter\n"
-    "Eng katta yutug'ingiz nima? | score\n"
+    "Eng katta yutug'ingiz nima? | voice\n"
+    "Rejangiz qanday? | score\n"
     "Qanday dasturlardan foydalanasiz?</code>"
 )
 
@@ -21,6 +24,7 @@ def parse_manual_questions(text: str) -> list[dict]:
         content = line
         hard_filter = False
         ai_score = False
+        voice = False
 
         if "|" in line:
             content, marker = line.rsplit("|", 1)
@@ -30,6 +34,9 @@ def parse_manual_questions(text: str) -> list[dict]:
                 hard_filter = True
             elif marker == "score":
                 ai_score = True
+            elif marker == "voice":
+                ai_score = True
+                voice = True
 
         if not content:
             continue
@@ -47,6 +54,8 @@ def parse_manual_questions(text: str) -> list[dict]:
             q["hard_filter"] = True
         if ai_score:
             q["ai_score"] = True
+        if voice:
+            q["voice"] = True
         questions.append(q)
 
     return questions
@@ -55,7 +64,11 @@ def parse_manual_questions(text: str) -> list[dict]:
 def format_questions_preview(questions: list[dict], limit: int = 20) -> str:
     lines = []
     for i, q in enumerate(questions[:limit], 1):
-        marker = " 🔒" if q.get("hard_filter") else ""
+        marker = ""
+        if q.get("hard_filter"):
+            marker += " 🔒"
+        if q.get("voice"):
+            marker += " 🎙"
         lines.append(f"{i}. {q['text']}{marker}")
     if len(questions) > limit:
         lines.append(f"… va yana {len(questions) - limit} ta savol")
@@ -70,6 +83,8 @@ def to_manual_format(questions: list[dict]) -> str:
         marker = ""
         if q.get("hard_filter"):
             marker = " | filter"
+        elif q.get("voice"):
+            marker = " | voice"
         elif q.get("ai_score"):
             marker = " | score"
         lines.append(f"{q['text']}{marker}")

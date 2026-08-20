@@ -263,9 +263,15 @@ Talablar:
    xos texnik/amaliy tafsilotni so'rasin (masalan, aniq dastur funksiyasi nomi, real
    ish jarayonining tafsiloti, yoki soha ichidagi maxsus atama/protsedura). Maqsad —
    faqat kitobdan o'qib bilgan yoki tajribasini o'ylab topgan nomzodlarni ajratib olish.
+8. Savollar orasidan ENG MUHIM bittasini (ko'pi bilan ikkitasini) — odatda "scorecard"
+   yoki "yutuq" turidagi savolni — "voice": true deb ham belgila. Bu savolga nomzod
+   OVOZLI xabar orqali javob berishi so'raladi (yozib emas, gapirib) — bu javobning
+   tabiiyroq, ishonchliroq va tayyorlab kelinmagan bo'lishini ta'minlaydi. "voice": true
+   FAQAT "ai_score": true bo'lgan savollarga qo'yilishi mumkin (oddiy faktik savollarga emas).
 
 FAQAT quyidagi JSON massiv formatida javob ber, boshqa hech qanday matn yozma:
-[{{"key": "...", "text": "...", "hard_filter": true}}, {{"key": "...", "text": "...", "ai_score": true}}, ...]
+[{{"key": "...", "text": "...", "hard_filter": true}}, {{"key": "...", "text": "...", "ai_score": true}}, \
+{{"key": "...", "text": "...", "ai_score": true, "voice": true}}, ...]
 """
 
 
@@ -309,6 +315,10 @@ async def generate_questions(job_title: str, description: str, count: int = 9) -
                 q["hard_filter"] = True
             if item.get("ai_score"):
                 q["ai_score"] = True
+            # "voice" faqat ai_score bilan birga ma'noga ega (Scorecard/Behavioral
+            # savollar uchun) — xavfsizlik uchun shu shartni bu yerda ham qat'iy talab qilamiz.
+            if item.get("voice") and q.get("ai_score"):
+                q["voice"] = True
             questions.append(q)
 
         return questions or None

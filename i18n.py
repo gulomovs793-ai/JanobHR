@@ -167,6 +167,11 @@ TRANSLATIONS = {
             "to'liqroq javob berib, qayta yuboring."
         ),
         "voice_transcript_preview": "🎙 Eshitganim:\n<i>«{transcript}»</i>",
+        "voice_quality_low_note": (
+            "Ovoz sifati past bo'lgani sabab, aniq tushuna olmadim — shuning uchun bu javob "
+            "alohida baholanmaydi (yaxshi ham, yomon ham emas), lekin qabul qilindi va "
+            "davom etamiz."
+        ),
     },
     "ru": {
         "greeting": (
@@ -312,6 +317,11 @@ TRANSLATIONS = {
             "ответьте на вопрос более развёрнуто и отправьте ещё раз."
         ),
         "voice_transcript_preview": "🎙 Я услышал:\n<i>«{transcript}»</i>",
+        "voice_quality_low_note": (
+            "Из-за низкого качества звука я не смог точно распознать сказанное — поэтому "
+            "этот ответ не будет отдельно оцениваться (ни хорошо, ни плохо), но принят, "
+            "продолжаем дальше."
+        ),
     },
 }
 

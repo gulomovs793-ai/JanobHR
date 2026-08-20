@@ -205,6 +205,43 @@ async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
         return None
 
 
+_TRANSCRIPT_QUALITY_PROMPT = """Sen nutqni-matnga o'girish (STT) sifatini tekshiruvchisan. \
+Senga ovozli xabardan avtomatik ravishda matnga o'girilgan (transkripsiya qilingan) matn beriladi.
+
+Vazifang: bu matn TUSHUNARLI, izchil gap(lar) ekanligini, yoki nutqni-matnga o'girish xatosi \
+tufayli buzilgan, mantiqsiz so'zlar to'plami ekanligini aniqlash.
+
+"TUSHUNARSIZ" deb hisobla, FAQAT agar matn: bir-biriga bog'liq bo'lmagan, chalkash, ma'nosiz \
+so'z birikmalaridan iborat bo'lsa; jumla tuzilishi butunlay buzilgan, tushunib bo'lmaydigan \
+bo'lsa; yoki matn umuman odam tili emas, tasodifiy tovush bo'laklaridek ko'rinsa.
+
+Agar matnda birmuncha imlo xatolari yoki sheva xususiyatlari bo'lsa-da, UMUMAN nima haqida \
+gapirilayotgani tushunarli bo'lsa — "TUSHUNARLI" deb hisobla (nutqni-matnga o'girish ba'zi \
+so'zlarni biroz noaniq yozishi normal holat, bu haqiqiy muammo emas). Ikkilanib qolsang —
+"TUSHUNARLI" deb belgila (shubhadan foyda nomzodga berilsin).
+
+FAQAT bitta so'z bilan javob ber: TUSHUNARLI yoki TUSHUNARSIZ. Boshqa hech narsa yozma.
+"""
+
+
+async def check_transcript_quality(transcript: str) -> Optional[bool]:
+    """Ovozdan avtomatik matnga o'girilgan (transkripsiya qilingan) javob tushunarli/izchilmi,
+    yoki nutqni-matnga o'girish xatosi tufayli buzilgan bo'lishi mumkinmi — shuni tekshiradi.
+
+    True — tushunarli (baholash mumkin), False — tushunarsiz/buzilgan (bunday holda javobni
+    baholamaslik kerak — noto'g'ri transkripsiya sababli adolatsiz past ball berilmasligi
+    uchun). Hech qanday provayder ishlamasa None qaytadi (bunday holda ehtiyot yuzasidan
+    "tushunarli" deb hisoblanadi — asossiz o'tkazib yubormaslik uchun).
+    """
+    content = await _call_ai(_TRANSCRIPT_QUALITY_PROMPT, transcript, max_tokens=10)
+    if content is None:
+        return None
+    normalized = content.strip().upper()
+    if "TUSHUNARSIZ" in normalized:
+        return False
+    return True
+
+
 _RELEVANCE_SYSTEM_PROMPT = """Sen HR-botning kirish filtridasan. Vazifang — nomzodning \
 javobi berilgan savolga va lavozimga mazmunan aloqadormi yoki yo'qmi, shuni tekshirish.
 

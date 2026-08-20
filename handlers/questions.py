@@ -9,7 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import MAX_ANSWER_CHARS
 from i18n import DEFAULT_LANG, t
 from services import database
-from services.ai_scoring import check_relevance, score_answer
+from services.ai_scoring import check_relevance, check_transcript_quality, score_answer
 from services.voice_transcription import transcribe_voice
 from states import ApplyForm
 from vacancies import is_negative_answer
@@ -137,11 +137,23 @@ async def handle_voice_answer(message: Message, state: FSMContext):
         await wait_msg.edit_text(t("voice_transcription_failed", lang))
         return
 
-    await wait_msg.edit_text(t("voice_transcript_preview", lang, transcript=transcript.strip()))
-    await _process_answer(message, state, transcript.strip())
+    transcript = transcript.strip()
+    await wait_msg.edit_text(t("voice_transcript_preview", lang, transcript=transcript))
+
+    # Nutqni-matnga o'girish (STT) ba'zan o'zbek/rus nutqini noto'g'ri tanib olishi
+    # mumkin — bunday holda buzilgan matnni baholab, nomzodga adolatsiz past ball
+    # berib qo'ymaslik uchun, tushunarsiz chiqqan javoblarni UMUMAN baholamaymiz
+    # (na yaxshi, na yomon) — shunchaki qabul qilib, keyingi savolga o'tamiz.
+    quality_ok = await check_transcript_quality(transcript)
+    if quality_ok is False:
+        await message.answer(t("voice_quality_low_note", lang))
+
+    await _process_answer(message, state, transcript, skip_ai_score=(quality_ok is False))
 
 
-async def _process_answer(message: Message, state: FSMContext, answer_text: str):
+async def _process_answer(
+    message: Message, state: FSMContext, answer_text: str, skip_ai_score: bool = False,
+):
     """Matnli yoki ovozdan transkripsiya qilingan javobni tahlil qiladi. Ikkalasi
     ham shu yerga (aynan bir xil mantiq orqali) yo'naltiriladi."""
     data = await state.get_data()
@@ -166,7 +178,7 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
         ai_scores = data.get("ai_scores", {})
         answers[q["key"]] = answer_text
 
-        result = await score_answer(q["text"], answer_text)
+        result = None if skip_ai_score else await score_answer(q["text"], answer_text)
         if result is not None:
             ai_scores[q["key"]] = result
 
@@ -213,12 +225,12 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
     # --- Har bir javob uchun: mavzuga/kasbga aloqadormi degan tekshiruv ---
     relevant = True
     result = None
-    if q.get("ai_score"):
+    if q.get("ai_score") and not skip_ai_score:
         result = await score_answer(q["text"], answer_text)
         if result is not None:
             ai_scores[q["key"]] = result
             relevant = result.get("relevant", True)
-    elif len(answer_text) > _SHORT_ANSWER_SKIP_CHARS:
+    elif not q.get("ai_score") and len(answer_text) > _SHORT_ANSWER_SKIP_CHARS:
         # Oddiy faktik savollarda (masalan "qaysi platforma/dastur ishlatasiz")
         # juda qisqa javoblar ("Instagram", "Figma" kabi) deyarli doim to'g'ri
         # bo'ladi — AI bunday qisqa matnlarni ba'zan noto'g'ri "aloqasiz" deb

@@ -65,6 +65,7 @@ async def _reject_and_save(
         video_file_id=None,
         status=status,
         lang=data.get("lang", DEFAULT_LANG),
+        ai_suspect_flags=data.get("ai_suspect_flagged_keys", []),
     )
     await state.clear()
 
@@ -79,6 +80,12 @@ _SHORT_ANSWER_SKIP_CHARS = 20
 # SHU SAVOLNI qayta javob berishga necha marta imkoniyat berilishi (ketma-ket
 # necha marta "aloqasiz" chiqsa, arizani chindan rad etamiz).
 _MAX_IRRELEVANT_RETRIES = 2
+
+# Javob "ai_yozgan" (ChatGPT orqali yozilgan bo'lishi mumkin) deb belgilansa,
+# nomzodga o'z so'zi bilan qayta yozish uchun cheklangan imkoniyat beriladi —
+# bu ham 100% ishonchli aniqlash emas, shuning uchun darhol rad etmaymiz,
+# lekin ketma-ket ikkinchi marta ham shubhali chiqsa, ariza rad etiladi.
+_MAX_AI_SUSPECT_RETRIES = 1
 
 # Javob mavzuga oid, lekin sifati past yoki abstrakt bo'lsa (aniq raqam/misolsiz),
 # bot BITTA marta (har bir savol uchun ko'pi bilan bir marta) aniqlashtiruvchi
@@ -116,9 +123,28 @@ async def handle_answer(message: Message, state: FSMContext):
         if result is not None:
             ai_scores[q["key"]] = result
 
+            if "ai_yozgan" in result.get("red_flags", []):
+                flagged_keys = data.get("ai_suspect_flagged_keys", [])
+                if q["key"] not in flagged_keys:
+                    flagged_keys.append(q["key"])
+
+                ai_suspect_count = data.get("ai_suspect_retry_count", 0) + 1
+                if ai_suspect_count > _MAX_AI_SUSPECT_RETRIES:
+                    await _reject_and_save(
+                        message, state, {**data, "ai_suspect_flagged_keys": flagged_keys},
+                        answers, ai_scores, t("ai_suspect_reject", lang), "rejected_ai_generated",
+                    )
+                    return
+                await state.update_data(
+                    ai_suspect_retry_count=ai_suspect_count, awaiting_followup_for=idx,
+                    ai_suspect_flagged_keys=flagged_keys,
+                )
+                await message.answer(t("ai_suspect_retry", lang, question_text=q["text"]))
+                return
+
         await state.update_data(
             answers=answers, ai_scores=ai_scores, question_index=idx + 1,
-            awaiting_followup_for=None, irrelevant_retry_count=0,
+            awaiting_followup_for=None, irrelevant_retry_count=0, ai_suspect_retry_count=0,
         )
         await ask_current_question(message, state)
         return
@@ -172,6 +198,27 @@ async def handle_answer(message: Message, state: FSMContext):
         await message.answer(t("irrelevant_retry", lang, question_text=q["text"]))
         return
 
+    # --- Javob "AI orqali yozilgan" deb gumon qilinsa — qabul qilmaymiz, nomzoddan
+    # o'z so'zi bilan qayta javob berishni so'raymiz (cheklangan urinish bilan). ---
+    if result is not None and "ai_yozgan" in result.get("red_flags", []):
+        flagged_keys = data.get("ai_suspect_flagged_keys", [])
+        if q["key"] not in flagged_keys:
+            flagged_keys.append(q["key"])
+
+        ai_suspect_count = data.get("ai_suspect_retry_count", 0) + 1
+        if ai_suspect_count > _MAX_AI_SUSPECT_RETRIES:
+            await _reject_and_save(
+                message, state, {**data, "ai_suspect_flagged_keys": flagged_keys},
+                answers, ai_scores, t("ai_suspect_reject", lang), "rejected_ai_generated",
+            )
+            return
+
+        await state.update_data(
+            ai_suspect_retry_count=ai_suspect_count, ai_suspect_flagged_keys=flagged_keys,
+        )
+        await message.answer(t("ai_suspect_retry", lang, question_text=q["text"]))
+        return
+
     # --- Javob mavzuga oid, lekin sifati past/abstrakt bo'lsa — bitta marta
     # aniqlashtiruvchi savol beramiz (har bir savol uchun faqat bir marta). ---
     needs_followup = result is not None and (
@@ -193,7 +240,7 @@ async def handle_answer(message: Message, state: FSMContext):
 
     await state.update_data(
         answers=answers, ai_scores=ai_scores, question_index=idx + 1,
-        irrelevant_retry_count=0,
+        irrelevant_retry_count=0, ai_suspect_retry_count=0,
     )
     await ask_current_question(message, state)
 
@@ -214,7 +261,8 @@ async def skip_followup(callback: CallbackQuery, state: FSMContext):
         pass
 
     await state.update_data(
-        question_index=idx + 1, awaiting_followup_for=None, irrelevant_retry_count=0,
+        question_index=idx + 1, awaiting_followup_for=None,
+        irrelevant_retry_count=0, ai_suspect_retry_count=0,
     )
     await ask_current_question(callback.message, state)
 
@@ -267,6 +315,7 @@ async def complete_application(message: Message, state: FSMContext):
         video_file_id=data.get("video_file_id"),
         status="pending",
         lang=lang,
+        ai_suspect_flags=data.get("ai_suspect_flagged_keys", []),
     )
 
     await message.answer(t("application_submitted", lang))

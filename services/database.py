@@ -201,6 +201,9 @@ async def init_db():
         if "lang" not in existing_columns:
             await db.execute("ALTER TABLE applications ADD COLUMN lang TEXT NOT NULL DEFAULT 'uz'")
             logger.info("Migratsiya: 'lang' ustuni qo'shildi.")
+        if "ai_suspect_flags" not in existing_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN ai_suspect_flags TEXT NOT NULL DEFAULT '[]'")
+            logger.info("Migratsiya: 'ai_suspect_flags' ustuni qo'shildi.")
 
         # Birinchi marta ishga tushirilganda vakansiyalar jadvali bo'sh bo'lsa,
         # standart 3 ta namunaviy vakansiya bilan to'ldiramiz.
@@ -240,6 +243,7 @@ async def save_application(
     status: str,
     phone_number: str = "",
     lang: str = "uz",
+    ai_suspect_flags: Optional[list] = None,
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
@@ -248,8 +252,8 @@ async def save_application(
             INSERT INTO applications (
                 user_id, username, full_name, vacancy_key, vacancy_title,
                 answers, ai_scores, resume_file_id, video_file_id, status,
-                phone_number, lang, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                phone_number, lang, ai_suspect_flags, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -264,6 +268,7 @@ async def save_application(
                 status,
                 phone_number,
                 lang,
+                json.dumps(ai_suspect_flags or [], ensure_ascii=False),
                 created_at,
             ),
         )
@@ -309,6 +314,7 @@ async def get_application(app_id: int) -> Optional[dict]:
     app["answers"] = json.loads(app["answers"])
     app["ai_scores"] = json.loads(app["ai_scores"])
     app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
+    app["ai_suspect_flags"] = json.loads(app.get("ai_suspect_flags") or "[]")
     return app
 
 
@@ -330,6 +336,7 @@ async def get_pending_application_for_user(user_id: int) -> Optional[dict]:
     app["answers"] = json.loads(app["answers"])
     app["ai_scores"] = json.loads(app["ai_scores"])
     app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
+    app["ai_suspect_flags"] = json.loads(app.get("ai_suspect_flags") or "[]")
     return app
 
 
@@ -406,6 +413,7 @@ async def get_applications_for_vacancy(vacancy_key: str, limit: int = 300) -> li
         app["answers"] = json.loads(app["answers"])
         app["ai_scores"] = json.loads(app["ai_scores"])
         app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
+        app["ai_suspect_flags"] = json.loads(app.get("ai_suspect_flags") or "[]")
         apps.append(app)
     return apps
 
@@ -640,7 +648,9 @@ async def update_interview_settings(**fields):
 # ============================= STATISTIKA (admin bot) =============================
 
 # Nomzod uchun "yakuniy" hisoblanadigan holatlar (jarayon tugagan).
-_TERMINAL_REJECTED_STATUSES = {"rejected_hard_filter", "rejected_irrelevant", "declined"}
+_TERMINAL_REJECTED_STATUSES = {
+    "rejected_hard_filter", "rejected_irrelevant", "rejected_ai_generated", "declined",
+}
 
 
 async def get_overall_stats() -> dict:
@@ -660,6 +670,7 @@ async def get_overall_stats() -> dict:
         "declined_by_admin": by_status.get("declined", 0),
         "rejected_hard_filter": by_status.get("rejected_hard_filter", 0),
         "rejected_irrelevant": by_status.get("rejected_irrelevant", 0),
+        "rejected_ai_generated": by_status.get("rejected_ai_generated", 0),
         "rejected_total": rejected_total,
         "by_status": by_status,
     }

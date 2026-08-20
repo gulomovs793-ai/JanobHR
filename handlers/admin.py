@@ -93,6 +93,27 @@ async def _format_application_text(app: dict) -> str:
             flag_labels = [_RED_FLAG_LABELS.get(f, f) for f in aggregate["red_flags"]]
             lines.append("🚩 Bayroqlar: " + "; ".join(flag_labels))
 
+    # --- AI orqali yozilgan bo'lishi mumkin deb SHU JARAYON DAVOMIDA gumon qilingan
+    # savollar (hatto keyinroq to'g'irlab, to'g'ri javob bergan bo'lsa ham) — bu
+    # alohida ko'rsatiladi, chunki yakuniy ai_scores faqat OXIRGI (qabul qilingan)
+    # javoblarni saqlaydi, birinchi shubhali urinish haqidagi ma'lumot yo'qolmasligi
+    # uchun.
+    suspect_keys = app.get("ai_suspect_flags") or []
+    if suspect_keys and vacancy:
+        key_to_text = {q["key"]: q["text"] for q in build_questions(vacancy)}
+        total_ai_questions = len(expected_keys) or len(suspect_keys)
+        percent = round(100 * len(suspect_keys) / total_ai_questions) if total_ai_questions else 0
+        lines.append("")
+        lines.append(
+            f"🤖⚠️ <b>AI orqali yozilgan deb gumon qilingan: {len(suspect_keys)}/"
+            f"{total_ai_questions} savol (~{percent}%)</b>"
+        )
+        lines.append("(nomzod qayta so'ralganda tuzatgan bo'lishi mumkin, lekin bu shubha qayd etildi)")
+        for k in suspect_keys:
+            q_text = key_to_text.get(k, k)
+            short = q_text if len(q_text) <= 70 else q_text[:70] + "…"
+            lines.append(f"   • {short}")
+
     if app.get("selected_slot"):
         lines.append(f"📅 Nomzod tanlagan vaqt: {app['selected_slot']}")
 

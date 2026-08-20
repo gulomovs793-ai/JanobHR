@@ -134,6 +134,18 @@ TRANSLATIONS = {
             "Vaqt ajratganingiz uchun rahmat. Hozircha ushbu lavozim bo'yicha boshqa "
             "nomzodni tanladik. Kelajakda boshqa vakansiyalarimizni kuzatib boring!"
         ),
+        "ai_suspect_retry": (
+            "Javobingiz sun'iy intellekt (masalan ChatGPT) yordamida yozilgan bo'lishi "
+            "mumkin degan taxminimiz bor. 🤖\n\nIltimos, shu savolga o'z so'zlaringiz bilan, "
+            "shaxsiy tajribangizga asoslanib qayta javob bering:\n\n{question_text}"
+        ),
+        "ai_suspect_reject": (
+            "Kechirasiz, javoblaringiz sun'iy intellekt yordamida yozilgan bo'lishi ehtimoli "
+            "yuqori deb baholandi. ⚠️\n\nUshbu jarayon nomzodning shaxsiy bilim va tajribasini "
+            "baholashga qaratilgan, shuning uchun davom eta olmaymiz. Agar bu xato bo'lgan "
+            "deb hisoblasangiz, keyinroq /start orqali qaytadan, o'z so'zlaringiz bilan "
+            "urinib ko'rishingiz mumkin."
+        ),
     },
     "ru": {
         "greeting": (
@@ -247,6 +259,18 @@ TRANSLATIONS = {
         "decision_decline_text": (
             "Спасибо за уделённое время. На данный момент мы выбрали другого кандидата "
             "на эту позицию. Следите за нашими другими вакансиями в будущем!"
+        ),
+        "ai_suspect_retry": (
+            "Мы предполагаем, что ваш ответ мог быть написан с помощью искусственного "
+            "интеллекта (например, ChatGPT). 🤖\n\nПожалуйста, ответьте на этот вопрос ещё "
+            "раз своими словами, основываясь на личном опыте:\n\n{question_text}"
+        ),
+        "ai_suspect_reject": (
+            "Извините, мы с высокой вероятностью определили, что ваши ответы написаны с "
+            "помощью искусственного интеллекта. ⚠️\n\nЭтот процесс предназначен для оценки "
+            "личных знаний и опыта кандидата, поэтому мы не можем продолжить. Если считаете "
+            "это ошибкой, вы можете попробовать снова позже через /start, отвечая своими "
+            "словами."
         ),
     },
 }

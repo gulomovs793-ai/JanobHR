@@ -66,6 +66,7 @@ async def show_stats(callback: CallbackQuery):
         f"   • Admin tomonidan: {overall['declined_by_admin']}",
         f"   • Talabga javob bermadi: {overall['rejected_hard_filter']}",
         f"   • Mavzuga mos kelmadi: {overall['rejected_irrelevant']}",
+        f"   • AI orqali yozilgan deb topildi: {overall['rejected_ai_generated']}",
     ]
 
     if per_vacancy:

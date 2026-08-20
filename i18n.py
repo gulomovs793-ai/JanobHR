@@ -156,22 +156,8 @@ TRANSLATIONS = {
             "Iltimos, Telegram'dagi mikrofon tugmasini bosib ushlab turing, javobingizni "
             "gapiring, so'ng qo'yib yuboring."
         ),
-        "voice_transcribing": "🎙 Ovozli xabaringizni tinglayapman...",
-        "voice_transcription_failed": (
-            "Kechirasiz, ovozli xabaringizni tushuna olmadim. Iltimos, yana bir bor, "
-            "aniqroq va sokin joyda yozib yuboring — yoki xohlasangiz, javobingizni "
-            "matn ko'rinishida yozing."
-        ),
-        "voice_too_short": (
-            "Ovozli xabaringiz juda qisqa yoki tushunarsiz chiqdi. Iltimos, savolga "
-            "to'liqroq javob berib, qayta yuboring."
-        ),
-        "voice_transcript_preview": "🎙 Eshitganim:\n<i>«{transcript}»</i>",
-        "voice_quality_low_note": (
-            "Ovoz sifati past bo'lgani sabab, aniq tushuna olmadim — shuning uchun bu javob "
-            "alohida baholanmaydi (yaxshi ham, yomon ham emas), lekin qabul qilindi va "
-            "davom etamiz."
-        ),
+        "voice_received": "🎙 Ovozli javobingiz qabul qilindi. Rahmat!",
+        "voice_answer_placeholder": "🎙 (Ovozli javob — Admin panelida tinglash mumkin)",
     },
     "ru": {
         "greeting": (
@@ -307,21 +293,8 @@ TRANSLATIONS = {
             "🎙 На этот вопрос можно ответить только голосовым сообщением.\n\n"
             "Пожалуйста, зажмите кнопку микрофона в Telegram, скажите ответ и отпустите."
         ),
-        "voice_transcribing": "🎙 Слушаю ваше голосовое сообщение...",
-        "voice_transcription_failed": (
-            "Извините, не удалось распознать ваше голосовое сообщение. Пожалуйста, "
-            "запишите ещё раз, чётче и в тихом месте — или ответьте текстом."
-        ),
-        "voice_too_short": (
-            "Ваше голосовое сообщение слишком короткое или непонятное. Пожалуйста, "
-            "ответьте на вопрос более развёрнуто и отправьте ещё раз."
-        ),
-        "voice_transcript_preview": "🎙 Я услышал:\n<i>«{transcript}»</i>",
-        "voice_quality_low_note": (
-            "Из-за низкого качества звука я не смог точно распознать сказанное — поэтому "
-            "этот ответ не будет отдельно оцениваться (ни хорошо, ни плохо), но принят, "
-            "продолжаем дальше."
-        ),
+        "voice_received": "🎙 Ваш голосовой ответ принят. Спасибо!",
+        "voice_answer_placeholder": "🎙 (Голосовой ответ — можно прослушать в Админ-панели)",
     },
 }
 

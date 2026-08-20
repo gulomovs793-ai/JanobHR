@@ -150,6 +150,15 @@ async def notify_admins(app_id: int):
     builder.button(text="❌ Rad etish", callback_data=f"decision:reject:{app_id}")
     builder.adjust(2)
 
+    # Ovozli javoblar uchun, qaysi savolga tegishli ekanini caption'da ko'rsatish
+    # maqsadida savol matnlarini oldindan tayyorlab olamiz (barcha adminlar uchun bir marta).
+    voice_answers = app.get("voice_answers") or {}
+    voice_key_to_text: dict = {}
+    if voice_answers:
+        vacancy = await database.get_vacancy(app["vacancy_key"])
+        if vacancy:
+            voice_key_to_text = {q["key"]: q["text"] for q in build_questions(vacancy)}
+
     for admin_id in ADMIN_USER_IDS:
         try:
             # 1) Fayl (agar bo'lsa) — QISQA caption bilan, tugmasiz.
@@ -165,6 +174,23 @@ async def notify_admins(app_id: int):
                     video=app["video_file_id"],
                     caption=f"🎥 {app['full_name']} — {app['vacancy_title']}",
                 )
+
+            # 1.5) Ovozli javoblar — AI tomonidan baholanmaydi, shuning uchun
+            # audio to'g'ridan-to'g'ri shu yerda, shaxsan tinglab baholash uchun
+            # yuboriladi. Har biri qaysi savolga tegishli ekanini ko'rsatadi.
+            for key, file_id in voice_answers.items():
+                q_text = voice_key_to_text.get(key, key)
+                short_q = q_text if len(q_text) <= 250 else q_text[:250] + "…"
+                try:
+                    await admin_bot.send_voice(
+                        chat_id=admin_id,
+                        voice=file_id,
+                        caption=f"🎙 {app['full_name']} — {short_q}",
+                    )
+                except Exception:
+                    logger.exception(
+                        "Ovozli javobni adminga yuborib bo'lmadi (app_id=%s, key=%s).", app_id, key,
+                    )
 
             # 2) To'liq tahlil + qaror tugmalari.
             sent = await admin_bot.send_message(

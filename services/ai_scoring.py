@@ -205,42 +205,6 @@ async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
         return None
 
 
-_TRANSCRIPT_QUALITY_PROMPT = """Sen nutqni-matnga o'girish (STT) sifatini tekshiruvchisan. \
-Senga ovozli xabardan avtomatik ravishda matnga o'girilgan (transkripsiya qilingan) matn beriladi.
-
-Vazifang: bu matn TUSHUNARLI, izchil gap(lar) ekanligini, yoki nutqni-matnga o'girish xatosi \
-tufayli buzilgan, mantiqsiz so'zlar to'plami ekanligini aniqlash.
-
-"TUSHUNARSIZ" deb hisobla, FAQAT agar matn: bir-biriga bog'liq bo'lmagan, chalkash, ma'nosiz \
-so'z birikmalaridan iborat bo'lsa; jumla tuzilishi butunlay buzilgan, tushunib bo'lmaydigan \
-bo'lsa; yoki matn umuman odam tili emas, tasodifiy tovush bo'laklaridek ko'rinsa.
-
-Agar matnda birmuncha imlo xatolari yoki sheva xususiyatlari bo'lsa-da, UMUMAN nima haqida \
-gapirilayotgani tushunarli bo'lsa — "TUSHUNARLI" deb hisobla (nutqni-matnga o'girish ba'zi \
-so'zlarni biroz noaniq yozishi normal holat, bu haqiqiy muammo emas). Ikkilanib qolsang —
-"TUSHUNARLI" deb belgila (shubhadan foyda nomzodga berilsin).
-
-FAQAT bitta so'z bilan javob ber: TUSHUNARLI yoki TUSHUNARSIZ. Boshqa hech narsa yozma.
-"""
-
-
-async def check_transcript_quality(transcript: str) -> Optional[bool]:
-    """Ovozdan avtomatik matnga o'girilgan (transkripsiya qilingan) javob tushunarli/izchilmi,
-    yoki nutqni-matnga o'girish xatosi tufayli buzilgan bo'lishi mumkinmi — shuni tekshiradi.
-
-    True — tushunarli (baholash mumkin), False — tushunarsiz/buzilgan (bunday holda javobni
-    baholamaslik kerak — noto'g'ri transkripsiya sababli adolatsiz past ball berilmasligi
-    uchun). Hech qanday provayder ishlamasa None qaytadi (bunday holda ehtiyot yuzasidan
-    "tushunarli" deb hisoblanadi — asossiz o'tkazib yubormaslik uchun).
-    """
-    content = await _call_ai(_TRANSCRIPT_QUALITY_PROMPT, transcript, max_tokens=10)
-    if content is None:
-        return None
-    normalized = content.strip().upper()
-    if "TUSHUNARSIZ" in normalized:
-        return False
-    return True
-
 
 _RELEVANCE_SYSTEM_PROMPT = """Sen HR-botning kirish filtridasan. Vazifang — nomzodning \
 javobi berilgan savolga va lavozimga mazmunan aloqadormi yoki yo'qmi, shuni tekshirish.
@@ -302,13 +266,14 @@ Talablar:
    faqat kitobdan o'qib bilgan yoki tajribasini o'ylab topgan nomzodlarni ajratib olish.
 8. Savollar orasidan ENG MUHIM bittasini (ko'pi bilan ikkitasini) — odatda "scorecard"
    yoki "yutuq" turidagi savolni — "voice": true deb ham belgila. Bu savolga nomzod
-   OVOZLI xabar orqali javob berishi so'raladi (yozib emas, gapirib) — bu javobning
-   tabiiyroq, ishonchliroq va tayyorlab kelinmagan bo'lishini ta'minlaydi. "voice": true
-   FAQAT "ai_score": true bo'lgan savollarga qo'yilishi mumkin (oddiy faktik savollarga emas).
+   OVOZLI xabar orqali javob berishi MAJBURIY bo'ladi (yozib emas, gapirib). Bu javob
+   AI orqali baholanmaydi — audio fayl to'g'ridan-to'g'ri ish beruvchiga (adminga)
+   yuboriladi, u shaxsan tinglab baholaydi. Maqsad — tayyorlab, ChatGPT yordamida
+   yozib olingan javoblarni emas, jonli va tabiiy javobni olish.
 
 FAQAT quyidagi JSON massiv formatida javob ber, boshqa hech qanday matn yozma:
 [{{"key": "...", "text": "...", "hard_filter": true}}, {{"key": "...", "text": "...", "ai_score": true}}, \
-{{"key": "...", "text": "...", "ai_score": true, "voice": true}}, ...]
+{{"key": "...", "text": "...", "voice": true}}, ...]
 """
 
 
@@ -350,12 +315,13 @@ async def generate_questions(job_title: str, description: str, count: int = 9) -
             q = {"key": key, "text": text}
             if item.get("hard_filter"):
                 q["hard_filter"] = True
-            if item.get("ai_score"):
-                q["ai_score"] = True
-            # "voice" faqat ai_score bilan birga ma'noga ega (Scorecard/Behavioral
-            # savollar uchun) — xavfsizlik uchun shu shartni bu yerda ham qat'iy talab qilamiz.
-            if item.get("voice") and q.get("ai_score"):
+            if item.get("voice"):
+                # Ovozli savol AI orqali baholanmaydi (audio to'g'ridan-to'g'ri
+                # adminga yuboriladi) — shuning uchun "ai_score" bayrog'i bilan
+                # birga qo'yilmasligi kerak, hatto AI shunday taklif qilgan bo'lsa ham.
                 q["voice"] = True
+            elif item.get("ai_score"):
+                q["ai_score"] = True
             questions.append(q)
 
         return questions or None

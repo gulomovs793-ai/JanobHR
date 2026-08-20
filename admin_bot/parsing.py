@@ -5,8 +5,9 @@ MANUAL_FORMAT_HELP = (
     "Har bir qatorga bitta savol yozing. Qator oxiriga (ixtiyoriy) belgi qo'shishingiz mumkin:\n"
     "  <code>| filter</code> — bu savol majburiy filtr (salbiy javobda nomzod avtomatik rad etiladi)\n"
     "  <code>| score</code> — bu javob AI orqali chuqur tahlil qilinadi\n"
-    "  <code>| voice</code> — bu savolga nomzod OVOZLI xabar orqali javob berishi so'raladi "
-    "(AI tahlili bilan birga, ko'pi bilan 1-2 ta savolga qo'llang)\n\n"
+    "  <code>| voice</code> — bu savolga nomzod OVOZLI xabar orqali javob berishi MAJBURIY "
+    "(audio to'g'ridan-to'g'ri sizga yuboriladi, tinglab o'zingiz baholaysiz — AI tahlil "
+    "qilmaydi; ko'pi bilan 1-2 ta savolga qo'llang)\n\n"
     "Misol:\n"
     "<code>Tajribangiz bormi? (Ha/Yo'q) | filter\n"
     "Eng katta yutug'ingiz nima? | voice\n"
@@ -35,7 +36,6 @@ def parse_manual_questions(text: str) -> list[dict]:
             elif marker == "score":
                 ai_score = True
             elif marker == "voice":
-                ai_score = True
                 voice = True
 
         if not content:

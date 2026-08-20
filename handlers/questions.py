@@ -9,16 +9,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import MAX_ANSWER_CHARS
 from i18n import DEFAULT_LANG, t
 from services import database
-from services.ai_scoring import check_relevance, check_transcript_quality, score_answer
-from services.voice_transcription import transcribe_voice
+from services.ai_scoring import check_relevance, score_answer
 from states import ApplyForm
 from vacancies import is_negative_answer
 
 logger = logging.getLogger("janob_hr_bot")
 
 router = Router(name="questions")
-
-_MIN_TRANSCRIPT_CHARS = 5
 
 
 async def ask_current_question(message: Message, state: FSMContext):
@@ -73,6 +70,7 @@ async def _reject_and_save(
         status=status,
         lang=data.get("lang", DEFAULT_LANG),
         ai_suspect_flags=data.get("ai_suspect_flagged_keys", []),
+        voice_answers=data.get("voice_answers", {}),
     )
     await state.clear()
 
@@ -118,44 +116,33 @@ async def handle_text_answer(message: Message, state: FSMContext):
 
 @router.message(ApplyForm.answering_questions, F.voice)
 async def handle_voice_answer(message: Message, state: FSMContext):
-    """Ovozli xabarni matnga o'girib, keyin XUDDI ODDIY MATNLI JAVOB kabi
-    bir xil tahlil quvuridan o'tkazadi (aniqlik, ishonchlilik, mavzuga
-    doirlik — barchasi mavjud AI baholash tizimi orqali)."""
+    """Ovozli javobni HECH QANDAY tahlil qilmasdan (matnga o'girmasdan) — xom
+    audio fayl sifatida qabul qiladi. Fayl keyinroq Admin panelida to'g'ridan-
+    to'g'ri tinglash uchun yuboriladi — baho AI emas, insonning o'zi tomonidan
+    beriladi (bu ko'proq ishonchli, chunki nutqni-matnga o'girishga bog'liq emas)."""
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
+    idx = data["question_index"]
+    questions = data["vacancy_questions"]
+    q = questions[idx]
 
-    wait_msg = await message.answer(t("voice_transcribing", lang))
+    voice_answers = data.get("voice_answers", {})
+    voice_answers[q["key"]] = message.voice.file_id
 
-    try:
-        buffer = await message.bot.download(message.voice)
-        transcript = await transcribe_voice(buffer.read(), lang=lang)
-    except Exception:
-        logger.exception("Ovozli xabarni yuklab/transkripsiya qilib bo'lmadi.")
-        transcript = None
+    answers = data.get("answers", {})
+    answers[q["key"]] = t("voice_answer_placeholder", lang)
 
-    if not transcript or len(transcript.strip()) < _MIN_TRANSCRIPT_CHARS:
-        await wait_msg.edit_text(t("voice_transcription_failed", lang))
-        return
-
-    transcript = transcript.strip()
-    await wait_msg.edit_text(t("voice_transcript_preview", lang, transcript=transcript))
-
-    # Nutqni-matnga o'girish (STT) ba'zan o'zbek/rus nutqini noto'g'ri tanib olishi
-    # mumkin — bunday holda buzilgan matnni baholab, nomzodga adolatsiz past ball
-    # berib qo'ymaslik uchun, tushunarsiz chiqqan javoblarni UMUMAN baholamaymiz
-    # (na yaxshi, na yomon) — shunchaki qabul qilib, keyingi savolga o'tamiz.
-    quality_ok = await check_transcript_quality(transcript)
-    if quality_ok is False:
-        await message.answer(t("voice_quality_low_note", lang))
-
-    await _process_answer(message, state, transcript, skip_ai_score=(quality_ok is False))
+    await state.update_data(
+        voice_answers=voice_answers, answers=answers, question_index=idx + 1,
+        irrelevant_retry_count=0, ai_suspect_retry_count=0,
+    )
+    await message.answer(t("voice_received", lang))
+    await ask_current_question(message, state)
 
 
-async def _process_answer(
-    message: Message, state: FSMContext, answer_text: str, skip_ai_score: bool = False,
-):
-    """Matnli yoki ovozdan transkripsiya qilingan javobni tahlil qiladi. Ikkalasi
-    ham shu yerga (aynan bir xil mantiq orqali) yo'naltiriladi."""
+async def _process_answer(message: Message, state: FSMContext, answer_text: str):
+    """Matnli javobni tahlil qiladi (aniqlik, ishonchlilik, mavzuga doirlik —
+    mavjud AI baholash tizimi orqali)."""
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
     idx = data["question_index"]
@@ -178,7 +165,7 @@ async def _process_answer(
         ai_scores = data.get("ai_scores", {})
         answers[q["key"]] = answer_text
 
-        result = None if skip_ai_score else await score_answer(q["text"], answer_text)
+        result = await score_answer(q["text"], answer_text)
         if result is not None:
             ai_scores[q["key"]] = result
 
@@ -225,7 +212,7 @@ async def _process_answer(
     # --- Har bir javob uchun: mavzuga/kasbga aloqadormi degan tekshiruv ---
     relevant = True
     result = None
-    if q.get("ai_score") and not skip_ai_score:
+    if q.get("ai_score"):
         result = await score_answer(q["text"], answer_text)
         if result is not None:
             ai_scores[q["key"]] = result
@@ -382,6 +369,7 @@ async def complete_application(message: Message, state: FSMContext):
         status="pending",
         lang=lang,
         ai_suspect_flags=data.get("ai_suspect_flagged_keys", []),
+        voice_answers=data.get("voice_answers", {}),
     )
 
     await message.answer(t("application_submitted", lang))

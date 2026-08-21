@@ -65,7 +65,15 @@ async def receive_token(message: Message, state: FSMContext):
 
     token = message.text.strip()
 
-    existing = await database.get_tenant_by_token(token)
+    try:
+        existing = await database.get_tenant_by_token(token)
+    except Exception:
+        logger.exception("Bazani tekshirishda kutilmagan xato.")
+        await message.answer(
+            "⚠️ Texnik xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring."
+        )
+        return
+
     if existing:
         await message.answer(
             "Bu token allaqachon ro'yxatdan o'tgan. Agar bu xato deb hisoblasangiz, "
@@ -92,9 +100,16 @@ async def receive_token(message: Message, state: FSMContext):
     data = await state.get_data()
     admin_id = message.from_user.id
 
-    tenant_id = await database.create_tenant(
-        company_name=data["company_name"], bot_token=token, admin_user_ids=[admin_id],
-    )
+    try:
+        tenant_id = await database.create_tenant(
+            company_name=data["company_name"], bot_token=token, admin_user_ids=[admin_id],
+        )
+    except Exception:
+        logger.exception("Mijozni bazaga yozishda kutilmagan xato.")
+        await wait_msg.edit_text(
+            "⚠️ Texnik xatolik yuz berdi. Iltimos, birozdan so'ng /start bilan qayta urinib ko'ring."
+        )
+        return
 
     await wait_msg.edit_text(
         f"✅ Tabriklaymiz! <b>@{me.username}</b> boti muvaffaqiyatli ro'yxatdan o'tkazildi.\n\n"
@@ -130,6 +145,9 @@ async def wrong_token_type(message: Message, state: FSMContext):
 
 
 async def main():
+    from services import database
+
+    await database.init_db()
     bot = Bot(token=SETUP_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)

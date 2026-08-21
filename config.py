@@ -48,6 +48,10 @@ FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "")
 
 SQLITE_PATH = os.getenv("SQLITE_PATH", "data.db")
 
+# Ko'p mijozli (multi-tenant) webhook rejimi uchun — bu server tashqi dunyoga
+# qaysi manzil orqali ko'rinishini bildiradi (masalan Render xizmat manzili).
+WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
+
 # Bitta savolga javob uchun belgilar chegarasi. Nomzod bundan uzunroq yozsa,
 # bot qisqartirib qayta yozishni so'raydi (o'qish/AI tahlili qulay bo'lishi uchun).
 MAX_ANSWER_CHARS = int(os.getenv("MAX_ANSWER_CHARS", "800"))

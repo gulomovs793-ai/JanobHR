@@ -52,6 +52,12 @@ SQLITE_PATH = os.getenv("SQLITE_PATH", "data.db")
 # qaysi manzil orqali ko'rinishini bildiradi (masalan Render xizmat manzili).
 WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
 
+# Yangi mijozlar o'zini ro'yxatdan o'tkazadigan alohida "sozlash boti".
+SETUP_BOT_TOKEN = os.getenv("SETUP_BOT_TOKEN", "")
+
+# Yangi mijoz ro'yxatdan o'tganda, unga shaxsan xabar beriladigan asoschi ID'si.
+FOUNDER_USER_ID = int(os.getenv("FOUNDER_USER_ID", "0")) or None
+
 # Bitta savolga javob uchun belgilar chegarasi. Nomzod bundan uzunroq yozsa,
 # bot qisqartirib qayta yozishni so'raydi (o'qish/AI tahlili qulay bo'lishi uchun).
 MAX_ANSWER_CHARS = int(os.getenv("MAX_ANSWER_CHARS", "800"))

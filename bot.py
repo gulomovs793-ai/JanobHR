@@ -16,7 +16,7 @@ from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, BOT_TOKEN, SQLITE_PATH
 from services import bot_registry
 from services.database import init_db
 from services.storage import SQLiteStorage
-from handlers import start, vacancy, questions, files, sell, contact, resume_upfront
+from handlers import start, vacancy, questions, files, sell, contact, resume_upfront, create_bot
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger("janob_hr_bot")
@@ -60,6 +60,7 @@ def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     # ishlanadi (admin_bot/handlers_decisions.py), shuning uchun bu yerda yo'q.
     dp.include_router(sell.router)
     dp.include_router(start.router)
+    dp.include_router(create_bot.router)
     dp.include_router(vacancy.router)
     dp.include_router(resume_upfront.router)
     dp.include_router(questions.router)

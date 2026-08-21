@@ -42,7 +42,9 @@ TRANSLATIONS = {
             "👔 <b>Janob HR</b>\n\n🤖 AI asosidagi ishga qabul qiluvchi yordamchi.\n\n"
             "/start — vakansiyaga ariza topshirishni boshlash\n"
             "/cancel — joriy arizani bekor qilish\n"
-            "/help — shu xabarni ko'rsatish"
+            "/help — shu xabarni ko'rsatish\n\n"
+            "🚀 Sizga ham shunday bot kerakmi? /create_bot buyrug'ini yuboring — "
+            "o'z kompaniyangiz uchun shu tizimni sozlab beramiz."
         ),
         "vacancy_gone": "Bu vakansiya endi mavjud emas.",
         "vacancy_selected": "Siz tanladingiz: <b>{title}</b>",
@@ -115,7 +117,11 @@ TRANSLATIONS = {
         ),
         "wrong_phone_type": "Iltimos, telefon raqamingizni pastdagi tugma orqali yuboring yoki matn ko'rinishida yozing.",
         "contact_thanks": "Rahmat! ✅",
-        "application_submitted": "✅ Anketangiz qabul qilindi! Tez orada siz bilan bog'lanamiz. Rahmat!",
+        "application_submitted": (
+            "✅ Anketangiz qabul qilindi! Tez orada siz bilan bog'lanamiz. Rahmat!\n\n"
+            "🚀 <i>Aytgancha — bu botni yoqtirdingizmi? O'z kompaniyangiz uchun ham shunga "
+            "o'xshash AI-HR bot kerak bo'lsa, /create_bot buyrug'ini yuboring.</i>"
+        ),
         "no_slots_left": (
             "Barcha suhbat vaqtlari hozircha band bo'lib qoldi 🙏 Tashvishlanmang — "
             "operatorimiz tez orada siz bilan bog'lanib, individual vaqt belgilaydi."
@@ -181,7 +187,9 @@ TRANSLATIONS = {
             "👔 <b>Janob HR</b>\n\n🤖 Помощник по подбору персонала на основе ИИ.\n\n"
             "/start — начать подачу заявки на вакансию\n"
             "/cancel — отменить текущую заявку\n"
-            "/help — показать это сообщение"
+            "/help — показать это сообщение\n\n"
+            "🚀 Хотите такого же бота для своей компании? Отправьте /create_bot — "
+            "настроим эту систему для вас."
         ),
         "vacancy_gone": "Эта вакансия больше недоступна.",
         "vacancy_selected": "Вы выбрали: <b>{title}</b>",
@@ -253,7 +261,11 @@ TRANSLATIONS = {
         ),
         "wrong_phone_type": "Пожалуйста, отправьте номер телефона через кнопку ниже или обычным текстом.",
         "contact_thanks": "Спасибо! ✅",
-        "application_submitted": "✅ Ваша заявка принята! Мы скоро свяжемся с вами. Спасибо!",
+        "application_submitted": (
+            "✅ Ваша заявка принята! Мы скоро свяжемся с вами. Спасибо!\n\n"
+            "🚀 <i>Кстати — понравился этот бот? Если хотите такого же AI-HR бота для "
+            "своей компании, отправьте /create_bot.</i>"
+        ),
         "no_slots_left": (
             "Все время для собеседования пока занято 🙏 Не переживайте — наш оператор "
             "скоро свяжется с вами и назначит индивидуальное время."

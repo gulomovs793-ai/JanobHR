@@ -31,6 +31,19 @@ CREATE TABLE IF NOT EXISTS applications (
 );
 """
 
+_CREATE_TENANTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS tenants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_name TEXT NOT NULL,
+    bot_token TEXT NOT NULL UNIQUE,
+    bot_username TEXT,
+    admin_user_ids TEXT NOT NULL DEFAULT '[]',
+    referred_by_user_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL
+);
+"""
+
 _CREATE_VACANCIES_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS vacancies (
     key TEXT PRIMARY KEY,
@@ -170,6 +183,7 @@ async def init_db():
         await db.execute(_CREATE_VACANCIES_TABLE_SQL)
         await db.execute(_CREATE_INTERVIEW_SLOTS_TABLE_SQL)
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
+        await db.execute(_CREATE_TENANTS_TABLE_SQL)
 
         # Yengil migratsiya: eski (allaqachon mavjud) bazalarga yangi ustunlarni
         # xavfsiz qo'shib boramiz — CREATE TABLE IF NOT EXISTS eski jadvalni
@@ -758,3 +772,52 @@ async def get_vacancy_stats() -> list[dict]:
             entry["rejected"] += count
 
     return sorted(per_vacancy.values(), key=lambda e: -e["total"])
+
+
+# ============================= YANGI MIJOZLAR (o'z-o'zidan ro'yxatdan o'tish) =============================
+# Joriy botimizni sinab ko'rgan har qanday kishi shu yerdan o'ziga shu tizimni
+# buyurtma qilishi mumkin — kompaniya nomi va o'z bot tokenini yuborib.
+
+async def create_tenant(
+    company_name: str, bot_token: str, admin_user_ids: list[int], referred_by_user_id: int = None,
+) -> int:
+    created_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO tenants (company_name, bot_token, admin_user_ids, referred_by_user_id, "
+            "status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
+            (company_name, bot_token, json.dumps(admin_user_ids), referred_by_user_id, created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_tenant_by_token(bot_token: str) -> Optional[dict]:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM tenants WHERE bot_token = ?", (bot_token,))
+        row = await cursor.fetchone()
+    if not row:
+        return None
+    t = dict(row)
+    t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+    return t
+
+
+async def list_tenants(status: Optional[str] = None) -> list[dict]:
+    query = "SELECT * FROM tenants"
+    params = ()
+    if status:
+        query += " WHERE status = ?"
+        params = (status,)
+    query += " ORDER BY created_at DESC"
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(query, params)
+        rows = await cursor.fetchall()
+    result = []
+    for row in rows:
+        t = dict(row)
+        t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+        result.append(t)
+    return result

@@ -24,6 +24,12 @@ ADMIN_USER_IDS = {
     int(uid.strip()) for uid in os.getenv("ADMIN_USER_IDS", "").split(",") if uid.strip().isdigit()
 }
 
+# "O'z HR botingizni yarating" bo'limi orqali yangi buyurtma tushganda,
+# shaxsan xabar beriladigan asoschi ID'lari (bir nechta, vergul bilan).
+FOUNDER_USER_IDS = {
+    int(uid.strip()) for uid in os.getenv("FOUNDER_USER_ID", "").split(",") if uid.strip().isdigit()
+}
+
 AI_API_KEY = os.getenv("AI_API_KEY", "")
 AI_API_BASE = os.getenv("AI_API_BASE", "https://api.openai.com/v1")
 AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")

@@ -80,8 +80,7 @@ COMPANY_PITCH_IMAGE_URL = os.getenv("COMPANY_PITCH_IMAGE_URL", "")
 # ESKIRGAN: suhbat vaqtlari, sig'imi, manzil va intervyuchi kontakti endi
 # ma'lumotlar bazasida (Admin bot > 📅 Suhbat vaqtlari orqali) boshqariladi.
 
-if not BOT_TOKEN:
-    raise RuntimeError(
-        "BOT_TOKEN topilmadi. .env faylini .env.example asosida yarating va "
-        "BotFather'dan olingan tokenni kiriting."
-    )
+# ESLATMA: BOT_TOKEN majburiyligi tekshiruvi endi shu yerda emas, bot.py'ning
+# o'zida — chunki config.py endi bir nechta mustaqil kirish nuqtasi
+# (bot.py, setup_bot.py, webhook_app.py) tomonidan bo'lishiladi, va ularning
+# har biriga BOT_TOKEN shart emas.

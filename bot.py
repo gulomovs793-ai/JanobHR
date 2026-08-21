@@ -13,6 +13,12 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 
 from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, BOT_TOKEN, SQLITE_PATH
+
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "BOT_TOKEN topilmadi. .env faylini .env.example asosida yarating va "
+        "BotFather'dan olingan tokenni kiriting."
+    )
 from services import bot_registry
 from services.database import init_db
 from services.storage import SQLiteStorage

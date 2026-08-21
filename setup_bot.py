@@ -20,7 +20,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message
 
-from config import FOUNDER_USER_ID, SETUP_BOT_TOKEN
+from config import FOUNDER_USER_IDS, SETUP_BOT_TOKEN
 
 logger = logging.getLogger("janob_hr_setup")
 
@@ -109,20 +109,19 @@ async def receive_token(message: Message, state: FSMContext):
         tenant_id, data["company_name"], me.username,
     )
 
-    if FOUNDER_USER_ID:
-        try:
-            await message.bot.send_message(
-                chat_id=FOUNDER_USER_ID,
-                text=(
-                    f"🆕 <b>Yangi mijoz ro'yxatdan o'tdi</b>\n\n"
-                    f"№{tenant_id} — {data['company_name']}\n"
-                    f"Bot: @{me.username}\n"
-                    f"Admin Telegram ID: <code>{admin_id}</code>\n\n"
-                    "To'lov tushgach, boshqaruv panelidan faollashtiring."
-                ),
-            )
-        except Exception:
-            logger.exception("Asoschiga bildirishnoma yuborib bo'lmadi.")
+    if FOUNDER_USER_IDS:
+        notice_text = (
+            f"🆕 <b>Yangi mijoz ro'yxatdan o'tdi</b>\n\n"
+            f"№{tenant_id} — {data['company_name']}\n"
+            f"Bot: @{me.username}\n"
+            f"Admin Telegram ID: <code>{admin_id}</code>\n\n"
+            "To'lov tushgach, boshqaruv panelidan faollashtiring."
+        )
+        for founder_id in FOUNDER_USER_IDS:
+            try:
+                await message.bot.send_message(chat_id=founder_id, text=notice_text)
+            except Exception:
+                logger.exception("Asoschiga (id=%s) bildirishnoma yuborib bo'lmadi.", founder_id)
 
 
 @router.message(SetupForm.waiting_token)

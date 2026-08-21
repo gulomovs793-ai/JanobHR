@@ -55,8 +55,11 @@ WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
 # Yangi mijozlar o'zini ro'yxatdan o'tkazadigan alohida "sozlash boti".
 SETUP_BOT_TOKEN = os.getenv("SETUP_BOT_TOKEN", "")
 
-# Yangi mijoz ro'yxatdan o'tganda, unga shaxsan xabar beriladigan asoschi ID'si.
-FOUNDER_USER_ID = int(os.getenv("FOUNDER_USER_ID", "0")) or None
+# Yangi mijoz ro'yxatdan o'tganda, shaxsan xabar beriladigan asoschi ID'lari
+# (bir nechta bo'lishi mumkin, vergul bilan ajratilgan).
+FOUNDER_USER_IDS = {
+    int(uid.strip()) for uid in os.getenv("FOUNDER_USER_ID", "").split(",") if uid.strip().isdigit()
+}
 
 # Bitta savolga javob uchun belgilar chegarasi. Nomzod bundan uzunroq yozsa,
 # bot qisqartirib qayta yozishni so'raydi (o'qish/AI tahlili qulay bo'lishi uchun).

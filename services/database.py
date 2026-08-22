@@ -4,7 +4,7 @@ Har bir anketa (application) bitta qatorda saqlanadi.
 """
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import aiosqlite
@@ -79,6 +79,29 @@ CREATE TABLE IF NOT EXISTS interview_settings (
     interviewer_name TEXT,
     interviewer_phone TEXT,
     notes TEXT
+);
+"""
+
+_CREATE_PAYMENT_ORDERS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS payment_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    order_code TEXT NOT NULL UNIQUE,
+    base_amount INTEGER NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'awaiting_payment',
+    notification_text TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    decided_at TEXT
+);
+"""
+
+_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS payment_notifications_seen (
+    hash TEXT PRIMARY KEY,
+    amount INTEGER,
+    received_at TEXT NOT NULL
 );
 """
 
@@ -185,6 +208,8 @@ async def init_db():
         await db.execute(_CREATE_VACANCIES_TABLE_SQL)
         await db.execute(_CREATE_INTERVIEW_SLOTS_TABLE_SQL)
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
+        await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
+        await db.execute(_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL)
         await db.execute(_CREATE_TENANTS_TABLE_SQL)
 
         cursor = await db.execute("PRAGMA table_info(tenants)")
@@ -840,3 +865,114 @@ async def list_tenants(status: Optional[str] = None) -> list[dict]:
         t["admin_user_ids"] = json.loads(t["admin_user_ids"])
         result.append(t)
     return result
+# ============================= TOLOV BUYURTMALARI =============================
+
+async def create_payment_order(
+    tenant_id: int, order_code: str, base_amount: int, amount: int, expires_at: str,
+) -> int:
+    created_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO payment_orders (tenant_id, order_code, base_amount, amount, "
+            "status, created_at, expires_at) VALUES (?, ?, ?, ?, 'awaiting_payment', ?, ?)",
+            (tenant_id, order_code, base_amount, amount, created_at, expires_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def cancel_open_payment_orders_for_tenant(tenant_id: int) -> None:
+    """Mijoz yangi buyurtma yaratmoqchi bo'lsa, avvalgi ochiq (hali
+    to'lanmagan) buyurtmalarini bekor qiladi — bir vaqtda faqat bitta
+    ochiq buyurtma bo'lishi kerak."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE payment_orders SET status = 'cancelled' "
+            "WHERE tenant_id = ? AND status = 'awaiting_payment'",
+            (tenant_id,),
+        )
+        await db.commit()
+
+
+async def get_open_payment_order_by_amount(amount: int) -> Optional[dict]:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM payment_orders WHERE status = 'awaiting_payment' AND amount = ? LIMIT 1",
+            (amount,),
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def get_open_payment_orders_by_amount(amount: int) -> list[dict]:
+    """Muddati o'tmagan, aynan shu summali ochiq buyurtmalarni qaytaradi."""
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM payment_orders WHERE status = 'awaiting_payment' "
+            "AND amount = ? AND expires_at > ?",
+            (amount, now),
+        )
+        rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_open_payment_orders() -> list[dict]:
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM payment_orders WHERE status = 'awaiting_payment' AND expires_at > ?",
+            (now,),
+        )
+        rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def try_approve_payment_order(order_id: int) -> bool:
+    """Atomik tasdiqlash — parallel kelgan ikkinchi bildirishnoma bir xil
+    buyurtmani ikki marta faollashtira olmasligi uchun."""
+    decided_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE payment_orders SET status = 'approved', decided_at = ? "
+            "WHERE id = ? AND status = 'awaiting_payment'",
+            (decided_at, order_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def mark_payment_order_needs_review(order_id: int, notification_text: str) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE payment_orders SET status = 'needs_review', notification_text = ? WHERE id = ?",
+            (notification_text, order_id),
+        )
+        await db.commit()
+
+
+async def was_notification_seen_recently(text_hash: str, minutes: int = 30) -> bool:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT received_at FROM payment_notifications_seen WHERE hash = ?", (text_hash,),
+        )
+        row = await cursor.fetchone()
+    if not row:
+        return False
+    seen_at = datetime.fromisoformat(row["received_at"])
+    return (datetime.now(timezone.utc) - seen_at) < timedelta(minutes=minutes)
+
+
+async def record_seen_notification(text_hash: str, amount: int) -> None:
+    received_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "INSERT INTO payment_notifications_seen (hash, amount, received_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(hash) DO UPDATE SET amount = excluded.amount, received_at = excluded.received_at",
+            (text_hash, amount, received_at),
+        )
+        await db.commit()

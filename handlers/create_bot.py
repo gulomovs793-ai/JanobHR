@@ -154,13 +154,31 @@ async def receive_admin_token(message: Message, state: FSMContext):
         return
 
     await wait_msg.edit_text(
-        f"✅ Tabriklaymiz! Ikkala botingiz ham tayyor:\n\n"
+        f"✅ Ikkala botingiz ham tayyor:\n\n"
         f"1️⃣ Nomzod-bot: @{data['candidate_bot_username']}\n"
         f"2️⃣ Admin panel-bot: @{admin_username}\n\n"
-        f"Buyurtma raqamingiz: <code>{tenant_id}</code>\n\n"
-        "To'lov va faollashtirish bo'yicha tez orada siz bilan bog'lanamiz."
+        f"Buyurtma raqamingiz: <code>{tenant_id}</code>"
     )
     await state.clear()
+
+    # --- To'lov ko'rsatmasi: noyob summa bilan, darhol ---
+    from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
+    from services.payment_automation import create_payment_order
+
+    if PAYMENT_CARD_NUMBER:
+        order = await create_payment_order(tenant_id)
+        card_digits = PAYMENT_CARD_NUMBER.replace(" ", "")
+        await message.answer(
+            f"<b>To'lov ma'lumotlari:</b>\n\n"
+            f"💳 Karta: <code>{card_digits}</code>\n"
+            f"👤 {PAYMENT_CARD_HOLDER}\n"
+            f"💰 Summa: <code>{order['amount']}</code> so'm\n\n"
+            f"⚠️ <b>DIQQAT!</b> Aynan <code>{order['amount']}</code> so'm o'tkazing — "
+            "1 so'mga ham ko'p yoki kam bo'lmasin, aks holda to'lov avtomatik tasdiqlanmaydi.\n\n"
+            "🤖 To'lov tushishi bilan botlaringiz avtomatik faollashadi (odatda 1 daqiqagacha)."
+        )
+    else:
+        await message.answer("To'lov va faollashtirish bo'yicha tez orada siz bilan bog'lanamiz.")
 
     logger.info(
         "Joriy bot orqali yangi buyurtma: id=%s, kompaniya=%s, nomzod-bot=@%s, admin-bot=@%s",

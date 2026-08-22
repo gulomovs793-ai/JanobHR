@@ -1,6 +1,11 @@
 """
-Janob HR Bot — ma'lumotlar bazasi qatlami (SQLite, aiosqlite).
-Har bir anketa (application) bitta qatorda saqlanadi.
+Janob HR Bot — ma'lumotlar bazasi qatlami (SQLite, aiosqlite), KO'P MIJOZLI (multi-tenant).
+
+MUHIM XAVFSIZLIK QOIDASI: applications, vacancies, interview_slots va
+interview_settings jadvallariga tegishli DEYARLI HAR BIR funksiya `tenant_id`ni
+BIRINCHI parametr sifatida qabul qiladi va SQL so'rovida albatta ishlatadi —
+shu orqali bitta mijoz boshqasining ma'lumotini HECH QACHON ko'ra olmasligi
+ta'minlanadi. Yangi funksiya qo'shganda ham shu qoidaga rioya qilish SHART.
 """
 import json
 import logging
@@ -13,9 +18,24 @@ from config import SQLITE_PATH
 
 logger = logging.getLogger("janob_hr_bot")
 
+_CREATE_TENANTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS tenants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_name TEXT NOT NULL,
+    bot_token TEXT NOT NULL UNIQUE,
+    bot_username TEXT,
+    admin_bot_token TEXT UNIQUE,
+    admin_bot_username TEXT,
+    admin_user_ids TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL
+);
+"""
+
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS applications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     username TEXT,
     full_name TEXT,
@@ -26,41 +46,38 @@ CREATE TABLE IF NOT EXISTS applications (
     resume_file_id TEXT,
     video_file_id TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
-    admin_message_id INTEGER,
-    created_at TEXT NOT NULL
-);
-"""
-
-_CREATE_TENANTS_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS tenants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    company_name TEXT NOT NULL,
-    bot_token TEXT NOT NULL UNIQUE,
-    bot_username TEXT,
-    admin_bot_token TEXT UNIQUE,
-    admin_bot_username TEXT,
-    admin_user_ids TEXT NOT NULL DEFAULT '[]',
-    referred_by_user_id INTEGER,
-    status TEXT NOT NULL DEFAULT 'pending',
+    admin_messages TEXT NOT NULL DEFAULT '[]',
+    selected_slot TEXT,
+    phone_number TEXT,
+    lang TEXT NOT NULL DEFAULT 'uz',
+    ai_suspect_flags TEXT NOT NULL DEFAULT '[]',
+    voice_answers TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL
 );
 """
 
 _CREATE_VACANCIES_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS vacancies (
-    key TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    key TEXT NOT NULL,
     title TEXT NOT NULL,
+    title_ru TEXT,
     reject_message TEXT NOT NULL,
+    reject_message_ru TEXT,
     questions TEXT NOT NULL,
+    questions_ru TEXT,
     resume_required INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    UNIQUE(tenant_id, key)
 );
 """
 
 _CREATE_INTERVIEW_SLOTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS interview_slots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
     label TEXT NOT NULL,
     capacity INTEGER NOT NULL DEFAULT 1,
     active INTEGER NOT NULL DEFAULT 1,
@@ -68,11 +85,11 @@ CREATE TABLE IF NOT EXISTS interview_slots (
 );
 """
 
-# Suhbat manzili, intervyuchi kontakti va eslatma matni — bitta qatorli
-# (id=1) global sozlama jadvali. Barcha vakansiyalar uchun umumiy.
+# Suhbat manzili, intervyuchi kontakti va eslatma matni — MIJOZ BOSHIGA bitta
+# qator (tenant_id = PRIMARY KEY).
 _CREATE_INTERVIEW_SETTINGS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS interview_settings (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
+    tenant_id INTEGER PRIMARY KEY,
     location_text TEXT,
     location_lat REAL,
     location_lng REAL,
@@ -82,6 +99,9 @@ CREATE TABLE IF NOT EXISTS interview_settings (
 );
 """
 
+# To'lov buyurtmalari — har biriga noyob summa beriladi (asosiy narx +
+# tasodifiy 1-200 so'm), shu orqali bank bildirishnomasi qaysi mijozga
+# tegishli ekani aniqlanadi.
 _CREATE_PAYMENT_ORDERS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS payment_orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,6 +117,7 @@ CREATE TABLE IF NOT EXISTS payment_orders (
 );
 """
 
+# Bank bildirishnomalarini takror qayta ishlamaslik uchun (30 daqiqalik deduplikatsiya).
 _CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS payment_notifications_seen (
     hash TEXT PRIMARY KEY,
@@ -105,13 +126,11 @@ CREATE TABLE IF NOT EXISTS payment_notifications_seen (
 );
 """
 
-# Birinchi marta ishga tushirilganda (vacancies jadvali bo'sh bo'lsa) standart
-# 3 ta namunaviy vakansiya bilan to'ldiramiz — bular oddiy boshlang'ich nuqta,
-# admin bot orqali istalganini tahrirlash, o'chirish yoki yangisini qo'shish mumkin.
+# Yangi mijoz qo'shilganda, unga boshlang'ich nuqta sifatida urug'lanadigan
+# 3 ta namunaviy vakansiya (avvalgi bir-mijozli tizimdan meros).
 _DEFAULT_VACANCIES = [
     {
-        "key": "sales",
-        "title": "🧑‍💼 Sotuv menejeri",
+        "key": "sales", "title": "🧑‍💼 Sotuv menejeri",
         "reject_message": (
             "Anketangiz uchun rahmat! Hozircha ushbu tajriba talablarimizga to'liq mos "
             "kelmayapti, shu sababli ushbu bosqichda davom eta olmaymiz. "
@@ -141,8 +160,7 @@ _DEFAULT_VACANCIES = [
         ],
     },
     {
-        "key": "designer",
-        "title": "🎨 Dizayner",
+        "key": "designer", "title": "🎨 Dizayner",
         "reject_message": (
             "Anketangiz uchun rahmat! Hozircha tajribangiz talablarimizga mos kelmayapti. "
             "Portfolioingizni boyitib, keyinroq qayta murojaat qilishingiz mumkin. Omad! 🙏"
@@ -168,8 +186,7 @@ _DEFAULT_VACANCIES = [
         ],
     },
     {
-        "key": "smm",
-        "title": "📱 SMM mutaxassis",
+        "key": "smm", "title": "📱 SMM mutaxassis",
         "reject_message": (
             "Anketangiz uchun rahmat! Hozircha tajribangiz talablarimizga mos kelmayapti. "
             "Boshqa vakansiyalarimizni kuzatib boring — omad tilaymiz! 🙏"
@@ -202,281 +219,334 @@ _DEFAULT_VACANCIES = [
 ]
 
 
+async def _migrate_to_multi_tenant(db) -> None:
+    """Eski (bir-mijozli) jonli bazani ko'p-mijozli sxemaga XAVFSIZ ko'chiradi.
+
+    Faqat BIR MARTA ishlaydi (`applications`da `tenant_id` ustuni yo'q bo'lsagina
+    ishga tushadi) va MAVJUD HAQIQIY MA'LUMOTNI (arizalar, vakansiyalar,
+    sozlamalar) yo'qotmasdan, ularni "asoschi" nomli birinchi tenant'ga
+    biriktiradi — shunda jonli bot xuddi avvalgidek ishlashda davom etadi,
+    faqat endi "ko'p mijozli tizimning bitta mijozi" sifatida.
+    """
+    from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, BOT_TOKEN
+
+    cursor = await db.execute("PRAGMA table_info(applications)")
+    app_columns = {row[1] for row in await cursor.fetchall()}
+    if "tenant_id" in app_columns:
+        return  # Allaqachon ko'chirilgan — hech narsa qilmaymiz.
+
+    if not BOT_TOKEN:
+        logger.warning("BOT_TOKEN sozlanmagan — ko'p-mijozli migratsiya o'tkazib yuborildi.")
+        return
+
+    logger.info("=== Bir-mijozli bazadan ko'p-mijozli sxemaga migratsiya boshlandi ===")
+
+    cursor = await db.execute("SELECT id FROM tenants WHERE bot_token = ?", (BOT_TOKEN,))
+    row = await cursor.fetchone()
+    if row:
+        founder_id = row[0]
+    else:
+        created_at = datetime.now(timezone.utc).isoformat()
+        cursor = await db.execute(
+            "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
+            "status, created_at) VALUES (?, ?, ?, ?, 'active', ?)",
+            ("Asosiy kompaniya", BOT_TOKEN, ADMIN_BOT_TOKEN or "",
+             json.dumps(list(ADMIN_USER_IDS)), created_at),
+        )
+        founder_id = cursor.lastrowid
+    logger.info("Asoschi mijoz (tenant_id=%s) tayyor.", founder_id)
+
+    # --- applications: ustun qo'shish yetarli (PRIMARY KEY o'zgarmagan) ---
+    await db.execute("ALTER TABLE applications ADD COLUMN tenant_id INTEGER")
+    await db.execute("UPDATE applications SET tenant_id = ? WHERE tenant_id IS NULL", (founder_id,))
+    logger.info("Migratsiya: applications -> tenant_id qo'shildi va to'ldirildi.")
+
+    # --- vacancies: PRIMARY KEY o'zgargani uchun jadval to'liq qayta quriladi ---
+    await db.execute("ALTER TABLE vacancies RENAME TO vacancies_old")
+    await db.execute(_CREATE_VACANCIES_TABLE_SQL)
+    await db.execute(
+        """
+        INSERT INTO vacancies (tenant_id, key, title, title_ru, reject_message,
+            reject_message_ru, questions, questions_ru, resume_required, active, created_at)
+        SELECT ?, key, title, title_ru, reject_message, reject_message_ru, questions,
+            questions_ru, resume_required, active, created_at
+        FROM vacancies_old
+        """,
+        (founder_id,),
+    )
+    await db.execute("DROP TABLE vacancies_old")
+    logger.info("Migratsiya: vacancies qayta qurildi (mavjud vakansiyalar saqlab qolindi).")
+
+    # --- interview_slots: ustun qo'shish yetarli ---
+    await db.execute("ALTER TABLE interview_slots ADD COLUMN tenant_id INTEGER")
+    await db.execute("UPDATE interview_slots SET tenant_id = ? WHERE tenant_id IS NULL", (founder_id,))
+    logger.info("Migratsiya: interview_slots -> tenant_id qo'shildi.")
+
+    # --- interview_settings: PRIMARY KEY o'zgargani uchun qayta quriladi ---
+    await db.execute("ALTER TABLE interview_settings RENAME TO interview_settings_old")
+    await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
+    await db.execute(
+        """
+        INSERT INTO interview_settings (tenant_id, location_text, location_lat, location_lng,
+            interviewer_name, interviewer_phone, notes)
+        SELECT ?, location_text, location_lat, location_lng, interviewer_name,
+            interviewer_phone, notes
+        FROM interview_settings_old WHERE id = 1
+        """,
+        (founder_id,),
+    )
+    await db.execute("DROP TABLE interview_settings_old")
+    logger.info("Migratsiya: interview_settings qayta qurildi.")
+
+    logger.info("=== Migratsiya muvaffaqiyatli yakunlandi (asoschi tenant_id=%s) ===", founder_id)
+
+
 async def init_db():
+    """Jadval strukturasini yaratadi VA (agar kerak bo'lsa) eski bir-mijozli
+    jonli bazani ko'p-mijozli sxemaga xavfsiz ko'chiradi."""
     async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(_CREATE_TENANTS_TABLE_SQL)
         await db.execute(_CREATE_TABLE_SQL)
         await db.execute(_CREATE_VACANCIES_TABLE_SQL)
         await db.execute(_CREATE_INTERVIEW_SLOTS_TABLE_SQL)
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL)
-        await db.execute(_CREATE_TENANTS_TABLE_SQL)
-
-        cursor = await db.execute("PRAGMA table_info(tenants)")
-        tenant_columns = {row[1] for row in await cursor.fetchall()}
-        if "admin_bot_token" not in tenant_columns:
-            await db.execute("ALTER TABLE tenants ADD COLUMN admin_bot_token TEXT")
-            logger.info("Migratsiya: 'admin_bot_token' ustuni qo'shildi.")
-        if "admin_bot_username" not in tenant_columns:
-            await db.execute("ALTER TABLE tenants ADD COLUMN admin_bot_username TEXT")
-            logger.info("Migratsiya: 'admin_bot_username' ustuni qo'shildi.")
-
-        # Yengil migratsiya: eski (allaqachon mavjud) bazalarga yangi ustunlarni
-        # xavfsiz qo'shib boramiz — CREATE TABLE IF NOT EXISTS eski jadvalni
-        # o'zgartirmaydi, shuning uchun buni qo'lda qilamiz.
-        cursor = await db.execute("PRAGMA table_info(applications)")
-        existing_columns = {row[1] for row in await cursor.fetchall()}
-        if "selected_slot" not in existing_columns:
-            await db.execute("ALTER TABLE applications ADD COLUMN selected_slot TEXT")
-            logger.info("Migratsiya: 'selected_slot' ustuni qo'shildi.")
-        if "phone_number" not in existing_columns:
-            await db.execute("ALTER TABLE applications ADD COLUMN phone_number TEXT")
-            logger.info("Migratsiya: 'phone_number' ustuni qo'shildi.")
-        if "admin_messages" not in existing_columns:
-            await db.execute("ALTER TABLE applications ADD COLUMN admin_messages TEXT NOT NULL DEFAULT '[]'")
-            logger.info("Migratsiya: 'admin_messages' ustuni qo'shildi.")
-
-        # Vakansiya savollari/rad etish xabarining rus tiliga tarjima keshi —
-        # rus tilida so'ragan BIRINCHI nomzodda AI orqali tarjima qilinadi va
-        # shu ustunlarga saqlanadi, keyingi nomzodlar uchun qayta tarjima
-        # qilinmaydi.
-        cursor = await db.execute("PRAGMA table_info(vacancies)")
-        vacancy_columns = {row[1] for row in await cursor.fetchall()}
-        if "questions_ru" not in vacancy_columns:
-            await db.execute("ALTER TABLE vacancies ADD COLUMN questions_ru TEXT")
-            logger.info("Migratsiya: 'questions_ru' ustuni qo'shildi.")
-        if "reject_message_ru" not in vacancy_columns:
-            await db.execute("ALTER TABLE vacancies ADD COLUMN reject_message_ru TEXT")
-            logger.info("Migratsiya: 'reject_message_ru' ustuni qo'shildi.")
-        if "title_ru" not in vacancy_columns:
-            await db.execute("ALTER TABLE vacancies ADD COLUMN title_ru TEXT")
-            logger.info("Migratsiya: 'title_ru' ustuni qo'shildi.")
-        if "lang" not in existing_columns:
-            await db.execute("ALTER TABLE applications ADD COLUMN lang TEXT NOT NULL DEFAULT 'uz'")
-            logger.info("Migratsiya: 'lang' ustuni qo'shildi.")
-        if "ai_suspect_flags" not in existing_columns:
-            await db.execute("ALTER TABLE applications ADD COLUMN ai_suspect_flags TEXT NOT NULL DEFAULT '[]'")
-            logger.info("Migratsiya: 'ai_suspect_flags' ustuni qo'shildi.")
-        if "voice_answers" not in existing_columns:
-            await db.execute("ALTER TABLE applications ADD COLUMN voice_answers TEXT NOT NULL DEFAULT '{}'")
-            logger.info("Migratsiya: 'voice_answers' ustuni qo'shildi.")
-
-        # Birinchi marta ishga tushirilganda vakansiyalar jadvali bo'sh bo'lsa,
-        # standart 3 ta namunaviy vakansiya bilan to'ldiramiz.
-        cursor = await db.execute("SELECT COUNT(*) FROM vacancies")
-        (vacancy_count,) = await cursor.fetchone()
-        if vacancy_count == 0:
-            created_at = datetime.now(timezone.utc).isoformat()
-            for v in _DEFAULT_VACANCIES:
-                await db.execute(
-                    """
-                    INSERT INTO vacancies (key, title, reject_message, questions, resume_required, active, created_at)
-                    VALUES (?, ?, ?, ?, ?, 1, ?)
-                    """,
-                    (
-                        v["key"], v["title"], v["reject_message"],
-                        json.dumps(v["questions"], ensure_ascii=False),
-                        int(v["resume_required"]), created_at,
-                    ),
-                )
-            logger.info("Migratsiya: %d ta standart vakansiya urug'landi.", len(_DEFAULT_VACANCIES))
-
         await db.commit()
-    logger.info("Ma'lumotlar bazasi tayyor: %s", SQLITE_PATH)
+
+        await _migrate_to_multi_tenant(db)
+        await db.commit()
+    logger.info("Ma'lumotlar bazasi (ko'p mijozli) tayyor: %s", SQLITE_PATH)
+
+
+# ============================= MIJOZLAR (tenants) =============================
+
+async def create_tenant(
+    company_name: str, bot_token: str, admin_bot_token: str, admin_user_ids: list[int],
+) -> int:
+    """Yangi mijoz yaratadi va unga standart 3 ta namunaviy vakansiyani urug'laydi.
+    Ikkita alohida token oladi: `bot_token` — nomzod-bot uchun, `admin_bot_token` —
+    faqat shu mijozning administratorlari ishlatadigan Admin panel-bot uchun."""
+    created_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
+            "status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
+            (company_name, bot_token, admin_bot_token, json.dumps(admin_user_ids), created_at),
+        )
+        tenant_id = cursor.lastrowid
+
+        for v in _DEFAULT_VACANCIES:
+            await db.execute(
+                "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
+                "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+                (tenant_id, v["key"], v["title"], v["reject_message"],
+                 json.dumps(v["questions"], ensure_ascii=False), int(v["resume_required"]), created_at),
+            )
+        await db.commit()
+    logger.info("Yangi mijoz yaratildi: id=%s, %s", tenant_id, company_name)
+    return tenant_id
+
+
+async def get_tenant(tenant_id: int) -> Optional[dict]:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,))
+        row = await cursor.fetchone()
+    if not row:
+        return None
+    t = dict(row)
+    t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+    return t
+
+
+async def get_tenant_by_role_token(token: str) -> Optional[tuple[dict, str]]:
+    """Berilgan token — nomzod-bot yoki Admin panel-bot tokenlaridan qaysi biriga
+    mos kelishini tekshiradi. Topilsa (mijoz, rol) qaytaradi, rol — "candidate"
+    yoki "admin". Hech biriga mos kelmasa None qaytaradi."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM tenants WHERE bot_token = ?", (token,))
+        row = await cursor.fetchone()
+        if row:
+            t = dict(row)
+            t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+            return t, "candidate"
+
+        cursor = await db.execute("SELECT * FROM tenants WHERE admin_bot_token = ?", (token,))
+        row = await cursor.fetchone()
+        if row:
+            t = dict(row)
+            t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+            return t, "admin"
+
+    return None
+
+
+async def get_tenant_by_token(bot_token: str) -> Optional[dict]:
+    """ESKIRGAN: `get_tenant_by_role_token`ni ishlating. Faqat orqaga moslik
+    uchun (masalan `/create_bot`da "bu token allaqachon band" tekshiruvi
+    ikkala ustunni ham qamrab olishi kerak — shu funksiya endi ikkalasini
+    ham tekshiradi)."""
+    result = await get_tenant_by_role_token(bot_token)
+    return result[0] if result else None
+
+
+async def list_tenants(status: Optional[str] = None) -> list[dict]:
+    query = "SELECT * FROM tenants"
+    params = ()
+    if status:
+        query += " WHERE status = ?"
+        params = (status,)
+    query += " ORDER BY created_at DESC"
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(query, params)
+        rows = await cursor.fetchall()
+    result = []
+    for row in rows:
+        t = dict(row)
+        t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+        result.append(t)
+    return result
+
+
+async def update_tenant_status(tenant_id: int, status: str, bot_username: Optional[str] = None) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        if bot_username is not None:
+            await db.execute(
+                "UPDATE tenants SET status = ?, bot_username = ? WHERE id = ?",
+                (status, bot_username, tenant_id),
+            )
+        else:
+            await db.execute("UPDATE tenants SET status = ? WHERE id = ?", (status, tenant_id))
+        await db.commit()
+
+
+async def set_admin_bot_username(tenant_id: int, username: str) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute("UPDATE tenants SET admin_bot_username = ? WHERE id = ?", (username, tenant_id))
+        await db.commit()
+
+
+# ============================= ARIZALAR (applications) =============================
+
+def _parse_app_row(row) -> dict:
+    app = dict(row)
+    app["answers"] = json.loads(app["answers"])
+    app["ai_scores"] = json.loads(app["ai_scores"])
+    app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
+    app["ai_suspect_flags"] = json.loads(app.get("ai_suspect_flags") or "[]")
+    app["voice_answers"] = json.loads(app.get("voice_answers") or "{}")
+    return app
 
 
 async def save_application(
-    *,
-    user_id: int,
-    username: str,
-    full_name: str,
-    vacancy_key: str,
-    vacancy_title: str,
-    answers: dict,
-    ai_scores: dict,
-    resume_file_id: Optional[str],
-    video_file_id: Optional[str],
-    status: str,
-    phone_number: str = "",
-    lang: str = "uz",
-    ai_suspect_flags: Optional[list] = None,
-    voice_answers: Optional[dict] = None,
+    *, tenant_id: int, user_id: int, username: str, full_name: str,
+    vacancy_key: str, vacancy_title: str, answers: dict, ai_scores: dict,
+    resume_file_id: Optional[str], video_file_id: Optional[str], status: str,
+    phone_number: str = "", lang: str = "uz",
+    ai_suspect_flags: Optional[list] = None, voice_answers: Optional[dict] = None,
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
             """
             INSERT INTO applications (
-                user_id, username, full_name, vacancy_key, vacancy_title,
+                tenant_id, user_id, username, full_name, vacancy_key, vacancy_title,
                 answers, ai_scores, resume_file_id, video_file_id, status,
                 phone_number, lang, ai_suspect_flags, voice_answers, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                user_id,
-                username,
-                full_name,
-                vacancy_key,
-                vacancy_title,
-                json.dumps(answers, ensure_ascii=False),
-                json.dumps(ai_scores, ensure_ascii=False),
-                resume_file_id,
-                video_file_id,
-                status,
-                phone_number,
-                lang,
-                json.dumps(ai_suspect_flags or [], ensure_ascii=False),
-                json.dumps(voice_answers or {}, ensure_ascii=False),
-                created_at,
-            ),
+            (tenant_id, user_id, username, full_name, vacancy_key, vacancy_title,
+             json.dumps(answers, ensure_ascii=False), json.dumps(ai_scores, ensure_ascii=False),
+             resume_file_id, video_file_id, status, phone_number, lang,
+             json.dumps(ai_suspect_flags or [], ensure_ascii=False),
+             json.dumps(voice_answers or {}, ensure_ascii=False), created_at),
         )
         await db.commit()
-        app_id = cursor.lastrowid
-
-    # Firebase — ixtiyoriy, sozlanmagan yoki xato bo'lsa botni to'xtatmaydi.
-    try:
-        from services.firebase_sync import push_application
-
-        await push_application(
-            app_id,
-            {
-                "user_id": user_id,
-                "username": username,
-                "full_name": full_name,
-                "vacancy_key": vacancy_key,
-                "vacancy_title": vacancy_title,
-                "answers": answers,
-                "ai_scores": ai_scores,
-                "resume_file_id": resume_file_id,
-                "video_file_id": video_file_id,
-                "status": status,
-                "created_at": created_at,
-            },
-        )
-    except Exception:
-        logger.exception("Firebase'ga yozib bo'lmadi (ixtiyoriy xususiyat, davom etamiz).")
-
-    return app_id
+        return cursor.lastrowid
 
 
-async def get_application(app_id: int) -> Optional[dict]:
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM applications WHERE id = ?", (app_id,))
-        row = await cursor.fetchone()
-
-    if not row:
-        return None
-
-    app = dict(row)
-    app["answers"] = json.loads(app["answers"])
-    app["ai_scores"] = json.loads(app["ai_scores"])
-    app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
-    app["ai_suspect_flags"] = json.loads(app.get("ai_suspect_flags") or "[]")
-    app["voice_answers"] = json.loads(app.get("voice_answers") or "{}")
-    return app
-
-
-async def get_pending_application_for_user(user_id: int) -> Optional[dict]:
-    """Foydalanuvchining hozircha ko'rib chiqilayotgan (pending) arizasi bo'lsa, qaytaradi."""
+async def get_application(tenant_id: int, app_id: int) -> Optional[dict]:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM applications WHERE user_id = ? AND status = 'pending' "
-            "ORDER BY id DESC LIMIT 1",
-            (user_id,),
+            "SELECT * FROM applications WHERE id = ? AND tenant_id = ?", (app_id, tenant_id),
         )
         row = await cursor.fetchone()
-
-    if not row:
-        return None
-
-    app = dict(row)
-    app["answers"] = json.loads(app["answers"])
-    app["ai_scores"] = json.loads(app["ai_scores"])
-    app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
-    app["ai_suspect_flags"] = json.loads(app.get("ai_suspect_flags") or "[]")
-    app["voice_answers"] = json.loads(app.get("voice_answers") or "{}")
-    return app
+    return _parse_app_row(row) if row else None
 
 
-async def add_admin_message(app_id: int, chat_id: int, message_id: int):
-    """Anketa nechta administratorga yuborilgan bo'lsa, har birining xabar ID'sini
-    ro'yxatga qo'shadi (keyinchalik shu ID orqali xabarni yangilash uchun)."""
-    app = await get_application(app_id)
+async def get_pending_application_for_user(tenant_id: int, user_id: int) -> Optional[dict]:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM applications WHERE tenant_id = ? AND user_id = ? AND status = 'pending' "
+            "ORDER BY id DESC LIMIT 1",
+            (tenant_id, user_id),
+        )
+        row = await cursor.fetchone()
+    return _parse_app_row(row) if row else None
+
+
+async def add_admin_message(tenant_id: int, app_id: int, chat_id: int, message_id: int):
+    app = await get_application(tenant_id, app_id)
     messages = app["admin_messages"] if app else []
     messages.append({"chat_id": chat_id, "message_id": message_id})
-
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            "UPDATE applications SET admin_messages = ? WHERE id = ?",
-            (json.dumps(messages, ensure_ascii=False), app_id),
+            "UPDATE applications SET admin_messages = ? WHERE id = ? AND tenant_id = ?",
+            (json.dumps(messages, ensure_ascii=False), app_id, tenant_id),
         )
         await db.commit()
 
 
-async def update_status(app_id: int, status: str):
+async def update_status(tenant_id: int, app_id: int, status: str):
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            "UPDATE applications SET status = ? WHERE id = ?",
-            (status, app_id),
+            "UPDATE applications SET status = ? WHERE id = ? AND tenant_id = ?",
+            (status, app_id, tenant_id),
         )
         await db.commit()
 
 
-async def try_book_slot(app_id: int, slot: str, capacity: int) -> bool:
-    """Vaqt oralig'iga joy bor bo'lsagina, uni band qiladi (atomik amal).
-
-    Bitta SQL buyrug'i ichida hozirgi bandlik sonini tekshirib, shu zahoti
-    yozadi — shu bilan ikkita nomzod bir vaqtda bosganda ikkalasi ham
-    "muvaffaqiyatli" bo'lib qolish xavfi (race condition) oldini olinadi.
-    Muvaffaqiyatli bo'lsa True, joy qolmagan bo'lsa False qaytaradi.
-    """
+async def try_book_slot(tenant_id: int, app_id: int, slot: str, capacity: int) -> bool:
+    """Atomik band qilish — bitta SQL ichida joy borligini tekshirib yozadi
+    (race condition oldini olish uchun), FAQAT shu mijoz doirasida."""
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
             """
             UPDATE applications
             SET selected_slot = ?
-            WHERE id = ?
-              AND (SELECT COUNT(*) FROM applications WHERE selected_slot = ?) < ?
+            WHERE id = ? AND tenant_id = ?
+              AND (SELECT COUNT(*) FROM applications WHERE selected_slot = ? AND tenant_id = ?) < ?
             """,
-            (slot, app_id, slot, capacity),
+            (slot, app_id, tenant_id, slot, tenant_id, capacity),
         )
         await db.commit()
         return cursor.rowcount > 0
 
 
-async def count_slot_bookings(slot: str) -> int:
-    """Berilgan vaqt oraligʻini hozircha nechta nomzod tanlaganini qaytaradi."""
+async def count_slot_bookings(tenant_id: int, slot: str) -> int:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
-            "SELECT COUNT(*) FROM applications WHERE selected_slot = ?", (slot,)
+            "SELECT COUNT(*) FROM applications WHERE selected_slot = ? AND tenant_id = ?",
+            (slot, tenant_id),
         )
         row = await cursor.fetchone()
     return row[0] if row else 0
 
 
-async def get_applications_for_vacancy(vacancy_key: str, limit: int = 300) -> list[dict]:
-    """Berilgan vakansiyaga tushgan barcha arizalarni (eng yangisi birinchi) qaytaradi.
-    Reyting (top-nomzodlar) va boshqa admin ko'rinishlari uchun ishlatiladi."""
+async def get_applications_for_vacancy(tenant_id: int, vacancy_key: str, limit: int = 300) -> list[dict]:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM applications WHERE vacancy_key = ? ORDER BY id DESC LIMIT ?",
-            (vacancy_key, limit),
+            "SELECT * FROM applications WHERE tenant_id = ? AND vacancy_key = ? ORDER BY id DESC LIMIT ?",
+            (tenant_id, vacancy_key, limit),
         )
         rows = await cursor.fetchall()
-
-    apps = []
-    for row in rows:
-        app = dict(row)
-        app["answers"] = json.loads(app["answers"])
-        app["ai_scores"] = json.loads(app["ai_scores"])
-        app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
-        app["ai_suspect_flags"] = json.loads(app.get("ai_suspect_flags") or "[]")
-        app["voice_answers"] = json.loads(app.get("voice_answers") or "{}")
-        apps.append(app)
-    return apps
+    return [_parse_app_row(r) for r in rows]
 
 
 # ============================= VAKANSIYALAR (admin bot) =============================
@@ -489,88 +559,82 @@ def _row_to_vacancy(row) -> dict:
     return v
 
 
-async def list_vacancies(active_only: bool = True) -> list[dict]:
-    query = "SELECT * FROM vacancies"
+async def list_vacancies(tenant_id: int, active_only: bool = True) -> list[dict]:
+    query = "SELECT * FROM vacancies WHERE tenant_id = ?"
+    params = [tenant_id]
     if active_only:
-        query += " WHERE active = 1"
+        query += " AND active = 1"
     query += " ORDER BY created_at DESC"
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(query)
+        cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
     return [_row_to_vacancy(r) for r in rows]
 
 
-async def _get_localized_title(key: str, title_uz: str, lang: str) -> str:
-    """Vakansiya nomini (title) rus tiliga tarjima qilib, `title_ru` ustuniga keshlaydi.
-    Bir marta tarjima qilingandan keyin qayta AI so'rovi yuborilmaydi."""
+async def _get_localized_title(tenant_id: int, key: str, title_uz: str, lang: str) -> str:
     if lang != "ru":
         return title_uz
 
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT title_ru FROM vacancies WHERE key = ?", (key,))
+        cursor = await db.execute(
+            "SELECT title_ru FROM vacancies WHERE tenant_id = ? AND key = ?", (tenant_id, key),
+        )
         row = await cursor.fetchone()
 
     if row and row["title_ru"]:
         return row["title_ru"]
 
     from services.ai_scoring import translate_simple_text
-
     translated = await translate_simple_text(title_uz)
     if not translated:
         return title_uz
 
     async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute("UPDATE vacancies SET title_ru = ? WHERE key = ?", (translated, key))
+        await db.execute(
+            "UPDATE vacancies SET title_ru = ? WHERE tenant_id = ? AND key = ?",
+            (translated, tenant_id, key),
+        )
         await db.commit()
-
     return translated
 
 
-async def list_vacancies_localized(lang: str, active_only: bool = True) -> list[dict]:
-    """`list_vacancies`ga o'xshaydi, lekin lang="ru" bo'lsa, har bir vakansiya nomini
-    rus tiliga tarjima qilingan holda qaytaradi (birinchi safar AI orqali, keyin keshdan)."""
-    vacancies = await list_vacancies(active_only=active_only)
+async def list_vacancies_localized(tenant_id: int, lang: str, active_only: bool = True) -> list[dict]:
+    vacancies = await list_vacancies(tenant_id, active_only=active_only)
     if lang != "ru":
         return vacancies
-
     result = []
     for v in vacancies:
         v = dict(v)
-        v["title"] = await _get_localized_title(v["key"], v["title"], lang)
+        v["title"] = await _get_localized_title(tenant_id, v["key"], v["title"], lang)
         result.append(v)
     return result
 
 
-async def get_vacancy(key: str) -> Optional[dict]:
+async def get_vacancy(tenant_id: int, key: str) -> Optional[dict]:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM vacancies WHERE key = ?", (key,))
+        cursor = await db.execute(
+            "SELECT * FROM vacancies WHERE tenant_id = ? AND key = ?", (tenant_id, key),
+        )
         row = await cursor.fetchone()
     return _row_to_vacancy(row) if row else None
 
 
-async def get_vacancy_localized(key: str, lang: str) -> Optional[dict]:
-    """`get_vacancy`ga o'xshaydi, lekin lang="ru" bo'lsa, nomi, savollari va rad etish
-    xabarini rus tiliga tarjima qilingan holda qaytaradi.
-
-    Tarjima birinchi so'ralganda AI orqali qilinadi va `title_ru` / `questions_ru` /
-    `reject_message_ru` ustunlariga saqlanadi — keyingi rus tilidagi
-    nomzodlar uchun bazadan to'g'ridan-to'g'ri o'qiladi (qayta AI so'rovi
-    yuborilmaydi). Tarjima muvaffaqiyatsiz bo'lsa, o'zbekcha versiya qaytadi.
-    """
-    vacancy = await get_vacancy(key)
+async def get_vacancy_localized(tenant_id: int, key: str, lang: str) -> Optional[dict]:
+    vacancy = await get_vacancy(tenant_id, key)
     if not vacancy or lang != "ru":
         return vacancy
 
     vacancy = dict(vacancy)
-    vacancy["title"] = await _get_localized_title(key, vacancy["title"], lang)
+    vacancy["title"] = await _get_localized_title(tenant_id, key, vacancy["title"], lang)
 
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT questions_ru, reject_message_ru FROM vacancies WHERE key = ?", (key,)
+            "SELECT questions_ru, reject_message_ru FROM vacancies WHERE tenant_id = ? AND key = ?",
+            (tenant_id, key),
         )
         row = await cursor.fetchone()
 
@@ -580,20 +644,16 @@ async def get_vacancy_localized(key: str, lang: str) -> Optional[dict]:
         return vacancy
 
     from services.ai_scoring import translate_vacancy_content
-
     translated = await translate_vacancy_content(vacancy["questions"], vacancy["reject_message"])
     if not translated:
-        logger.warning("Vakansiya (%s) rus tiliga tarjima qilinmadi, o'zbekcha qoladi.", key)
+        logger.warning("Vakansiya (tenant=%s, %s) rus tiliga tarjima qilinmadi.", tenant_id, key)
         return vacancy
 
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            "UPDATE vacancies SET questions_ru = ?, reject_message_ru = ? WHERE key = ?",
-            (
-                json.dumps(translated["questions"], ensure_ascii=False),
-                translated["reject_message"],
-                key,
-            ),
+            "UPDATE vacancies SET questions_ru = ?, reject_message_ru = ? WHERE tenant_id = ? AND key = ?",
+            (json.dumps(translated["questions"], ensure_ascii=False), translated["reject_message"],
+             tenant_id, key),
         )
         await db.commit()
 
@@ -603,39 +663,32 @@ async def get_vacancy_localized(key: str, lang: str) -> Optional[dict]:
 
 
 def make_vacancy_key(title: str) -> str:
-    """Lavozim nomidan ma'lumotlar bazasi uchun lotin-harfli, pastki chiziqli kalit yasaydi."""
     import re
     import unicodedata
-
     normalized = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", normalized).strip("_").lower()
-    # Telegram callback_data 64 baytgacha cheklangan (bu kalit "vac:<key>" kabi
-    # prefikslar bilan ishlatiladi), shuning uchun xavfsizlik uchun qisqartiramiz.
     slug = slug[:40]
     return slug or "vakansiya"
 
 
 async def create_vacancy(
-    *, key: str, title: str, reject_message: str, questions: list, resume_required: bool
+    *, tenant_id: int, key: str, title: str, reject_message: str, questions: list, resume_required: bool
 ) -> None:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            """
-            INSERT INTO vacancies (key, title, reject_message, questions, resume_required, active, created_at)
-            VALUES (?, ?, ?, ?, ?, 1, ?)
-            """,
-            (key, title, reject_message, json.dumps(questions, ensure_ascii=False), int(resume_required), created_at),
+            "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
+            "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+            (tenant_id, key, title, reject_message, json.dumps(questions, ensure_ascii=False),
+             int(resume_required), created_at),
         )
         await db.commit()
 
 
-async def update_vacancy(key: str, **fields) -> None:
-    """fields: title, reject_message, questions (list), resume_required (bool), active (bool)."""
+async def update_vacancy(tenant_id: int, key: str, **fields) -> None:
     if not fields:
         return
-    set_clauses = []
-    values = []
+    set_clauses, values = [], []
     for field, value in fields.items():
         if field == "questions":
             value = json.dumps(value, ensure_ascii=False)
@@ -644,77 +697,73 @@ async def update_vacancy(key: str, **fields) -> None:
         set_clauses.append(f"{field} = ?")
         values.append(value)
 
-    # Savollar yoki rad etish xabari o'zgartirilsa, eski rus tili tarjimasi
-    # eskirib qoladi — uni bekor qilamiz, keyingi rus tilidagi nomzodda
-    # qayta (yangilangan matn asosida) tarjima qilinadi.
     if "questions" in fields or "reject_message" in fields:
-        set_clauses.append("questions_ru = NULL")
-        set_clauses.append("reject_message_ru = NULL")
+        set_clauses += ["questions_ru = NULL", "reject_message_ru = NULL"]
     if "title" in fields:
         set_clauses.append("title_ru = NULL")
 
-    values.append(key)
-
+    values += [tenant_id, key]
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            f"UPDATE vacancies SET {', '.join(set_clauses)} WHERE key = ?", values
+            f"UPDATE vacancies SET {', '.join(set_clauses)} WHERE tenant_id = ? AND key = ?", values,
         )
         await db.commit()
 
 
-async def delete_vacancy(key: str) -> None:
+async def delete_vacancy(tenant_id: int, key: str) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute("DELETE FROM vacancies WHERE key = ?", (key,))
+        await db.execute("DELETE FROM vacancies WHERE tenant_id = ? AND key = ?", (tenant_id, key))
         await db.commit()
 
 
 # ============================= SUHBAT VAQTLARI (admin bot) =============================
 
-async def list_interview_slots(active_only: bool = True) -> list[dict]:
-    query = "SELECT * FROM interview_slots"
+async def list_interview_slots(tenant_id: int, active_only: bool = True) -> list[dict]:
+    query = "SELECT * FROM interview_slots WHERE tenant_id = ?"
+    params = [tenant_id]
     if active_only:
-        query += " WHERE active = 1"
+        query += " AND active = 1"
     query += " ORDER BY id ASC"
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(query)
+        cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
     return [dict(r) for r in rows]
 
 
-async def add_interview_slot(label: str, capacity: int = 1) -> int:
+async def add_interview_slot(tenant_id: int, label: str, capacity: int = 1) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
-            "INSERT INTO interview_slots (label, capacity, active, created_at) VALUES (?, ?, 1, ?)",
-            (label, capacity, created_at),
+            "INSERT INTO interview_slots (tenant_id, label, capacity, active, created_at) VALUES (?, ?, ?, 1, ?)",
+            (tenant_id, label, capacity, created_at),
         )
         await db.commit()
         return cursor.lastrowid
 
 
-async def delete_interview_slot(slot_id: int):
+async def delete_interview_slot(tenant_id: int, slot_id: int):
     async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute("DELETE FROM interview_slots WHERE id = ?", (slot_id,))
+        await db.execute(
+            "DELETE FROM interview_slots WHERE id = ? AND tenant_id = ?", (slot_id, tenant_id),
+        )
         await db.commit()
 
 
-async def get_available_interview_slots() -> list[dict]:
-    """Faol va hali joyi bor (band bo'lganlar soni < sig'imi) vaqtlarni qaytaradi.
-    Har biri: id, label, capacity, booked."""
-    slots = await list_interview_slots(active_only=True)
+async def get_available_interview_slots(tenant_id: int) -> list[dict]:
+    slots = await list_interview_slots(tenant_id, active_only=True)
     result = []
     for slot in slots:
-        booked = await count_slot_bookings(slot["label"])
+        booked = await count_slot_bookings(tenant_id, slot["label"])
         if booked < slot["capacity"]:
             result.append({**slot, "booked": booked})
     return result
 
 
-async def get_interview_settings() -> dict:
+async def get_interview_settings(tenant_id: int) -> dict:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM interview_settings WHERE id = 1")
+        cursor = await db.execute("SELECT * FROM interview_settings WHERE tenant_id = ?", (tenant_id,))
         row = await cursor.fetchone()
     if not row:
         return {
@@ -724,45 +773,40 @@ async def get_interview_settings() -> dict:
     return dict(row)
 
 
-async def update_interview_settings(**fields):
+async def update_interview_settings(tenant_id: int, **fields):
     if not fields:
         return
-    current = await get_interview_settings()
+    current = await get_interview_settings(tenant_id)
     merged = {**current, **fields}
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
             """
             INSERT INTO interview_settings
-                (id, location_text, location_lat, location_lng, interviewer_name, interviewer_phone, notes)
-            VALUES (1, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                location_text = excluded.location_text,
-                location_lat = excluded.location_lat,
-                location_lng = excluded.location_lng,
-                interviewer_name = excluded.interviewer_name,
-                interviewer_phone = excluded.interviewer_phone,
-                notes = excluded.notes
+                (tenant_id, location_text, location_lat, location_lng, interviewer_name, interviewer_phone, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tenant_id) DO UPDATE SET
+                location_text = excluded.location_text, location_lat = excluded.location_lat,
+                location_lng = excluded.location_lng, interviewer_name = excluded.interviewer_name,
+                interviewer_phone = excluded.interviewer_phone, notes = excluded.notes
             """,
-            (
-                merged.get("location_text"), merged.get("location_lat"), merged.get("location_lng"),
-                merged.get("interviewer_name"), merged.get("interviewer_phone"), merged.get("notes"),
-            ),
+            (tenant_id, merged.get("location_text"), merged.get("location_lat"), merged.get("location_lng"),
+             merged.get("interviewer_name"), merged.get("interviewer_phone"), merged.get("notes")),
         )
         await db.commit()
 
 
 # ============================= STATISTIKA (admin bot) =============================
 
-# Nomzod uchun "yakuniy" hisoblanadigan holatlar (jarayon tugagan).
 _TERMINAL_REJECTED_STATUSES = {
     "rejected_hard_filter", "rejected_irrelevant", "rejected_ai_generated", "declined",
 }
 
 
-async def get_overall_stats() -> dict:
-    """Umumiy statistika: jami ariza, holat bo'yicha taqsimot."""
+async def get_overall_stats(tenant_id: int) -> dict:
     async with aiosqlite.connect(SQLITE_PATH) as db:
-        cursor = await db.execute("SELECT status, COUNT(*) FROM applications GROUP BY status")
+        cursor = await db.execute(
+            "SELECT status, COUNT(*) FROM applications WHERE tenant_id = ? GROUP BY status", (tenant_id,),
+        )
         rows = await cursor.fetchall()
 
     by_status = {status: count for status, count in rows}
@@ -770,25 +814,20 @@ async def get_overall_stats() -> dict:
     rejected_total = sum(by_status.get(s, 0) for s in _TERMINAL_REJECTED_STATUSES)
 
     return {
-        "total": total,
-        "pending": by_status.get("pending", 0),
-        "accepted": by_status.get("accepted", 0),
+        "total": total, "pending": by_status.get("pending", 0), "accepted": by_status.get("accepted", 0),
         "declined_by_admin": by_status.get("declined", 0),
         "rejected_hard_filter": by_status.get("rejected_hard_filter", 0),
         "rejected_irrelevant": by_status.get("rejected_irrelevant", 0),
         "rejected_ai_generated": by_status.get("rejected_ai_generated", 0),
-        "rejected_total": rejected_total,
-        "by_status": by_status,
+        "rejected_total": rejected_total, "by_status": by_status,
     }
 
 
-async def get_vacancy_stats() -> list[dict]:
-    """Har bir vakansiya bo'yicha ariza sonlari (vakansiya o'chirilgan bo'lsa ham,
-    tarixiy statistika saqlanib qoladi — vacancy_title'dan foydalanamiz)."""
+async def get_vacancy_stats(tenant_id: int) -> list[dict]:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
             "SELECT vacancy_key, vacancy_title, status, COUNT(*) FROM applications "
-            "GROUP BY vacancy_key, vacancy_title, status"
+            "WHERE tenant_id = ? GROUP BY vacancy_key, vacancy_title, status", (tenant_id,),
         )
         rows = await cursor.fetchall()
 
@@ -810,61 +849,6 @@ async def get_vacancy_stats() -> list[dict]:
     return sorted(per_vacancy.values(), key=lambda e: -e["total"])
 
 
-# ============================= YANGI MIJOZLAR (o'z-o'zidan ro'yxatdan o'tish) =============================
-# Joriy botimizni sinab ko'rgan har qanday kishi shu yerdan o'ziga shu tizimni
-# buyurtma qilishi mumkin — kompaniya nomi va o'z bot tokenini yuborib.
-
-async def create_tenant(
-    company_name: str, bot_token: str, admin_bot_token: str,
-    admin_user_ids: list[int], referred_by_user_id: int = None,
-) -> int:
-    created_at = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        cursor = await db.execute(
-            "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
-            "referred_by_user_id, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
-            (company_name, bot_token, admin_bot_token, json.dumps(admin_user_ids),
-             referred_by_user_id, created_at),
-        )
-        await db.commit()
-        return cursor.lastrowid
-
-
-async def get_tenant_by_token(bot_token: str) -> Optional[dict]:
-    """Berilgan token nomzod-bot YOKI Admin panel-bot tokenlaridan biriga
-    mos kelsa, mijozni qaytaradi (qaysi rolga tegishli ekanini bilmasdan,
-    faqat "band qilinganmi" tekshiruvi uchun yetarli)."""
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM tenants WHERE bot_token = ? OR admin_bot_token = ?",
-            (bot_token, bot_token),
-        )
-        row = await cursor.fetchone()
-    if not row:
-        return None
-    t = dict(row)
-    t["admin_user_ids"] = json.loads(t["admin_user_ids"])
-    return t
-
-
-async def list_tenants(status: Optional[str] = None) -> list[dict]:
-    query = "SELECT * FROM tenants"
-    params = ()
-    if status:
-        query += " WHERE status = ?"
-        params = (status,)
-    query += " ORDER BY created_at DESC"
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(query, params)
-        rows = await cursor.fetchall()
-    result = []
-    for row in rows:
-        t = dict(row)
-        t["admin_user_ids"] = json.loads(t["admin_user_ids"])
-        result.append(t)
-    return result
 # ============================= TOLOV BUYURTMALARI =============================
 
 async def create_payment_order(

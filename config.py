@@ -55,6 +55,10 @@ WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
 # Yangi mijozlar o'zini ro'yxatdan o'tkazadigan alohida "sozlash boti".
 SETUP_BOT_TOKEN = os.getenv("SETUP_BOT_TOKEN", "")
 
+# Faqat asoschi(lar) ishlatadigan "Bosh boshqaruv" boti — yangi mijozlarni
+# ko'rib chiqish va to'lovdan keyin faollashtirish uchun.
+FOUNDER_BOT_TOKEN = os.getenv("FOUNDER_BOT_TOKEN", "")
+
 # Yangi mijoz ro'yxatdan o'tganda, shaxsan xabar beriladigan asoschi ID'lari
 # (bir nechta bo'lishi mumkin, vergul bilan ajratilgan).
 FOUNDER_USER_IDS = {

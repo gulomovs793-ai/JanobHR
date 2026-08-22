@@ -52,9 +52,9 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "menu:stats")
-async def show_stats(callback: CallbackQuery):
-    overall = await database.get_overall_stats()
-    per_vacancy = await database.get_vacancy_stats()
+async def show_stats(callback: CallbackQuery, tenant_id: int):
+    overall = await database.get_overall_stats(tenant_id)
+    per_vacancy = await database.get_vacancy_stats(tenant_id)
 
     lines = [
         "📊 <b>Umumiy statistika</b>",

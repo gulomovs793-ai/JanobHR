@@ -29,16 +29,16 @@ _HEADERS = [
 
 
 @router.callback_query(F.data.startswith("vacexport:"))
-async def export_candidates_excel(callback: CallbackQuery):
+async def export_candidates_excel(callback: CallbackQuery, tenant_id: int):
     key = callback.data.split(":", 1)[1]
-    vacancy = await database.get_vacancy(key)
+    vacancy = await database.get_vacancy(tenant_id, key)
     if not vacancy:
         await callback.answer("Bu vakansiya topilmadi.", show_alert=True)
         return
 
     await callback.answer("Excel fayl tayyorlanmoqda...")
 
-    apps = await database.get_applications_for_vacancy(key)
+    apps = await database.get_applications_for_vacancy(tenant_id, key)
 
     rows = []
     for app in apps:

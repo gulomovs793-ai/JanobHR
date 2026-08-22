@@ -301,9 +301,44 @@ async def _migrate_to_multi_tenant(db) -> None:
     logger.info("=== Migratsiya muvaffaqiyatli yakunlandi (asoschi tenant_id=%s) ===", founder_id)
 
 
+async def _ensure_founder_tenant(db) -> None:
+    """BOT_TOKEN'ga mos tenant yozuvi mavjudligini ta'minlaydi — bu ham
+    yangi (bo'sh) baza, ham allaqachon migratsiya qilingan baza uchun
+    ishlaydi (`_migrate_to_multi_tenant` faqat ESKI sxemani aniqlaganda
+    ishga tushadi, shuning uchun bu alohida, har doim tekshiriladigan
+    qadam sifatida kerak)."""
+    from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, BOT_TOKEN
+
+    if not BOT_TOKEN:
+        return
+
+    cursor = await db.execute("SELECT id FROM tenants WHERE bot_token = ?", (BOT_TOKEN,))
+    if await cursor.fetchone():
+        return  # Allaqachon bor (migratsiya orqali yoki avvalgi ishga tushirishda).
+
+    created_at = datetime.now(timezone.utc).isoformat()
+    cursor = await db.execute(
+        "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
+        "status, created_at) VALUES (?, ?, ?, ?, 'active', ?)",
+        ("Asosiy kompaniya", BOT_TOKEN, ADMIN_BOT_TOKEN or "",
+         json.dumps(list(ADMIN_USER_IDS)), created_at),
+    )
+    founder_id = cursor.lastrowid
+
+    for v in _DEFAULT_VACANCIES:
+        await db.execute(
+            "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
+            "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+            (founder_id, v["key"], v["title"], v["reject_message"],
+             json.dumps(v["questions"], ensure_ascii=False), int(v["resume_required"]), created_at),
+        )
+    logger.info("Yangi (bo'sh) baza uchun asoschi tenant yaratildi (id=%s), standart vakansiyalar urug'landi.", founder_id)
+
+
 async def init_db():
-    """Jadval strukturasini yaratadi VA (agar kerak bo'lsa) eski bir-mijozli
-    jonli bazani ko'p-mijozli sxemaga xavfsiz ko'chiradi."""
+    """Jadval strukturasini yaratadi, (agar kerak bo'lsa) eski bir-mijozli
+    jonli bazani ko'p-mijozli sxemaga xavfsiz ko'chiradi, VA har doim
+    BOT_TOKEN'ga mos "asoschi" tenant mavjudligini ta'minlaydi."""
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(_CREATE_TENANTS_TABLE_SQL)
         await db.execute(_CREATE_TABLE_SQL)
@@ -315,6 +350,7 @@ async def init_db():
         await db.commit()
 
         await _migrate_to_multi_tenant(db)
+        await _ensure_founder_tenant(db)
         await db.commit()
     logger.info("Ma'lumotlar bazasi (ko'p mijozli) tayyor: %s", SQLITE_PATH)
 

@@ -11,8 +11,8 @@ router = Router(name="admin_vacancy_list")
 
 
 @router.callback_query(F.data == "menu:vacancies")
-async def list_vacancies(callback: CallbackQuery):
-    vacancies = await database.list_vacancies(active_only=False)
+async def list_vacancies(callback: CallbackQuery, tenant_id: int):
+    vacancies = await database.list_vacancies(tenant_id, active_only=False)
 
     builder = InlineKeyboardBuilder()
     if not vacancies:
@@ -30,13 +30,13 @@ async def list_vacancies(callback: CallbackQuery):
     await callback.answer()
 
 
-async def _show_vacancy_detail(callback: CallbackQuery, key: str):
-    vacancy = await database.get_vacancy(key)
+async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str):
+    vacancy = await database.get_vacancy(tenant_id, key)
     if not vacancy:
         await callback.answer("Bu vakansiya topilmadi (o'chirilgan bo'lishi mumkin).", show_alert=True)
         return
 
-    stats_list = await database.get_vacancy_stats()
+    stats_list = await database.get_vacancy_stats(tenant_id)
     stats = next((s for s in stats_list if s["vacancy_key"] == key), None)
 
     status = "🟢 Faol" if vacancy["active"] else "🔴 Faolsiz"
@@ -73,26 +73,26 @@ async def _show_vacancy_detail(callback: CallbackQuery, key: str):
 
 
 @router.callback_query(F.data.startswith("vac:"))
-async def vacancy_detail(callback: CallbackQuery):
+async def vacancy_detail(callback: CallbackQuery, tenant_id: int):
     key = callback.data.split(":", 1)[1]
-    await _show_vacancy_detail(callback, key)
+    await _show_vacancy_detail(callback, tenant_id, key)
 
 
 @router.callback_query(F.data.startswith("vactoggle:"))
-async def toggle_vacancy(callback: CallbackQuery):
+async def toggle_vacancy(callback: CallbackQuery, tenant_id: int):
     key = callback.data.split(":", 1)[1]
-    vacancy = await database.get_vacancy(key)
+    vacancy = await database.get_vacancy(tenant_id, key)
     if not vacancy:
         await callback.answer("Bu vakansiya topilmadi.", show_alert=True)
         return
-    await database.update_vacancy(key, active=not vacancy["active"])
-    await _show_vacancy_detail(callback, key)
+    await database.update_vacancy(tenant_id, key, active=not vacancy["active"])
+    await _show_vacancy_detail(callback, tenant_id, key)
 
 
 @router.callback_query(F.data.startswith("vacdel:"))
-async def confirm_delete(callback: CallbackQuery):
+async def confirm_delete(callback: CallbackQuery, tenant_id: int):
     key = callback.data.split(":", 1)[1]
-    vacancy = await database.get_vacancy(key)
+    vacancy = await database.get_vacancy(tenant_id, key)
     if not vacancy:
         await callback.answer("Bu vakansiya topilmadi.", show_alert=True)
         return
@@ -113,11 +113,11 @@ async def confirm_delete(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("vacdelconfirm:"))
-async def delete_vacancy(callback: CallbackQuery):
+async def delete_vacancy(callback: CallbackQuery, tenant_id: int):
     key = callback.data.split(":", 1)[1]
-    await database.delete_vacancy(key)
+    await database.delete_vacancy(tenant_id, key)
     await callback.answer("Vakansiya o'chirildi.", show_alert=True)
-    await list_vacancies(callback)
+    await list_vacancies(callback, tenant_id)
 
 
 _VERDICT_EMOJI = {"yashil": "🟢", "sariq": "🟡", "qizil": "🔴"}
@@ -131,14 +131,14 @@ _STATUS_LABELS = {
 
 
 @router.callback_query(F.data.startswith("vacranking:"))
-async def show_ranking(callback: CallbackQuery):
+async def show_ranking(callback: CallbackQuery, tenant_id: int):
     key = callback.data.split(":", 1)[1]
-    vacancy = await database.get_vacancy(key)
+    vacancy = await database.get_vacancy(tenant_id, key)
     if not vacancy:
         await callback.answer("Bu vakansiya topilmadi.", show_alert=True)
         return
 
-    apps = await database.get_applications_for_vacancy(key)
+    apps = await database.get_applications_for_vacancy(tenant_id, key)
 
     scored = []
     for app in apps:

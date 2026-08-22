@@ -1,17 +1,19 @@
 """
-Janob HR Bot — anketa matnini formatlash va uni Admin botga (har bir
-administratorga shaxsiy xabar sifatida) yuborish.
+Janob HR Bot — anketa matnini formatlash va uni tegishli mijozning
+administratorlariga yuborish.
 
-Qaror (qabul/rad) tugmalarini bosish logikasi endi shu yerda EMAS —
-u admin_bot/handlers_decisions.py'da, chunki tugmalar endi Admin bot orqali
-yuboriladi va bosilganda javob ham o'sha bot dispatcher'iga keladi.
+KO'P MIJOZLI: endi alohida "Admin bot" yo'q — har bir mijozning BITTA boti
+ham nomzod, ham admin funksiyasini bajaradi. Shuning uchun bu yerda xabar
+aynan O'SHA TENANT NIMA BOT ORQALI ISHLAYOTGAN BO'LSA, O'SHA BOT INSTANSIYASI
+(chaqiruvchi tomondan `bot=` sifatida uzatiladi) orqali, va FAQAT o'sha
+mijozning `admin_user_ids` ro'yxatidagi ID'larga yuboriladi.
 """
 import logging
 
+from aiogram import Bot
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import ADMIN_USER_IDS
-from services import bot_registry, database
+from services import database
 from services.ai_scoring import aggregate_scores
 from vacancies import build_questions
 
@@ -45,10 +47,8 @@ async def _format_application_text(app: dict) -> str:
     lines.append("")
 
     ai_scores = app.get("ai_scores") or {}
+    tenant_id = app["tenant_id"]
 
-    # Har bir javobni, agar AI shu savolni baholagan bo'lsa, aynan O'SHA javobning
-    # tagida qisqa izoh bilan ko'rsatamiz — turli savollarga tegishli izohlarni
-    # bitta qatorga aralashtirib qo'yish o'rniga (bu chalkash bo'lardi).
     for key, value in app["answers"].items():
         text = str(value)
         if len(text) > 500:
@@ -66,7 +66,7 @@ async def _format_application_text(app: dict) -> str:
 
     aggregate = aggregate_scores(ai_scores)
 
-    vacancy = await database.get_vacancy(app["vacancy_key"])
+    vacancy = await database.get_vacancy(tenant_id, app["vacancy_key"])
     expected_keys = [q["key"] for q in build_questions(vacancy) if q.get("ai_score")] if vacancy else []
     valid_count = sum(
         1 for k in expected_keys
@@ -93,11 +93,6 @@ async def _format_application_text(app: dict) -> str:
             flag_labels = [_RED_FLAG_LABELS.get(f, f) for f in aggregate["red_flags"]]
             lines.append("🚩 Bayroqlar: " + "; ".join(flag_labels))
 
-    # --- AI orqali yozilgan bo'lishi mumkin deb SHU JARAYON DAVOMIDA gumon qilingan
-    # savollar (hatto keyinroq to'g'irlab, to'g'ri javob bergan bo'lsa ham) — bu
-    # alohida ko'rsatiladi, chunki yakuniy ai_scores faqat OXIRGI (qabul qilingan)
-    # javoblarni saqlaydi, birinchi shubhali urinish haqidagi ma'lumot yo'qolmasligi
-    # uchun.
     suspect_keys = app.get("ai_suspect_flags") or []
     if suspect_keys and vacancy:
         key_to_text = {q["key"]: q["text"] for q in build_questions(vacancy)}
@@ -123,24 +118,18 @@ async def _format_application_text(app: dict) -> str:
     return text
 
 
-async def notify_admins(app_id: int):
-    """Anketani Admin bot orqali har bir ADMIN_USER_IDS'dagi administratorga
-    shaxsiy xabar sifatida yuboradi (guruh/kanal endi ishlatilmaydi)."""
-    admin_bot = bot_registry.admin_bot
-
-    if not admin_bot:
+async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
+    """Anketani shu MIJOZNING o'z boti orqali, uning har bir adminiga
+    shaxsiy xabar sifatida yuboradi."""
+    tenant = await database.get_tenant(tenant_id)
+    if not tenant or not tenant["admin_user_ids"]:
         logger.warning(
-            "Admin bot ishga tushirilmagan (ADMIN_BOT_TOKEN sozlanmagan) — "
-            "anketa hech kimga yuborilmadi (app_id=%s).", app_id,
-        )
-        return
-    if not ADMIN_USER_IDS:
-        logger.warning(
-            "ADMIN_USER_IDS bo'sh — anketa hech kimga yuborilmadi (app_id=%s).", app_id,
+            "Mijoz (id=%s) uchun admin ID topilmadi — anketa hech kimga yuborilmadi (app_id=%s).",
+            tenant_id, app_id,
         )
         return
 
-    app = await database.get_application(app_id)
+    app = await database.get_application(tenant_id, app_id)
     if not app:
         return
 
@@ -150,41 +139,32 @@ async def notify_admins(app_id: int):
     builder.button(text="❌ Rad etish", callback_data=f"decision:reject:{app_id}")
     builder.adjust(2)
 
-    # Ovozli javoblar uchun, qaysi savolga tegishli ekanini caption'da ko'rsatish
-    # maqsadida savol matnlarini oldindan tayyorlab olamiz (barcha adminlar uchun bir marta).
     voice_answers = app.get("voice_answers") or {}
     voice_key_to_text: dict = {}
     if voice_answers:
-        vacancy = await database.get_vacancy(app["vacancy_key"])
+        vacancy = await database.get_vacancy(tenant_id, app["vacancy_key"])
         if vacancy:
             voice_key_to_text = {q["key"]: q["text"] for q in build_questions(vacancy)}
 
-    for admin_id in ADMIN_USER_IDS:
+    for admin_id in tenant["admin_user_ids"]:
         try:
-            # 1) Fayl (agar bo'lsa) — QISQA caption bilan, tugmasiz.
             if app.get("resume_file_id"):
-                await admin_bot.send_document(
-                    chat_id=admin_id,
-                    document=app["resume_file_id"],
+                await bot.send_document(
+                    chat_id=admin_id, document=app["resume_file_id"],
                     caption=f"📄 {app['full_name']} — {app['vacancy_title']}",
                 )
             elif app.get("video_file_id"):
-                await admin_bot.send_video(
-                    chat_id=admin_id,
-                    video=app["video_file_id"],
+                await bot.send_video(
+                    chat_id=admin_id, video=app["video_file_id"],
                     caption=f"🎥 {app['full_name']} — {app['vacancy_title']}",
                 )
 
-            # 1.5) Ovozli javoblar — AI tomonidan baholanmaydi, shuning uchun
-            # audio to'g'ridan-to'g'ri shu yerda, shaxsan tinglab baholash uchun
-            # yuboriladi. Har biri qaysi savolga tegishli ekanini ko'rsatadi.
             for key, file_id in voice_answers.items():
                 q_text = voice_key_to_text.get(key, key)
                 short_q = q_text if len(q_text) <= 250 else q_text[:250] + "…"
                 try:
-                    await admin_bot.send_voice(
-                        chat_id=admin_id,
-                        voice=file_id,
+                    await bot.send_voice(
+                        chat_id=admin_id, voice=file_id,
                         caption=f"🎙 {app['full_name']} — {short_q}",
                     )
                 except Exception:
@@ -192,26 +172,21 @@ async def notify_admins(app_id: int):
                         "Ovozli javobni adminga yuborib bo'lmadi (app_id=%s, key=%s).", app_id, key,
                     )
 
-            # 2) To'liq tahlil + qaror tugmalari.
-            sent = await admin_bot.send_message(
-                chat_id=admin_id, text=text, reply_markup=builder.as_markup(),
-            )
-            await database.add_admin_message(app_id, admin_id, sent.message_id)
+            sent = await bot.send_message(chat_id=admin_id, text=text, reply_markup=builder.as_markup())
+            await database.add_admin_message(tenant_id, app_id, admin_id, sent.message_id)
         except Exception:
             logger.exception(
-                "Admin (id=%s) ga anketa yuborib bo'lmadi (app_id=%s). Admin botga "
-                "/start yuborganini tekshiring.", admin_id, app_id,
+                "Admin (id=%s) ga anketa yuborib bo'lmadi (app_id=%s, tenant=%s).",
+                admin_id, app_id, tenant_id,
             )
 
 
-async def notify_admin_slot_selected(app_id: int, slot: str):
-    """Nomzod suhbat vaqtini tanlaganda Admin bot orqali barcha administratorlarga
-    qisqa xabar yuboradi."""
-    admin_bot = bot_registry.admin_bot
-    if not admin_bot or not ADMIN_USER_IDS:
+async def notify_admin_slot_selected(tenant_id: int, app_id: int, slot: str, bot: Bot):
+    tenant = await database.get_tenant(tenant_id)
+    if not tenant or not tenant["admin_user_ids"]:
         return
 
-    app = await database.get_application(app_id)
+    app = await database.get_application(tenant_id, app_id)
     if not app:
         return
 
@@ -219,8 +194,8 @@ async def notify_admin_slot_selected(app_id: int, slot: str):
         f"📅 <b>{app['full_name']}</b> (@{app['username'] or '—'}) suhbat uchun "
         f"vaqtni tanladi: <b>{slot}</b>"
     )
-    for admin_id in ADMIN_USER_IDS:
+    for admin_id in tenant["admin_user_ids"]:
         try:
-            await admin_bot.send_message(chat_id=admin_id, text=text)
+            await bot.send_message(chat_id=admin_id, text=text)
         except Exception:
             logger.exception("Admin (id=%s) ga vaqt tanlovi haqida xabar berib bo'lmadi.", admin_id)

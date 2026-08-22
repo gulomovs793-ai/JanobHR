@@ -1,4 +1,9 @@
-"""Janob HR Bot — /start, /cancel: til tanlash, nomzodni kutib olish va oqimni boshqarish."""
+"""
+Janob HR Bot — /start, /cancel: til tanlash, nomzodni kutib olish va oqimni
+boshqarish. KO'P MIJOZLI: /start bosilganda, agar yuboruvchi shu mijozning
+admin ro'yxatida bo'lsa — Admin menyu, aks holda — nomzod oqimi ko'rsatiladi
+(bitta bot, ikkala rol).
+"""
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -12,8 +17,8 @@ from states import ApplyForm
 router = Router(name="start")
 
 
-async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str):
-    vacancies = await database.list_vacancies_localized(lang, active_only=True)
+async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str, tenant_id: int):
+    vacancies = await database.list_vacancies_localized(tenant_id, lang, active_only=True)
     greeting = t("greeting", lang)
 
     if not vacancies:
@@ -32,7 +37,7 @@ async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str):
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext):
+async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
     await state.clear()
 
     builder = InlineKeyboardBuilder()
@@ -45,7 +50,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
 
 @router.callback_query(ApplyForm.choosing_language, F.data.startswith("lang:"))
-async def choose_language(callback: CallbackQuery, state: FSMContext):
+async def choose_language(callback: CallbackQuery, state: FSMContext, tenant_id: int):
     lang = callback.data.split(":", 1)[1]
     if lang not in LANGUAGES:
         lang = DEFAULT_LANG
@@ -55,7 +60,7 @@ async def choose_language(callback: CallbackQuery, state: FSMContext):
 
     # --- Takroriy ariza himoyasi: nomzodning ko'rib chiqilayotgan arizasi bo'lsa,
     # unga yangi anketa boshlash o'rniga hozirgi holatini eslatamiz. ---
-    pending = await database.get_pending_application_for_user(callback.from_user.id)
+    pending = await database.get_pending_application_for_user(tenant_id, callback.from_user.id)
     if pending:
         await callback.message.answer(
             t("pending_application_notice", lang, vacancy_title=pending["vacancy_title"])
@@ -63,7 +68,7 @@ async def choose_language(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    await _show_vacancy_menu(callback.message, state, lang)
+    await _show_vacancy_menu(callback.message, state, lang, tenant_id)
     await callback.answer()
 
 

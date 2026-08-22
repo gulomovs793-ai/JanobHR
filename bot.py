@@ -1,136 +1,160 @@
 """
-Janob HR — B2B HR Assistant Telegram Bot
-Ishga tushirish: python bot.py  (avval .env faylini sozlang, requirements.txt o'rnating)
+Janob HR — BITTA konsolidatsiyalangan xizmat.
+
+Bu yerda BIR JARAYON ichida quyidagilar birga ishlaydi (bitta ma'lumotlar
+bazasini baham ko'radi — bu MUHIM, chunki avval alohida xizmatlarga
+bo'linganda ular bir-birining ma'lumotini ko'ra olmas edi):
+
+1. Har bir FAOL mijozning ikkala boti (nomzod + admin) — POLLING orqali,
+   dinamik ravishda kashf qilinadi (webhook SHART EMAS, kichik/o'rta
+   miqyos uchun bu ancha sodda va ishonchli).
+2. Userbot — bank to'lov bildirishnomalarini o'qib, mos mijozni avtomatik
+   faollashtiruvchi tinglovchi (agar sozlangan bo'lsa).
+
+Yangi mijoz "faollashtirilganda" (qo'lda yoki avtomatik to'lov orqali),
+`tenant_manager` uni ~20 soniya ichida avtomatik topib, ikkala botini
+ishga tushiradi — xizmatni qayta ishga tushirishning hojati yo'q.
 """
 import asyncio
 import logging
-import os
-import ssl
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
-from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 
-from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, BOT_TOKEN, SQLITE_PATH
-from services import bot_registry
-from services.database import init_db
+from config import BOT_TOKEN, SQLITE_PATH
+from services import database
 from services.storage import SQLiteStorage
-from handlers import start, vacancy, questions, files, sell, contact, resume_upfront, create_bot
+from services.tenant_middleware import IsAdminBot, IsCandidateBot, TenantMiddleware
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "BOT_TOKEN topilmadi. .env faylini .env.example asosida yarating va "
+        "BotFather'dan olingan tokenni kiriting."
+    )
+
 logger = logging.getLogger("janob_hr_bot")
 
-
-def _build_session():
-    """
-    Ba'zi muhitlarda (masalan korporativ proksi yoki sandbox) chiquvchi HTTPS
-    trafik maxsus (o'z-o'ziga imzolangan) sertifikat orqali o'tadi. Bunday holda
-    SSL_CERT_FILE / REQUESTS_CA_BUNDLE / CURL_CA_BUNDLE env o'zgaruvchisi
-    ko'rsatilgan bo'ladi — shu holatda uni aiohttp'ning ishonchli sertifikatlar
-    ro'yxatiga qo'shamiz. Oddiy server (Render/VPS)da bu o'zgaruvchilar
-    sozlanmagan bo'ladi, shuning uchun bu funksiya shunchaki None qaytaradi va
-    aiogram standart sozlamalar bilan ishlayveradi.
-    """
-    extra_ca = (
-        os.getenv("SSL_CERT_FILE") or os.getenv("REQUESTS_CA_BUNDLE") or os.getenv("CURL_CA_BUNDLE")
-    )
-    if not extra_ca or not os.path.exists(extra_ca):
-        return None
-    ctx = ssl.create_default_context()
-    ctx.load_verify_locations(cafile=extra_ca)
-    logger.info("Qo'shimcha CA sertifikat yuklandi: %s", extra_ca)
-    session = AiohttpSession()
-    # aiogram ichki connector konfiguratsiyasini to'g'ridan-to'g'ri yangilaymiz
-    # (aiogram bu yerga standart holda faqat certifi CA to'plamini beradi).
-    session._connector_init["ssl"] = ctx
-    return session
+_TENANT_REFRESH_SECONDS = 20
 
 
-def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
-    bot = Bot(
-        token=BOT_TOKEN,
-        session=_build_session(),
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
-    dp = Dispatcher(storage=fsm_storage)
-
-    # Handlerlar tartibi muhim emas — har bir router o'z filtri (state/callback
-    # prefiksi) bilan ishlaydi. Qaror (qabul/rad) tugmalari endi Admin botda
-    # ishlanadi (admin_bot/handlers_decisions.py), shuning uchun bu yerda yo'q.
-    dp.include_router(sell.router)
-    dp.include_router(start.router)
-    dp.include_router(create_bot.router)
-    dp.include_router(vacancy.router)
-    dp.include_router(resume_upfront.router)
-    dp.include_router(questions.router)
-    dp.include_router(files.router)
-    dp.include_router(contact.router)
-
-    return bot, dp
-
-
-def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
-    from admin_bot.middleware import AdminOnlyMiddleware
+def _build_dispatcher(fsm_storage: SQLiteStorage) -> Dispatcher:
+    """Barcha mijozlar uchun UMUMIY dispatcher. Har bir kelgan yangilanish
+    `TenantMiddleware` orqali qaysi mijozga (tenant_id) va qaysi rolga
+    (bot_role: "candidate"/"admin") tegishli ekanini biladi."""
+    from handlers import start, vacancy, questions, files, sell, contact, resume_upfront, create_bot
     from admin_bot import (
         handlers_menu, handlers_vacancy_list, handlers_vacancy_edit,
         handlers_decisions, handlers_interview, handlers_export,
     )
 
-    bot = Bot(
-        token=ADMIN_BOT_TOKEN,
-        session=_build_session(),
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
     dp = Dispatcher(storage=fsm_storage)
-    dp.update.outer_middleware(AdminOnlyMiddleware())
+    dp.update.outer_middleware(TenantMiddleware())
 
-    dp.include_router(handlers_menu.router)
-    dp.include_router(handlers_vacancy_list.router)
-    dp.include_router(handlers_vacancy_edit.router)
-    dp.include_router(handlers_decisions.router)
-    dp.include_router(handlers_interview.router)
-    dp.include_router(handlers_export.router)
+    candidate_root = Router(name="candidate_root")
+    candidate_root.message.filter(IsCandidateBot())
+    candidate_root.callback_query.filter(IsCandidateBot())
+    for r in (
+        sell.router, start.router, create_bot.router, vacancy.router,
+        resume_upfront.router, questions.router, files.router, contact.router,
+    ):
+        candidate_root.include_router(r)
+    dp.include_router(candidate_root)
 
-    return bot, dp
+    admin_root = Router(name="admin_root")
+    admin_root.message.filter(IsAdminBot())
+    admin_root.callback_query.filter(IsAdminBot())
+    for r in (
+        handlers_menu.router, handlers_vacancy_list.router, handlers_vacancy_edit.router,
+        handlers_decisions.router, handlers_interview.router, handlers_export.router,
+    ):
+        admin_root.include_router(r)
+    dp.include_router(admin_root)
+
+    return dp
+
+
+async def _poll_bot(token: str, dp: Dispatcher, label: str):
+    """Bitta botni CHEKSIZ tsiklda tinglaydi. Xato yuz bersa (masalan token
+    bekor qilingan bo'lsa), jarayonni butunlay o'ldirmasdan, biroz kutib
+    qayta urinadi."""
+    while True:
+        bot = None
+        try:
+            bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+            await bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Polling boshlandi: %s", label)
+            await dp.start_polling(bot, handle_signals=False)
+        except Exception:
+            logger.exception("Polling xatosi (%s) — 15 soniyadan keyin qayta urinamiz.", label)
+            await asyncio.sleep(15)
+        finally:
+            if bot is not None:
+                try:
+                    await bot.session.close()
+                except Exception:
+                    pass
+
+
+async def _tenant_manager(dp: Dispatcher):
+    """Har ~20 soniyada FAOL mijozlar ro'yxatini tekshiradi va hali ishga
+    tushirilmagan har biri uchun ikkita polling vazifasini (nomzod+admin
+    bot) yaratadi. Xizmatni qayta ishga tushirmasdan, yangi faollashtirilgan
+    mijozlar avtomatik qo'shiladi."""
+    started_tenant_ids: set[int] = set()
+
+    while True:
+        try:
+            tenants = await database.list_tenants(status="active")
+            for tenant in tenants:
+                if tenant["id"] in started_tenant_ids:
+                    continue
+                started_tenant_ids.add(tenant["id"])
+
+                label = tenant["company_name"]
+                asyncio.create_task(_poll_bot(tenant["bot_token"], dp, f"{label} — nomzod"))
+                if tenant.get("admin_bot_token"):
+                    asyncio.create_task(_poll_bot(tenant["admin_bot_token"], dp, f"{label} — admin"))
+                logger.info(
+                    "✅ Yangi faol mijoz uchun botlar ishga tushirildi: %s (id=%s)",
+                    label, tenant["id"],
+                )
+        except Exception:
+            logger.exception("Faol mijozlarni tekshirishda xato.")
+
+        await asyncio.sleep(_TENANT_REFRESH_SECONDS)
 
 
 async def main():
-    await init_db()
+    await database.init_db()
 
     fsm_storage = SQLiteStorage(SQLITE_PATH)
     await fsm_storage.init()
 
-    candidate_bot, candidate_dp = _build_candidate_bot(fsm_storage)
-    bot_registry.candidate_bot = candidate_bot
-    logger.info("Janob HR (nomzod) bot ishga tushdi ✅")
-    await candidate_bot.delete_webhook(drop_pending_updates=True)
-    polling_tasks = [candidate_dp.start_polling(candidate_bot)]
+    dp = _build_dispatcher(fsm_storage)
 
-    if ADMIN_BOT_TOKEN:
-        if not ADMIN_USER_IDS:
-            logger.warning(
-                "ADMIN_BOT_TOKEN sozlangan, lekin ADMIN_USER_IDS bo'sh — hech kim admin "
-                "botdan foydalana olmaydi va HECH QANDAY ANKETA HECH KIMGA YUBORILMAYDI. "
-                ".env'da ADMIN_USER_IDS'ni to'ldiring."
+    tasks = [_tenant_manager(dp)]
+
+    try:
+        from userbot import is_userbot_configured, start_userbot
+
+        if is_userbot_configured():
+            tasks.append(start_userbot())
+            logger.info("Userbot (to'lov tinglovchisi) ishga tushirilmoqda.")
+        else:
+            logger.info(
+                "Userbot sozlanmagan (TELEGRAM_API_ID/HASH/SESSION yo'q) — "
+                "to'lovni avtomatlashtirish o'chirilgan holda qoladi."
             )
-        admin_bot, admin_dp = _build_admin_bot(fsm_storage)
-        bot_registry.admin_bot = admin_bot
-        logger.info("Janob HR Admin bot ishga tushdi ✅ (ruxsat etilgan adminlar: %d)", len(ADMIN_USER_IDS))
-        await admin_bot.delete_webhook(drop_pending_updates=True)
-        polling_tasks.append(admin_dp.start_polling(admin_bot))
-    else:
-        logger.warning(
-            "ADMIN_BOT_TOKEN sozlanmagan — Admin bot ishga tushirilmadi. Nomzod arizalari "
-            "endi FAQAT Admin bot orqali yuboriladi, shuning uchun bu holatda HECH QANDAY "
-            "ANKETA HECH KIMGA YUBORILMAYDI. ADMIN_BOT_TOKEN va ADMIN_USER_IDS'ni sozlang."
-        )
+    except Exception:
+        logger.exception("Userbot modulini yuklab bo'lmadi — to'lov avtomatlashtirilmaydi.")
 
-    await asyncio.gather(*polling_tasks)
+    logger.info("Janob HR (konsolidatsiyalangan) xizmati ishga tushdi ✅")
+    await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Bot to'xtatildi.")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    )
+    asyncio.run(main())

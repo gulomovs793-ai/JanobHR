@@ -59,7 +59,11 @@ async def show_stats(callback: CallbackQuery, tenant_id: int):
     lines = [
         "📊 <b>Umumiy statistika</b>",
         "",
-        f"📥 Jami ariza: <b>{overall['total']}</b>",
+        f"👆 Botni boshlaganlar: <b>{overall['starts_unique']}</b> kishi"
+        + (f" ({overall['starts_total']} marta)" if overall['starts_total'] != overall['starts_unique'] else ""),
+        f"📥 Ariza topshirganlar: <b>{overall['total']}</b>"
+        + (f" ({overall['conversion_percent']}% konversiya)" if overall['conversion_percent'] is not None else ""),
+        "",
         f"⏳ Kutilmoqda: {overall['pending']}",
         f"✅ Qabul qilingan: {overall['accepted']}",
         f"❌ Rad etilgan (jami): {overall['rejected_total']}",

@@ -40,6 +40,11 @@ async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str, ten
 async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
     await state.clear()
 
+    try:
+        await database.record_bot_start(tenant_id, message.from_user.id)
+    except Exception:
+        pass  # Statistika yozib bolmasa ham, botning ishlashiga xalaqit bermasin.
+
     builder = InlineKeyboardBuilder()
     for code, label in LANGUAGES.items():
         builder.button(text=label, callback_data=f"lang:{code}")

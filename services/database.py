@@ -128,6 +128,17 @@ CREATE TABLE IF NOT EXISTS payment_notifications_seen (
 );
 """
 
+# Bot /start bosilgan HAR bir holatni yozib boradi — "voronka" (nechta kishi
+# boshladi, nechtasi ariza topshirdi) hisoblash uchun.
+_CREATE_BOT_STARTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS bot_starts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    started_at TEXT NOT NULL
+);
+"""
+
 # Yangi mijoz qo'shilganda, unga boshlang'ich nuqta sifatida urug'lanadigan
 # 3 ta namunaviy vakansiya (avvalgi bir-mijozli tizimdan meros).
 _DEFAULT_VACANCIES = [
@@ -356,6 +367,7 @@ async def init_db():
         if "notify_chat_id" not in po_columns:
             await db.execute("ALTER TABLE payment_orders ADD COLUMN notify_chat_id INTEGER")
         await db.execute(_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL)
+        await db.execute(_CREATE_BOT_STARTS_TABLE_SQL)
         await db.commit()
 
         await _migrate_to_multi_tenant(db)
@@ -847,6 +859,16 @@ _TERMINAL_REJECTED_STATUSES = {
 }
 
 
+async def record_bot_start(tenant_id: int, user_id: int) -> None:
+    started_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "INSERT INTO bot_starts (tenant_id, user_id, started_at) VALUES (?, ?, ?)",
+            (tenant_id, user_id, started_at),
+        )
+        await db.commit()
+
+
 async def get_overall_stats(tenant_id: int) -> dict:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
@@ -854,9 +876,16 @@ async def get_overall_stats(tenant_id: int) -> dict:
         )
         rows = await cursor.fetchall()
 
+        cursor = await db.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT user_id) FROM bot_starts WHERE tenant_id = ?", (tenant_id,),
+        )
+        starts_total, starts_unique = await cursor.fetchone()
+
     by_status = {status: count for status, count in rows}
     total = sum(by_status.values())
     rejected_total = sum(by_status.get(s, 0) for s in _TERMINAL_REJECTED_STATUSES)
+
+    conversion_percent = round(100 * total / starts_unique) if starts_unique else None
 
     return {
         "total": total, "pending": by_status.get("pending", 0), "accepted": by_status.get("accepted", 0),
@@ -865,6 +894,8 @@ async def get_overall_stats(tenant_id: int) -> dict:
         "rejected_irrelevant": by_status.get("rejected_irrelevant", 0),
         "rejected_ai_generated": by_status.get("rejected_ai_generated", 0),
         "rejected_total": rejected_total, "by_status": by_status,
+        "starts_total": starts_total or 0, "starts_unique": starts_unique or 0,
+        "conversion_percent": conversion_percent,
     }
 
 

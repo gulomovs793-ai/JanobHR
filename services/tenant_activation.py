@@ -64,3 +64,24 @@ async def activate_tenant(tenant_id: int) -> dict:
             logger.exception("Mijozga faollashtirish xabarini yuborib bo'lmadi (tenant_id=%s).", tenant_id)
 
     return {"ok": True, "candidate_username": cand_me.username, "admin_username": admin_me.username}
+
+
+async def notify_founder_admin_panel(text: str) -> None:
+    """Asoschiga (SIZGA) yangi buyurtma/to'lov haqida xabar beradi — ALOHIDA
+    Founder Bot orqali EMAS, balki sizning o'z (asosiy kompaniyangiz)
+    Admin-panel botingiz orqali, chunki siz allaqachon shu botni ishlatib
+    turibsiz va unga /start yubourgansiz."""
+    from config import BOT_TOKEN
+
+    founder_tenant = await database.get_tenant_by_token(BOT_TOKEN)
+    if not founder_tenant or not founder_tenant.get("admin_bot_token"):
+        logger.warning("Asoschi (o'z) tenant yoki uning admin-boti topilmadi — xabar yuborilmadi: %s", text[:200])
+        return
+
+    bot = Bot(token=founder_tenant["admin_bot_token"])
+    for admin_id in founder_tenant["admin_user_ids"]:
+        try:
+            await bot.send_message(chat_id=admin_id, text=text)
+        except Exception:
+            logger.exception("Asoschiga (admin_id=%s) xabar yuborib bo'lmadi.", admin_id)
+    await bot.session.close()

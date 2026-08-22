@@ -21,7 +21,7 @@ from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
 from config import (
-    CARD_BOT_USERNAME, FOUNDER_USER_IDS, TELEGRAM_API_HASH,
+    CARD_BOT_USERNAME, TELEGRAM_API_HASH,
     TELEGRAM_API_ID, TELEGRAM_USERBOT_SESSION,
 )
 from services import database
@@ -36,23 +36,12 @@ def is_userbot_configured() -> bool:
 
 
 async def _notify_founders(text: str):
-    """Asoschilarga xabar yuborish — FOUNDER_BOT_TOKEN orqali (agar
-    sozlangan bo'lsa), aks holda faqat logga yoziladi."""
-    from config import FOUNDER_BOT_TOKEN
+    """Asoschiga xabar yuborish — endi ALOHIDA Founder Bot orqali EMAS,
+    balki asoschining o'z Admin-panel boti orqali (chunki u allaqachon
+    ishlatilayotgan, tanish bot)."""
+    from services.tenant_activation import notify_founder_admin_panel
 
-    if not FOUNDER_BOT_TOKEN or not FOUNDER_USER_IDS:
-        logger.warning("[to'lov] Asoschiga xabar yuborilmadi (bot/ID sozlanmagan): %s", text[:200])
-        return
-
-    from aiogram import Bot
-
-    bot = Bot(token=FOUNDER_BOT_TOKEN)
-    for founder_id in FOUNDER_USER_IDS:
-        try:
-            await bot.send_message(chat_id=founder_id, text=text)
-        except Exception:
-            logger.exception("Asoschiga (id=%s) xabar yuborib bo'lmadi.", founder_id)
-    await bot.session.close()
+    await notify_founder_admin_panel(text)
 
 
 async def _activate_tenant_wrapper(tenant_id: int):

@@ -14,7 +14,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 
-from config import FOUNDER_USER_IDS
 from services import database
 
 logger = logging.getLogger("janob_hr_bot")
@@ -185,19 +184,19 @@ async def receive_admin_token(message: Message, state: FSMContext):
         tenant_id, data["company_name"], data["candidate_bot_username"], admin_username,
     )
 
-    if FOUNDER_USER_IDS:
-        notice = (
-            f"🆕 <b>Yangi buyurtma (2 bot)!</b>\n\n"
-            f"№{tenant_id} — {data['company_name']}\n"
-            f"Nomzod-bot: @{data['candidate_bot_username']}\n"
-            f"Admin-bot: @{admin_username}\n"
-            f"Kim orqali: <code>{admin_id}</code>"
-        )
-        for founder_id in FOUNDER_USER_IDS:
-            try:
-                await message.bot.send_message(chat_id=founder_id, text=notice)
-            except Exception:
-                logger.exception("Asoschiga (id=%s) bildirishnoma yuborib bo'lmadi.", founder_id)
+    notice = (
+        f"🆕 <b>Yangi buyurtma (2 bot)!</b>\n\n"
+        f"№{tenant_id} — {data['company_name']}\n"
+        f"Nomzod-bot: @{data['candidate_bot_username']}\n"
+        f"Admin-bot: @{admin_username}\n"
+        f"Kim orqali: <code>{admin_id}</code>"
+    )
+    try:
+        from services.tenant_activation import notify_founder_admin_panel
+
+        await notify_founder_admin_panel(notice)
+    except Exception:
+        logger.exception("Asoschiga bildirishnoma yuborib bo'lmadi.")
 
 
 @router.message(CreateBotForm.waiting_candidate_token)

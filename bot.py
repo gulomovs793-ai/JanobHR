@@ -74,53 +74,59 @@ def _build_dispatcher(fsm_storage: SQLiteStorage) -> Dispatcher:
     return dp
 
 
-async def _poll_bot(token: str, dp: Dispatcher, label: str):
-    """Bitta botni CHEKSIZ tsiklda tinglaydi. Xato yuz bersa (masalan token
-    bekor qilingan bo'lsa), jarayonni butunlay o'ldirmasdan, biroz kutib
-    qayta urinadi."""
-    while True:
-        bot = None
-        try:
-            bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-            await bot.delete_webhook(drop_pending_updates=True)
-            logger.info("Polling boshlandi: %s", label)
-            await dp.start_polling(bot, handle_signals=False)
-        except Exception:
-            logger.exception("Polling xatosi (%s) — 15 soniyadan keyin qayta urinamiz.", label)
-            await asyncio.sleep(15)
-        finally:
-            if bot is not None:
-                try:
-                    await bot.session.close()
-                except Exception:
-                    pass
+async def _run_all_tenants(fsm_storage: SQLiteStorage):
+    """Bitta Dispatcher (BIR MARTA quriladi — routerlarni ikkinchi marta
+    ulash mumkin emas!) barcha faol mijozlarning BARCHA botlarini BITTA
+    `start_polling()` chaqiruvida birga poll qiladi.
 
-
-async def _tenant_manager(dp: Dispatcher):
-    """Har ~20 soniyada FAOL mijozlar ro'yxatini tekshiradi va hali ishga
-    tushirilmagan har biri uchun ikkita polling vazifasini (nomzod+admin
-    bot) yaratadi. Xizmatni qayta ishga tushirmasdan, yangi faollashtirilgan
-    mijozlar avtomatik qo'shiladi."""
-    started_tenant_ids: set[int] = set()
+    Yangi mijoz faollashtirilganda (yoki mavjudi o'chirilganda), joriy
+    pollingni to'xtatib, YANGILANGAN bot ro'yxati bilan qayta boshlaydi —
+    bu bir necha soniyalik qisqa uzilishga olib keladi, lekin ishonchli va
+    aiogram'ning "bitta Dispatcher — bir vaqtda bitta start_polling"
+    cheklovi bilan mos ishlaydi (aks holda ba'zi botlar abadiy "osilib
+    qolishi" mumkin — bu haqiqiy, sinovdan o'tgan xato edi)."""
+    dp = _build_dispatcher(fsm_storage)
+    known_tenant_ids: set[int] = set()
+    polling_task: asyncio.Task | None = None
 
     while True:
         try:
             tenants = await database.list_tenants(status="active")
-            for tenant in tenants:
-                if tenant["id"] in started_tenant_ids:
-                    continue
-                started_tenant_ids.add(tenant["id"])
+            active_ids = {t["id"] for t in tenants}
 
-                label = tenant["company_name"]
-                asyncio.create_task(_poll_bot(tenant["bot_token"], dp, f"{label} — nomzod"))
-                if tenant.get("admin_bot_token"):
-                    asyncio.create_task(_poll_bot(tenant["admin_bot_token"], dp, f"{label} — admin"))
-                logger.info(
-                    "✅ Yangi faol mijoz uchun botlar ishga tushirildi: %s (id=%s)",
-                    label, tenant["id"],
-                )
+            if active_ids != known_tenant_ids:
+                if polling_task is not None and not polling_task.done():
+                    logger.info("Mijozlar tarkibi o'zgardi — pollingni qayta ishga tushiramiz.")
+                    await dp.stop_polling()
+                    polling_task.cancel()
+                    try:
+                        await polling_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+
+                bots = []
+                for tenant in tenants:
+                    cand_bot = Bot(token=tenant["bot_token"], default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+                    await cand_bot.delete_webhook(drop_pending_updates=True)
+                    bots.append(cand_bot)
+
+                    if tenant.get("admin_bot_token"):
+                        admin_bot = Bot(token=tenant["admin_bot_token"], default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+                        await admin_bot.delete_webhook(drop_pending_updates=True)
+                        bots.append(admin_bot)
+
+                if bots:
+                    logger.info(
+                        "✅ Polling (qayta) boshlandi: %d ta mijoz, %d ta bot — %s",
+                        len(tenants), len(bots), ", ".join(t["company_name"] for t in tenants),
+                    )
+                    polling_task = asyncio.create_task(dp.start_polling(*bots, handle_signals=False))
+                else:
+                    polling_task = None
+
+                known_tenant_ids = active_ids
         except Exception:
-            logger.exception("Faol mijozlarni tekshirishda xato.")
+            logger.exception("Faol mijozlarni tekshirishda/pollingni yangilashda xato.")
 
         await asyncio.sleep(_TENANT_REFRESH_SECONDS)
 
@@ -131,9 +137,7 @@ async def main():
     fsm_storage = SQLiteStorage(SQLITE_PATH)
     await fsm_storage.init()
 
-    dp = _build_dispatcher(fsm_storage)
-
-    tasks = [_tenant_manager(dp)]
+    tasks = [_run_all_tenants(fsm_storage)]
 
     try:
         from userbot import is_userbot_configured, start_userbot

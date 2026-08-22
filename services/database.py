@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     company_name TEXT NOT NULL,
     bot_token TEXT NOT NULL UNIQUE,
     bot_username TEXT,
+    admin_bot_token TEXT UNIQUE,
+    admin_bot_username TEXT,
     admin_user_ids TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL
@@ -206,15 +208,18 @@ async def init_db():
 
 # ============================= MIJOZLAR (tenants) =============================
 
-async def create_tenant(company_name: str, bot_token: str, admin_user_ids: list[int]) -> int:
+async def create_tenant(
+    company_name: str, bot_token: str, admin_bot_token: str, admin_user_ids: list[int],
+) -> int:
     """Yangi mijoz yaratadi va unga standart 3 ta namunaviy vakansiyani urug'laydi.
-    Boshlang'ich holati "pending" — to'lov tasdiqlangach `activate_tenant` chaqiriladi."""
+    Ikkita alohida token oladi: `bot_token` — nomzod-bot uchun, `admin_bot_token` —
+    faqat shu mijozning administratorlari ishlatadigan Admin panel-bot uchun."""
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
-            "INSERT INTO tenants (company_name, bot_token, admin_user_ids, status, created_at) "
-            "VALUES (?, ?, ?, 'pending', ?)",
-            (company_name, bot_token, json.dumps(admin_user_ids), created_at),
+            "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
+            "status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
+            (company_name, bot_token, admin_bot_token, json.dumps(admin_user_ids), created_at),
         )
         tenant_id = cursor.lastrowid
 
@@ -242,16 +247,36 @@ async def get_tenant(tenant_id: int) -> Optional[dict]:
     return t
 
 
-async def get_tenant_by_token(bot_token: str) -> Optional[dict]:
+async def get_tenant_by_role_token(token: str) -> Optional[tuple[dict, str]]:
+    """Berilgan token — nomzod-bot yoki Admin panel-bot tokenlaridan qaysi biriga
+    mos kelishini tekshiradi. Topilsa (mijoz, rol) qaytaradi, rol — "candidate"
+    yoki "admin". Hech biriga mos kelmasa None qaytaradi."""
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM tenants WHERE bot_token = ?", (bot_token,))
+        cursor = await db.execute("SELECT * FROM tenants WHERE bot_token = ?", (token,))
         row = await cursor.fetchone()
-    if not row:
-        return None
-    t = dict(row)
-    t["admin_user_ids"] = json.loads(t["admin_user_ids"])
-    return t
+        if row:
+            t = dict(row)
+            t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+            return t, "candidate"
+
+        cursor = await db.execute("SELECT * FROM tenants WHERE admin_bot_token = ?", (token,))
+        row = await cursor.fetchone()
+        if row:
+            t = dict(row)
+            t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+            return t, "admin"
+
+    return None
+
+
+async def get_tenant_by_token(bot_token: str) -> Optional[dict]:
+    """ESKIRGAN: `get_tenant_by_role_token`ni ishlating. Faqat orqaga moslik
+    uchun (masalan `/create_bot`da "bu token allaqachon band" tekshiruvi
+    ikkala ustunni ham qamrab olishi kerak — shu funksiya endi ikkalasini
+    ham tekshiradi)."""
+    result = await get_tenant_by_role_token(bot_token)
+    return result[0] if result else None
 
 
 async def list_tenants(status: Optional[str] = None) -> list[dict]:

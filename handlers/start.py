@@ -37,14 +37,8 @@ async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str, ten
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext, tenant_id: int, is_admin: bool = False):
+async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
     await state.clear()
-
-    if is_admin:
-        from admin_bot.handlers_menu import show_main_menu
-
-        await show_main_menu(message)
-        return
 
     builder = InlineKeyboardBuilder()
     for code, label in LANGUAGES.items():
@@ -78,7 +72,7 @@ async def choose_language(callback: CallbackQuery, state: FSMContext, tenant_id:
     await callback.answer()
 
 
-@router.message(Command("cancel"), F.func(lambda m, is_admin=False: not is_admin))
+@router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
@@ -91,7 +85,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
     await message.answer(t("cancel_done", lang))
 
 
-@router.message(Command("help"), F.func(lambda m, is_admin=False: not is_admin))
+@router.message(Command("help"))
 async def cmd_help(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)

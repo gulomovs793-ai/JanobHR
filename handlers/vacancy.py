@@ -12,14 +12,14 @@ router = Router(name="vacancy")
 
 
 @router.callback_query(ApplyForm.choosing_vacancy, F.data.startswith("vacancy:"))
-async def choose_vacancy(callback: CallbackQuery, state: FSMContext):
+async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: int):
     key = callback.data.split(":", 1)[1]
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
 
     # Rus tili tanlangan bo'lsa, savollar birinchi marta AI orqali tarjima
     # qilinadi va keyingi safarlar uchun bazada saqlanadi.
-    vacancy = await database.get_vacancy_localized(key, lang)
+    vacancy = await database.get_vacancy_localized(tenant_id, key, lang)
     if not vacancy or not vacancy["active"]:
         await callback.answer(t("vacancy_gone", lang), show_alert=True)
         return
@@ -28,8 +28,12 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext):
     # yerda FSM holatiga saqlab qo'yamiz — shunda keyingi har bir savolda
     # qayta-qayta bazaga murojaat qilishning hojati yo'q, va agar admin shu
     # oraliqda vakansiyani tahrirlasa ham, nomzod boshlagan versiyasi bilan
-    # izchil davom etadi.
+    # izchil davom etadi. `tenant_id`ni ham shu yerga yozamiz — keyingi
+    # bosqichlardagi yordamchi funksiyalar buni middleware'dan emas,
+    # to'g'ridan-to'g'ri FSM ma'lumotidan o'qiydi (chuqur chaqiruv
+    # zanjirlarida parametrni har joyga qo'shib chiqmaslik uchun).
     await state.update_data(
+        tenant_id=tenant_id,
         vacancy_key=key,
         vacancy_title=vacancy["title"],
         vacancy_reject_message=vacancy["reject_message"],

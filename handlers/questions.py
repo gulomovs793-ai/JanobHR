@@ -58,6 +58,7 @@ async def _reject_and_save(
     uchun) va suhbat holatini tozalaydi."""
     await message.answer(reject_text)
     await database.save_application(
+        tenant_id=data["tenant_id"],
         user_id=message.from_user.id,
         username=message.from_user.username or "",
         full_name=message.from_user.full_name,
@@ -354,8 +355,10 @@ async def complete_application(message: Message, state: FSMContext):
 
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
+    tenant_id = data["tenant_id"]
 
     app_id = await database.save_application(
+        tenant_id=tenant_id,
         user_id=message.from_user.id,
         username=message.from_user.username or "",
         full_name=data.get("candidate_full_name") or message.from_user.full_name,
@@ -377,12 +380,12 @@ async def complete_application(message: Message, state: FSMContext):
     await state.clear()
 
     try:
-        await notify_admins(app_id)
+        await notify_admins(tenant_id, app_id, message.bot)
     except Exception:
         logger.exception("Adminlarga xabar yuborib bo'lmadi (app_id=%s).", app_id)
 
     # --- Sell bosqichi: agar nomzod yuqori ball olsa, avtomatik taklif yuboriladi ---
     try:
-        await maybe_send_sell_pitch(message, app_id, data.get("ai_scores", {}), lang)
+        await maybe_send_sell_pitch(message, tenant_id, app_id, data.get("ai_scores", {}), lang)
     except Exception:
         logger.exception("Sell xabarini yuborib bo'lmadi (app_id=%s).", app_id)

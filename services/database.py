@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     company_name TEXT NOT NULL,
     bot_token TEXT NOT NULL UNIQUE,
     bot_username TEXT,
+    admin_bot_token TEXT UNIQUE,
+    admin_bot_username TEXT,
     admin_user_ids TEXT NOT NULL DEFAULT '[]',
     referred_by_user_id INTEGER,
     status TEXT NOT NULL DEFAULT 'pending',
@@ -184,6 +186,15 @@ async def init_db():
         await db.execute(_CREATE_INTERVIEW_SLOTS_TABLE_SQL)
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
         await db.execute(_CREATE_TENANTS_TABLE_SQL)
+
+        cursor = await db.execute("PRAGMA table_info(tenants)")
+        tenant_columns = {row[1] for row in await cursor.fetchall()}
+        if "admin_bot_token" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN admin_bot_token TEXT")
+            logger.info("Migratsiya: 'admin_bot_token' ustuni qo'shildi.")
+        if "admin_bot_username" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN admin_bot_username TEXT")
+            logger.info("Migratsiya: 'admin_bot_username' ustuni qo'shildi.")
 
         # Yengil migratsiya: eski (allaqachon mavjud) bazalarga yangi ustunlarni
         # xavfsiz qo'shib boramiz — CREATE TABLE IF NOT EXISTS eski jadvalni
@@ -779,23 +790,31 @@ async def get_vacancy_stats() -> list[dict]:
 # buyurtma qilishi mumkin — kompaniya nomi va o'z bot tokenini yuborib.
 
 async def create_tenant(
-    company_name: str, bot_token: str, admin_user_ids: list[int], referred_by_user_id: int = None,
+    company_name: str, bot_token: str, admin_bot_token: str,
+    admin_user_ids: list[int], referred_by_user_id: int = None,
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
-            "INSERT INTO tenants (company_name, bot_token, admin_user_ids, referred_by_user_id, "
-            "status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
-            (company_name, bot_token, json.dumps(admin_user_ids), referred_by_user_id, created_at),
+            "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
+            "referred_by_user_id, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+            (company_name, bot_token, admin_bot_token, json.dumps(admin_user_ids),
+             referred_by_user_id, created_at),
         )
         await db.commit()
         return cursor.lastrowid
 
 
 async def get_tenant_by_token(bot_token: str) -> Optional[dict]:
+    """Berilgan token nomzod-bot YOKI Admin panel-bot tokenlaridan biriga
+    mos kelsa, mijozni qaytaradi (qaysi rolga tegishli ekanini bilmasdan,
+    faqat "band qilinganmi" tekshiruvi uchun yetarli)."""
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM tenants WHERE bot_token = ?", (bot_token,))
+        cursor = await db.execute(
+            "SELECT * FROM tenants WHERE bot_token = ? OR admin_bot_token = ?",
+            (bot_token, bot_token),
+        )
         row = await cursor.fetchone()
     if not row:
         return None

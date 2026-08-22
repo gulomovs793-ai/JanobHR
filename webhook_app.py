@@ -80,6 +80,7 @@ async def register_new_tenant_webhook(bot_token: str) -> str:
 
 
 async def on_startup(app: web.Application):
+    await database.init_db()
     tenants = await database.list_tenants(status="active")
     for tenant in tenants:
         try:

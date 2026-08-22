@@ -130,9 +130,17 @@ async def _pick_unique_amount(base_price: int) -> int:
     return base_price + random.randint(1, 200)
 
 
-async def create_payment_order(tenant_id: int, base_amount: int = None) -> dict:
+async def create_payment_order(
+    tenant_id: int, base_amount: int = None,
+    notify_bot_token: str = None, notify_chat_id: int = None,
+) -> dict:
     """Mijoz uchun yangi to'lov buyurtmasi yaratadi (avvalgi ochiq
-    buyurtmalarini bekor qilib). Noyob summa va tugash muddati bilan."""
+    buyurtmalarini bekor qilib). Noyob summa va tugash muddati bilan.
+
+    `notify_bot_token`/`notify_chat_id` — to'lov TASDIQLANGANDA, mijozga
+    "to'lovingiz amalga oshirildi" xabarini AYNAN QAYSI BOT ORQALI VA
+    KIMGA yuborish kerakligini eslab qolish uchun (odatda — mijoz
+    `/create_bot`ni qaysi botda va kim sifatida boshlagan bo'lsa, o'sha)."""
     base_amount = base_amount or MONTHLY_PRICE_SOM
 
     await database.cancel_open_payment_orders_for_tenant(tenant_id)
@@ -144,6 +152,7 @@ async def create_payment_order(tenant_id: int, base_amount: int = None) -> dict:
     order_id = await database.create_payment_order(
         tenant_id=tenant_id, order_code=order_code,
         base_amount=base_amount, amount=amount, expires_at=expires_at,
+        notify_bot_token=notify_bot_token, notify_chat_id=notify_chat_id,
     )
     return {"id": order_id, "order_code": order_code, "amount": amount, "expires_at": expires_at}
 
@@ -226,4 +235,24 @@ async def handle_payment_notification(raw_text: str, notify_founders, activate_t
         f"🤖✅ Avtomatik tasdiqlandi!\n\nBuyurtma: {order['order_code']}\n"
         f"Mijoz (tenant_id): {order['tenant_id']}\nSumma: {amount:,} so'm"
     )
+
+    # --- Mijozning o'ziga, u qaysi botda /create_bot boshlagan bo'lsa, o'sha
+    # bot orqali "to'lovingiz amalga oshirildi" xabarini yuboramiz. ---
+    if order.get("notify_bot_token") and order.get("notify_chat_id"):
+        try:
+            from aiogram import Bot
+
+            notify_bot = Bot(token=order["notify_bot_token"])
+            await notify_bot.send_message(
+                chat_id=order["notify_chat_id"],
+                text=(
+                    "✅ <b>To'lovingiz muvaffaqiyatli amalga oshirildi!</b>\n\n"
+                    "Botlaringiz endi faollashtirildi va ishlashga tayyor. Diqqat bilan "
+                    "sozlab, ishlata boshlashingiz mumkin. Rahmat! 🎉"
+                ),
+            )
+            await notify_bot.session.close()
+        except Exception:
+            logger.exception("Mijozga tolov tasdiqlanganligi haqida xabar yuborib bolmadi (order=%s).", order["order_code"])
+
     return {"status": "approved", "amount": amount, "order_code": order["order_code"], "tenant_id": order["tenant_id"]}

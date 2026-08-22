@@ -165,7 +165,9 @@ async def receive_admin_token(message: Message, state: FSMContext):
     from services.payment_automation import create_payment_order
 
     if PAYMENT_CARD_NUMBER:
-        order = await create_payment_order(tenant_id)
+        order = await create_payment_order(
+            tenant_id, notify_bot_token=message.bot.token, notify_chat_id=message.from_user.id,
+        )
         card_digits = PAYMENT_CARD_NUMBER.replace(" ", "")
         await message.answer(
             f"<b>To'lov ma'lumotlari:</b>\n\n"

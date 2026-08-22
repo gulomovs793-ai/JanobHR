@@ -111,6 +111,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
     amount INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'awaiting_payment',
     notification_text TEXT,
+    notify_bot_token TEXT,
+    notify_chat_id INTEGER,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     decided_at TEXT
@@ -346,6 +348,13 @@ async def init_db():
         await db.execute(_CREATE_INTERVIEW_SLOTS_TABLE_SQL)
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
+
+        cursor = await db.execute("PRAGMA table_info(payment_orders)")
+        po_columns = {row[1] for row in await cursor.fetchall()}
+        if "notify_bot_token" not in po_columns:
+            await db.execute("ALTER TABLE payment_orders ADD COLUMN notify_bot_token TEXT")
+        if "notify_chat_id" not in po_columns:
+            await db.execute("ALTER TABLE payment_orders ADD COLUMN notify_chat_id INTEGER")
         await db.execute(_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL)
         await db.commit()
 
@@ -889,13 +898,16 @@ async def get_vacancy_stats(tenant_id: int) -> list[dict]:
 
 async def create_payment_order(
     tenant_id: int, order_code: str, base_amount: int, amount: int, expires_at: str,
+    notify_bot_token: str = None, notify_chat_id: int = None,
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
             "INSERT INTO payment_orders (tenant_id, order_code, base_amount, amount, "
-            "status, created_at, expires_at) VALUES (?, ?, ?, ?, 'awaiting_payment', ?, ?)",
-            (tenant_id, order_code, base_amount, amount, created_at, expires_at),
+            "status, created_at, expires_at, notify_bot_token, notify_chat_id) "
+            "VALUES (?, ?, ?, ?, 'awaiting_payment', ?, ?, ?, ?)",
+            (tenant_id, order_code, base_amount, amount, created_at, expires_at,
+             notify_bot_token, notify_chat_id),
         )
         await db.commit()
         return cursor.lastrowid

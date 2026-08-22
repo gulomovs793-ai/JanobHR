@@ -139,47 +139,20 @@ async def activate_tenant(callback: CallbackQuery):
         await callback.answer("Bu mijoz topilmadi.", show_alert=True)
         return
 
-    from webhook_app import register_new_tenant_webhook
+    from services.tenant_activation import activate_tenant as do_activate
 
     await callback.answer("Faollashtirilmoqda...")
-    try:
-        cand_username = await register_new_tenant_webhook(tenant["bot_token"])
-        admin_username = await register_new_tenant_webhook(tenant["admin_bot_token"])
-    except Exception:
-        logger.exception("Mijoz (id=%s) webhooklarini ornatib bolmadi.", tenant_id)
-        await callback.message.answer(
-            "⚠️ Webhook o'rnatishda xato yuz berdi — tokenlar to'g'riligini tekshiring."
-        )
-        return
+    result = await do_activate(tenant_id)
 
-    await database.update_tenant_status(tenant_id, "active", bot_username=cand_username)
-    # Admin bot username'ini ham saqlaymiz (alohida ustun).
-    import aiosqlite
-    from config import SQLITE_PATH
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute("UPDATE tenants SET admin_bot_username = ? WHERE id = ?", (admin_username, tenant_id))
-        await db.commit()
+    if not result["ok"]:
+        await callback.message.answer(f"⚠️ {result['error']}")
+        return
 
     await callback.message.edit_text(
         f"✅ <b>№{tenant_id} — {tenant['company_name']}</b> faollashtirildi!\n\n"
-        f"Nomzod-bot: @{cand_username}\nAdmin-bot: @{admin_username}\n\n"
+        f"Nomzod-bot: @{result['candidate_username']}\nAdmin-bot: @{result['admin_username']}\n\n"
         "Ikkala bot ham endi jonli ishlamoqda."
     )
-
-    # Mijozning o'ziga ham (uning admin_user_ids'dagi birinchi kishiga) xabar beramiz.
-    if tenant["admin_user_ids"]:
-        try:
-            notify_bot = Bot(token=tenant["admin_bot_token"])
-            await notify_bot.send_message(
-                chat_id=tenant["admin_user_ids"][0],
-                text=(
-                    "🎉 Botlaringiz faollashtirildi! Endi to'liq ishlatishingiz mumkin.\n\n"
-                    f"Admin panel: @{admin_username}\nNomzod-bot: @{cand_username}"
-                ),
-            )
-            await notify_bot.session.close()
-        except Exception:
-            logger.exception("Mijozga faollashtirish xabarini yuborib bo'lmadi.")
 
 
 @router.callback_query(F.data.startswith("fp:deactivate:"))

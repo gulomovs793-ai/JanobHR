@@ -59,6 +59,18 @@ SETUP_BOT_TOKEN = os.getenv("SETUP_BOT_TOKEN", "")
 # ko'rib chiqish va to'lovdan keyin faollashtirish uchun.
 FOUNDER_BOT_TOKEN = os.getenv("FOUNDER_BOT_TOKEN", "")
 
+# --- To'lovni avtomatlashtirish (noyob summa + userbot) ---
+PAYMENT_CARD_NUMBER = os.getenv("PAYMENT_CARD_NUMBER", "")
+PAYMENT_CARD_HOLDER = os.getenv("PAYMENT_CARD_HOLDER", "")
+MONTHLY_PRICE_SOM = int(os.getenv("MONTHLY_PRICE_SOM", "500000"))
+ORDER_TTL_MINUTES = int(os.getenv("ORDER_TTL_MINUTES", "20"))
+
+# Userbot (shaxsiy Telegram hisobi orqali bank xabarlarini o'qish).
+TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID", "0")) or None
+TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
+TELEGRAM_USERBOT_SESSION = os.getenv("TELEGRAM_USERBOT_SESSION", "")
+CARD_BOT_USERNAME = os.getenv("CARD_BOT_USERNAME", "CardXabarBot").lstrip("@")
+
 # Yangi mijoz ro'yxatdan o'tganda, shaxsan xabar beriladigan asoschi ID'lari
 # (bir nechta bo'lishi mumkin, vergul bilan ajratilgan).
 FOUNDER_USER_IDS = {

@@ -84,11 +84,18 @@ async def register_new_tenant_webhook(bot_token: str) -> str:
     """Yangi bot (nomzod yoki admin) uchun serverni qayta ishga tushirmasdan
     webhookni o'rnatadi. Bot username'ini qaytaradi."""
     bot = Bot(token=bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    webhook_url = f"{WEBHOOK_BASE_URL}/webhook/{bot_token}"
-    await bot.set_webhook(url=webhook_url, drop_pending_updates=True)
-    me = await bot.get_me()
-    logger.info("Webhook o'rnatildi: @%s", me.username)
-    return me.username
+    try:
+        webhook_url = f"{WEBHOOK_BASE_URL}/webhook/{bot_token}"
+        await bot.set_webhook(url=webhook_url, drop_pending_updates=True)
+        me = await bot.get_me()
+        logger.info("Webhook o'rnatildi: @%s", me.username)
+        return me.username
+    finally:
+        # Bu vaqtinchalik Bot obyekti faqat webhook o'rnatish uchun
+        # yaratiladi — ishlatib bo'lgach sessiyasi albatta yopilishi kerak,
+        # aks holda "Unclosed client session" xatosi va resurs sizib
+        # chiqishi (memory/file descriptor leak) yuzaga keladi.
+        await bot.session.close()
 
 
 async def on_startup(app: web.Application):

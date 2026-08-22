@@ -40,8 +40,8 @@ async def activate_tenant(tenant_id: int) -> dict:
     await database.set_admin_bot_username(tenant_id, admin_username)
 
     if tenant["admin_user_ids"]:
+        notify_bot = Bot(token=tenant["admin_bot_token"])
         try:
-            notify_bot = Bot(token=tenant["admin_bot_token"])
             await notify_bot.send_message(
                 chat_id=tenant["admin_user_ids"][0],
                 text=(
@@ -49,8 +49,9 @@ async def activate_tenant(tenant_id: int) -> dict:
                     f"Admin panel: @{admin_username}\nNomzod-bot: @{cand_username}"
                 ),
             )
-            await notify_bot.session.close()
         except Exception:
             logger.exception("Mijozga faollashtirish xabarini yuborib bo'lmadi (tenant_id=%s).", tenant_id)
+        finally:
+            await notify_bot.session.close()
 
     return {"ok": True, "candidate_username": cand_username, "admin_username": admin_username}

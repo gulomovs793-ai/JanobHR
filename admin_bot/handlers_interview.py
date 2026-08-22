@@ -1,7 +1,6 @@
 """
 Admin bot — suhbat vaqtlari (sana+soat), uchrashuv manzili, intervyuchi
-kontakti va eslatma matnini boshqarish. Bular globaldir (barcha vakansiyalar
-uchun umumiy).
+kontakti va eslatma matnini boshqarish. Har biri shu MIJOZGA (tenant_id) xos.
 """
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -35,10 +34,10 @@ def _settings_summary(settings: dict) -> str:
     )
 
 
-async def _show_menu(message: Message, state: FSMContext):
+async def _show_menu(message: Message, state: FSMContext, tenant_id: int):
     await state.clear()
-    slots = await database.list_interview_slots(active_only=True)
-    settings = await database.get_interview_settings()
+    slots = await database.list_interview_slots(tenant_id, active_only=True)
+    settings = await database.get_interview_settings(tenant_id)
 
     lines = ["📅 <b>Suhbat vaqtlari va sozlamalar</b>", ""]
     if slots:
@@ -65,13 +64,11 @@ async def _show_menu(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data == "menu:interview")
-async def open_interview_menu(callback: CallbackQuery, state: FSMContext):
+async def open_interview_menu(callback: CallbackQuery, state: FSMContext, tenant_id: int):
     await callback.message.delete()
-    await _show_menu(callback.message, state)
+    await _show_menu(callback.message, state, tenant_id)
     await callback.answer()
 
-
-# --- Vaqt qo'shish ---
 
 @router.callback_query(F.data == "ivslot:add")
 async def start_add_slot(callback: CallbackQuery, state: FSMContext):
@@ -91,23 +88,21 @@ async def receive_slot_label(message: Message, state: FSMContext):
 
 
 @router.message(InterviewForm.adding_slot_capacity, F.text)
-async def receive_slot_capacity(message: Message, state: FSMContext):
+async def receive_slot_capacity(message: Message, state: FSMContext, tenant_id: int):
     text = message.text.strip()
     if not text.isdigit() or int(text) < 1:
         await message.answer("Iltimos, musbat butun son kiriting (masalan: 1).")
         return
 
     data = await state.get_data()
-    await database.add_interview_slot(data["new_slot_label"], capacity=int(text))
+    await database.add_interview_slot(tenant_id, data["new_slot_label"], capacity=int(text))
     await message.answer(f"✅ Qo'shildi: {data['new_slot_label']} (sig'imi: {text})")
-    await _show_menu(message, state)
+    await _show_menu(message, state, tenant_id)
 
-
-# --- Vaqtni o'chirish ---
 
 @router.callback_query(F.data == "ivslot:dellist")
-async def show_delete_slot_list(callback: CallbackQuery):
-    slots = await database.list_interview_slots(active_only=True)
+async def show_delete_slot_list(callback: CallbackQuery, tenant_id: int):
+    slots = await database.list_interview_slots(tenant_id, active_only=True)
     builder = InlineKeyboardBuilder()
     for s in slots:
         builder.button(text=f"🗑 {s['label']}", callback_data=f"ivslot:del:{s['id']}")
@@ -118,15 +113,13 @@ async def show_delete_slot_list(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("ivslot:del:"))
-async def delete_slot(callback: CallbackQuery, state: FSMContext):
+async def delete_slot(callback: CallbackQuery, state: FSMContext, tenant_id: int):
     slot_id = int(callback.data.split(":")[2])
-    await database.delete_interview_slot(slot_id)
+    await database.delete_interview_slot(tenant_id, slot_id)
     await callback.answer("O'chirildi.")
     await callback.message.delete()
-    await _show_menu(callback.message, state)
+    await _show_menu(callback.message, state, tenant_id)
 
-
-# --- Manzil ---
 
 @router.callback_query(F.data == "ivset:location")
 async def start_set_location(callback: CallbackQuery, state: FSMContext):
@@ -140,26 +133,23 @@ async def start_set_location(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(InterviewForm.setting_location, F.location)
-async def receive_location_pin(message: Message, state: FSMContext):
+async def receive_location_pin(message: Message, state: FSMContext, tenant_id: int):
     await database.update_interview_settings(
-        location_lat=message.location.latitude,
-        location_lng=message.location.longitude,
-        location_text=None,
+        tenant_id, location_lat=message.location.latitude,
+        location_lng=message.location.longitude, location_text=None,
     )
     await message.answer("✅ Manzil (xarita) saqlandi.")
-    await _show_menu(message, state)
+    await _show_menu(message, state, tenant_id)
 
 
 @router.message(InterviewForm.setting_location, F.text)
-async def receive_location_text(message: Message, state: FSMContext):
+async def receive_location_text(message: Message, state: FSMContext, tenant_id: int):
     await database.update_interview_settings(
-        location_text=message.text.strip(), location_lat=None, location_lng=None,
+        tenant_id, location_text=message.text.strip(), location_lat=None, location_lng=None,
     )
     await message.answer("✅ Manzil saqlandi.")
-    await _show_menu(message, state)
+    await _show_menu(message, state, tenant_id)
 
-
-# --- Intervyuchi ismi ---
 
 @router.callback_query(F.data == "ivset:name")
 async def start_set_name(callback: CallbackQuery, state: FSMContext):
@@ -169,13 +159,11 @@ async def start_set_name(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(InterviewForm.setting_interviewer_name, F.text)
-async def receive_interviewer_name(message: Message, state: FSMContext):
-    await database.update_interview_settings(interviewer_name=message.text.strip())
+async def receive_interviewer_name(message: Message, state: FSMContext, tenant_id: int):
+    await database.update_interview_settings(tenant_id, interviewer_name=message.text.strip())
     await message.answer("✅ Saqlandi.")
-    await _show_menu(message, state)
+    await _show_menu(message, state, tenant_id)
 
-
-# --- Intervyuchi telefon raqami ---
 
 @router.callback_query(F.data == "ivset:phone")
 async def start_set_phone(callback: CallbackQuery, state: FSMContext):
@@ -185,13 +173,11 @@ async def start_set_phone(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(InterviewForm.setting_interviewer_phone, F.text)
-async def receive_interviewer_phone(message: Message, state: FSMContext):
-    await database.update_interview_settings(interviewer_phone=message.text.strip())
+async def receive_interviewer_phone(message: Message, state: FSMContext, tenant_id: int):
+    await database.update_interview_settings(tenant_id, interviewer_phone=message.text.strip())
     await message.answer("✅ Saqlandi.")
-    await _show_menu(message, state)
+    await _show_menu(message, state, tenant_id)
 
-
-# --- Eslatma matni ---
 
 @router.callback_query(F.data == "ivset:notes")
 async def start_set_notes(callback: CallbackQuery, state: FSMContext):
@@ -204,7 +190,7 @@ async def start_set_notes(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(InterviewForm.setting_notes, F.text)
-async def receive_notes(message: Message, state: FSMContext):
-    await database.update_interview_settings(notes=message.text.strip())
+async def receive_notes(message: Message, state: FSMContext, tenant_id: int):
+    await database.update_interview_settings(tenant_id, notes=message.text.strip())
     await message.answer("✅ Saqlandi.")
-    await _show_menu(message, state)
+    await _show_menu(message, state, tenant_id)

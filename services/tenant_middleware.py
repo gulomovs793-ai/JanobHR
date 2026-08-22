@@ -18,6 +18,7 @@ from aiogram.filters import BaseFilter
 from aiogram.types import TelegramObject
 
 from services import database
+from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -25,7 +26,11 @@ logger = logging.getLogger("janob_hr_bot")
 class TenantMiddleware(BaseMiddleware):
     """Har bir yangilanish uchun `bot.token` orqali tegishli mijoz va bot
     rolini bazadan topadi. Notanish/nofaol token — so'rov butunlay
-    e'tiborsiz qoldiriladi."""
+    e'tiborsiz qoldiriladi.
+
+    Founder Bot (FOUNDER_BOT_TOKEN) — istisno: u hech qanday mijozga
+    tegishli emas, shuning uchun tenants jadvalida umuman qidirilmaydi.
+    Token mos kelsa, to'g'ridan-to'g'ri bot_role="founder" bilan o'tkaziladi."""
 
     async def __call__(
         self,
@@ -34,6 +39,12 @@ class TenantMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Any:
         bot = data["bot"]
+
+        if FOUNDER_BOT_TOKEN and bot.token == FOUNDER_BOT_TOKEN:
+            data["bot_role"] = "founder"
+            data["is_admin"] = False
+            return await handler(event, data)
+
         result = await database.get_tenant_by_role_token(bot.token)
 
         if result is None:
@@ -75,3 +86,16 @@ class IsAdminBot(BaseFilter):
         self, event: TelegramObject, bot_role: str = "candidate", is_admin: bool = False,
     ) -> bool:
         return bot_role == "admin" and is_admin
+
+
+class IsFounderBot(BaseFilter):
+    """Faqat Founder Bot orqali, VA FOUNDER_USER_IDS ro'yxatidagi
+    foydalanuvchidan kelgan yangilanishlar uchun (ikki bosqichli tekshiruv —
+    token TO'G'RI kelishi HAM YETARLI EMAS, yuboruvchi shaxs ham
+    ro'yxatda bo'lishi shart)."""
+
+    async def __call__(self, event: TelegramObject, bot_role: str = "candidate") -> bool:
+        if bot_role != "founder":
+            return False
+        user = getattr(event, "from_user", None)
+        return bool(user and user.id in FOUNDER_USER_IDS)

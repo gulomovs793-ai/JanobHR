@@ -18,7 +18,7 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, TokenBasedRequestHandler, setup_application
 from aiohttp import web
 
-from config import WEBHOOK_BASE_URL
+from config import WEBHOOK_BASE_URL, FOUNDER_BOT_TOKEN
 from services import database
 from services.storage import SQLiteStorage
 from services.tenant_middleware import IsAdminBot, IsCandidateBot, TenantMiddleware
@@ -43,7 +43,8 @@ def _build_dispatcher() -> Dispatcher:
         handlers_menu, handlers_vacancy_list, handlers_vacancy_edit,
         handlers_decisions, handlers_interview, handlers_export,
     )
-    from services.tenant_middleware import IsAdminBot, IsCandidateBot
+    import founder_panel
+    from services.tenant_middleware import IsAdminBot, IsCandidateBot, IsFounderBot
 
     fsm_storage = SQLiteStorage(db_path=database.SQLITE_PATH)
     dp = Dispatcher(storage=fsm_storage)
@@ -64,6 +65,16 @@ def _build_dispatcher() -> Dispatcher:
               handlers_decisions.router, handlers_interview.router, handlers_export.router):
         admin_root.include_router(r)
     dp.include_router(admin_root)
+
+    # Founder Bot — asosiy webhook server bilan BIR XIL dispatcher/bazani
+    # ishlatadi (alohida Render xizmati sifatida emas). Shu tufayli u
+    # webhook_app.py bilan bir xil (jonli) data.db faylini ko'radi —
+    # ikkita ajratilgan fayl tizimi orasida ma'lumot uzilib qolmaydi.
+    founder_root = Router(name="founder_root")
+    founder_root.message.filter(IsFounderBot())
+    founder_root.callback_query.filter(IsFounderBot())
+    founder_root.include_router(founder_panel.router)
+    dp.include_router(founder_root)
 
     return dp
 
@@ -89,6 +100,14 @@ async def on_startup(app: web.Application):
                 await register_new_tenant_webhook(tenant["admin_bot_token"])
         except Exception:
             logger.exception("Mijoz (id=%s) webhooklarini ornatib bolmadi.", tenant["id"])
+
+    if FOUNDER_BOT_TOKEN:
+        try:
+            await register_new_tenant_webhook(FOUNDER_BOT_TOKEN)
+            logger.info("Founder Bot webhooki ornatildi.")
+        except Exception:
+            logger.exception("Founder Bot webhookini ornatib bolmadi.")
+
     logger.info("Webhook server ishga tushdi: %d ta faol mijoz.", len(tenants))
 
 

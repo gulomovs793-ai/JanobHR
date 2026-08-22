@@ -18,6 +18,15 @@ router = Router(name="start")
 
 
 async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str, tenant_id: int):
+    tenant = await database.get_tenant(tenant_id)
+    if tenant and tenant["status"] == "trial_expired":
+        pause_text = {
+            "uz": "Hozircha yangi arizalar qabul qilinmayapti. Iltimos, birozdan so'ng qayta urinib ko'ring.",
+            "ru": "Сейчас новые заявки не принимаются. Пожалуйста, попробуйте позже.",
+        }.get(lang, "Hozircha yangi arizalar qabul qilinmayapti. Iltimos, birozdan so'ng qayta urinib ko'ring.")
+        await message.answer(pause_text)
+        return
+
     vacancies = await database.list_vacancies_localized(tenant_id, lang, active_only=True)
     greeting = t("greeting", lang)
 

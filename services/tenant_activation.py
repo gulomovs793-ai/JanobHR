@@ -17,8 +17,9 @@ from services import database
 logger = logging.getLogger("janob_hr_bot")
 
 
-async def activate_tenant(tenant_id: int) -> dict:
-    """Mijozni faollashtiradi. Muvaffaqiyatli bo'lsa
+async def activate_tenant(tenant_id: int, status: str = "active") -> dict:
+    """Mijozni faollashtiradi. `status` odatda "active", lekin sinov uchun
+    "trial" ham bo'lishi mumkin. Muvaffaqiyatli bo'lsa
     {"ok": True, "candidate_username": ..., "admin_username": ...} qaytaradi."""
     tenant = await database.get_tenant(tenant_id)
     if not tenant:
@@ -41,7 +42,7 @@ async def activate_tenant(tenant_id: int) -> dict:
         if admin_bot is not None:
             await admin_bot.session.close()
 
-    await database.update_tenant_status(tenant_id, "active", bot_username=cand_me.username)
+    await database.update_tenant_status(tenant_id, status, bot_username=cand_me.username)
     await database.set_admin_bot_username(tenant_id, admin_me.username)
 
     logger.info(

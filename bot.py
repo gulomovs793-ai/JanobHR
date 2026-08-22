@@ -91,7 +91,7 @@ async def _run_all_tenants(fsm_storage: SQLiteStorage):
 
     while True:
         try:
-            tenants = await database.list_tenants(status="active")
+            tenants = await database.list_tenants(statuses=["active", "trial", "trial_expired"])
             active_ids = {t["id"] for t in tenants}
 
             if active_ids != known_tenant_ids:

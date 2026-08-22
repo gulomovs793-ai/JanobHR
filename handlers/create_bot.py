@@ -2,9 +2,10 @@
 Janob HR — "O'z HR botingizni yarating" bo'limi.
 
 Joriy botni sinab ko'rgan HAR QANDAY kishi shu bo'lim orqali o'ziga shu
-tizimning nusxasini buyurtma qilishi mumkin. Har bir mijoz IKKITA alohida
-bot yaratadi: bittasi nomzodlar bilan ishlaydigan bot, ikkinchisi — faqat
-o'zining administratorlari ishlatadigan Admin panel-bot.
+tizimning nusxasini buyurtma qilishi mumkin. Avval 2-3 ta savol orqali
+o'z muammosini "his qilishiga" yordam beramiz, keyin ikkita bot (nomzod +
+admin) yaratamiz va DARHOL sinov rejimida (5 ta arizagacha bepul)
+ishga tushiramiz — to'lov FAQAT sinov tugagandan keyin so'raladi.
 """
 import logging
 
@@ -20,8 +21,13 @@ logger = logging.getLogger("janob_hr_bot")
 
 router = Router(name="create_bot")
 
+TRIAL_APPLICATION_LIMIT = 5
+
 
 class CreateBotForm(StatesGroup):
+    waiting_q1_time = State()
+    waiting_q2_cost = State()
+    waiting_q3_frequency = State()
     waiting_company_name = State()
     waiting_candidate_token = State()
     waiting_admin_token = State()
@@ -46,8 +52,47 @@ async def cmd_create_bot(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         "🚀 <b>O'z HR botingizni yarating!</b>\n\n"
-        "Hozir siz sinab ko'rgan aynan shu tizimni o'z kompaniyangiz uchun "
-        "sozlab beramiz. Sizga IKKITA bot kerak bo'ladi:\n"
+        "Avval, sizga aynan qanday foyda berishini aniqlash uchun 3 ta qisqa "
+        "savol beraman — bu bir daqiqa vaqtingizni oladi."
+    )
+    await message.answer("1️⃣ Hozir yangi xodim topish uchun OYIGA qancha vaqt (soat) sarflaysiz?")
+    await state.set_state(CreateBotForm.waiting_q1_time)
+
+
+@router.message(CreateBotForm.waiting_q1_time, F.text)
+async def receive_q1(message: Message, state: FSMContext):
+    await state.update_data(answer_time=message.text.strip())
+    await message.answer(
+        "2️⃣ Oxirgi marta noto'g'ri odam yollaganingizda, bu sizga qanday zarar "
+        "keltirdi? (vaqt, pul, yoki umuman esingizga tushmasa — \"yo'q\" deb yozing)"
+    )
+    await state.set_state(CreateBotForm.waiting_q2_cost)
+
+
+@router.message(CreateBotForm.waiting_q2_cost, F.text)
+async def receive_q2(message: Message, state: FSMContext):
+    await state.update_data(answer_cost=message.text.strip())
+    await message.answer("3️⃣ Oyiga o'rtacha necha marta yangi xodim qidirasiz?")
+    await state.set_state(CreateBotForm.waiting_q3_frequency)
+
+
+@router.message(CreateBotForm.waiting_q3_frequency, F.text)
+async def receive_q3(message: Message, state: FSMContext):
+    await state.update_data(answer_frequency=message.text.strip())
+
+    await message.answer(
+        "Rahmat! Aynan shu — vaqt va xato yollash xarajati — bizning tizim "
+        "hal qiladigan muammo. AI orqali nomzodlarni avtomatik saralab, sizga "
+        "faqat ENG MOS nomzodlarni qoldiradi.\n\n"
+        "💡 Taqqoslash uchun: bitta noto'g'ri yollash — oylik maoshning "
+        "15 barobarigacha zarar keltirishi mumkin (HR tadqiqotlariga ko'ra). "
+        "Bizning xizmat esa buning ozgina qismini tashkil qiladi.\n\n"
+        f"🎁 Shuning uchun — birinchi <b>{TRIAL_APPLICATION_LIMIT} ta ariza</b> "
+        "SIZGA BUTUNLAY BEPUL. Hech qanday to'lov qilmasdan, o'z haqiqiy "
+        "vakansiyangiz bilan sinab ko'rasiz."
+    )
+    await message.answer(
+        "Endi sozlashni boshlaymiz. Sizga IKKITA bot kerak bo'ladi:\n"
         "1️⃣ Nomzodlar ariza topshiradigan bot\n"
         "2️⃣ Faqat sizning o'zingiz (va xodimlaringiz) ishlatadigan Admin panel-bot\n\n"
         "Avval, kompaniyangiz nomini yozing:"
@@ -152,46 +197,39 @@ async def receive_admin_token(message: Message, state: FSMContext):
         await wait_msg.edit_text("⚠️ Texnik xatolik yuz berdi. Iltimos, /create_bot bilan qayta urinib ko'ring.")
         return
 
+    # --- Darhol SINOV rejimida faollashtiramiz - tolov hali sorالmaydi ---
+    from services.tenant_activation import activate_tenant
+
+    result = await activate_tenant(tenant_id, status="trial")
+    if not result["ok"]:
+        await wait_msg.edit_text(f"⚠️ {result['error']}")
+        return
+
     await wait_msg.edit_text(
-        f"✅ Ikkala botingiz ham tayyor:\n\n"
-        f"1️⃣ Nomzod-bot: @{data['candidate_bot_username']}\n"
-        f"2️⃣ Admin panel-bot: @{admin_username}\n\n"
+        f"✅ Ikkala botingiz ham tayyor va SINOV rejimida ishga tushdi:\n\n"
+        f"1️⃣ Nomzod-bot: @{result['candidate_username']}\n"
+        f"2️⃣ Admin panel-bot: @{result['admin_username']}\n\n"
+        f"🎁 Birinchi <b>{TRIAL_APPLICATION_LIMIT} ta ariza</b> BEPUL. "
+        "Bir necha soniyada ikkala bot ham ishlay boshlaydi — hoziroq sinab ko'rishingiz mumkin!\n\n"
         f"Buyurtma raqamingiz: <code>{tenant_id}</code>"
     )
     await state.clear()
 
-    # --- To'lov ko'rsatmasi: noyob summa bilan, darhol ---
-    from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
-    from services.payment_automation import create_payment_order
-
-    if PAYMENT_CARD_NUMBER:
-        order = await create_payment_order(
-            tenant_id, notify_bot_token=message.bot.token, notify_chat_id=message.from_user.id,
-        )
-        card_digits = PAYMENT_CARD_NUMBER.replace(" ", "")
-        await message.answer(
-            f"<b>To'lov ma'lumotlari:</b>\n\n"
-            f"💳 Karta: <code>{card_digits}</code>\n"
-            f"👤 {PAYMENT_CARD_HOLDER}\n"
-            f"💰 Summa: <code>{order['amount']}</code> so'm\n\n"
-            f"⚠️ <b>DIQQAT!</b> Aynan <code>{order['amount']}</code> so'm o'tkazing — "
-            "1 so'mga ham ko'p yoki kam bo'lmasin, aks holda to'lov avtomatik tasdiqlanmaydi.\n\n"
-            "🤖 To'lov tushishi bilan botlaringiz avtomatik faollashadi (odatda 1 daqiqagacha)."
-        )
-    else:
-        await message.answer("To'lov va faollashtirish bo'yicha tez orada siz bilan bog'lanamiz.")
-
     logger.info(
-        "Joriy bot orqali yangi buyurtma: id=%s, kompaniya=%s, nomzod-bot=@%s, admin-bot=@%s",
-        tenant_id, data["company_name"], data["candidate_bot_username"], admin_username,
+        "Yangi SINOV mijozi: id=%s, kompaniya=%s, nomzod-bot=@%s, admin-bot=@%s",
+        tenant_id, data["company_name"], result["candidate_username"], result["admin_username"],
     )
 
     notice = (
-        f"🆕 <b>Yangi buyurtma (2 bot)!</b>\n\n"
+        f"🆕 <b>Yangi SINOV mijozi!</b>\n\n"
         f"№{tenant_id} — {data['company_name']}\n"
-        f"Nomzod-bot: @{data['candidate_bot_username']}\n"
-        f"Admin-bot: @{admin_username}\n"
-        f"Kim orqali: <code>{admin_id}</code>"
+        f"Nomzod-bot: @{result['candidate_username']}\n"
+        f"Admin-bot: @{result['admin_username']}\n"
+        f"Kim orqali: <code>{admin_id}</code>\n\n"
+        f"📋 Javoblari:\n"
+        f"1) Oyiga sarflagan vaqti: {data.get('answer_time', '—')}\n"
+        f"2) Notogri yollash zarari: {data.get('answer_cost', '—')}\n"
+        f"3) Oyiga necha marta yollaydi: {data.get('answer_frequency', '—')}"
     )
     try:
         from services.tenant_activation import notify_founder_admin_panel

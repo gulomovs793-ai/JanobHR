@@ -449,10 +449,17 @@ async def get_tenant_by_token(bot_token: str) -> Optional[dict]:
     return result[0] if result else None
 
 
-async def list_tenants(status: Optional[str] = None) -> list[dict]:
+async def list_tenants(status: Optional[str] = None, statuses: Optional[list[str]] = None) -> list[dict]:
+    """`status` — bitta holat (eski, orqaga moslik uchun). `statuses` — bir
+    nechta holatni (masalan ["active", "trial", "trial_expired"]) bir yo'la
+    so'rash uchun."""
     query = "SELECT * FROM tenants"
-    params = ()
-    if status:
+    params: tuple = ()
+    if statuses:
+        placeholders = ",".join("?" for _ in statuses)
+        query += f" WHERE status IN ({placeholders})"
+        params = tuple(statuses)
+    elif status:
         query += " WHERE status = ?"
         params = (status,)
     query += " ORDER BY created_at DESC"
@@ -867,6 +874,13 @@ async def record_bot_start(tenant_id: int, user_id: int) -> None:
             (tenant_id, user_id, started_at),
         )
         await db.commit()
+
+
+async def count_tenant_applications(tenant_id: int) -> int:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute("SELECT COUNT(*) FROM applications WHERE tenant_id = ?", (tenant_id,))
+        row = await cursor.fetchone()
+    return row[0] if row else 0
 
 
 async def get_overall_stats(tenant_id: int) -> dict:

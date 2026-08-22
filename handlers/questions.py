@@ -348,6 +348,69 @@ async def finish_questions(message: Message, state: FSMContext):
     await state.set_state(ApplyForm.waiting_file)
 
 
+_TRIAL_APPLICATION_LIMIT = 5
+
+
+async def _maybe_expire_trial(tenant_id: int, bot):
+    """Agar mijoz "trial" holatida bo'lsa va {_TRIAL_APPLICATION_LIMIT} ta
+    arizaga yetgan bo'lsa — sinovni yopadi ("trial_expired"), to'lov
+    buyurtmasi yaratadi va adminga to'lov ko'rsatmasini yuboradi. Bu — faqat
+    5-arizaning O'ZIDA (limitga aynan yetganda) bir marta ishlaydi."""
+    tenant = await database.get_tenant(tenant_id)
+    if not tenant or tenant["status"] != "trial":
+        return
+
+    count = await database.count_tenant_applications(tenant_id)
+
+    if count < _TRIAL_APPLICATION_LIMIT:
+        return
+
+    await database.update_tenant_status(tenant_id, "trial_expired")
+    logger.info("Mijoz (id=%s) sinov limitiga yetdi (%s ta ariza) — trial_expired.", tenant_id, count)
+
+    from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
+    from services.payment_automation import create_payment_order
+
+    if not tenant["admin_user_ids"]:
+        return
+
+    admin_chat_id = tenant["admin_user_ids"][0]
+
+    if not PAYMENT_CARD_NUMBER:
+        try:
+            await bot.send_message(
+                chat_id=admin_chat_id,
+                text=(
+                    f"🎁 Bepul sinovingiz tugadi ({_TRIAL_APPLICATION_LIMIT} ta ariza qabul qilindi)!\n\n"
+                    "Davom ettirish uchun tez orada siz bilan bog'lanamiz."
+                ),
+            )
+        except Exception:
+            logger.exception("Mijozga sinov tugagani haqida xabar berib bo'lmadi (tenant_id=%s).", tenant_id)
+        return
+
+    order = await create_payment_order(
+        tenant_id, notify_bot_token=tenant["admin_bot_token"], notify_chat_id=admin_chat_id,
+    )
+    card_digits = PAYMENT_CARD_NUMBER.replace(" ", "")
+
+    try:
+        await bot.send_message(
+            chat_id=admin_chat_id,
+            text=(
+                f"🎁 Bepul sinovingiz tugadi! ({_TRIAL_APPLICATION_LIMIT} ta ariza qabul qilindi)\n\n"
+                "Yangi arizalar qabul qilishni davom ettirish uchun to'lov qiling:\n\n"
+                f"💳 Karta: <code>{card_digits}</code>\n"
+                f"👤 {PAYMENT_CARD_HOLDER}\n"
+                f"💰 Summa: <code>{order['amount']}</code> so'm\n\n"
+                f"⚠️ Aynan <code>{order['amount']}</code> so'm o'tkazing. To'lov tushishi bilan "
+                "botlaringiz avtomatik davom etadi."
+            ),
+        )
+    except Exception:
+        logger.exception("Mijozga sinov tugagani/tolov korsatmasini yuborib bolmadi (tenant_id=%s).", tenant_id)
+
+
 async def complete_application(message: Message, state: FSMContext):
     """handlers/contact.py orqali ism-familiya va telefon yig'ilgach chaqiriladi."""
     from handlers.admin import notify_admins
@@ -383,6 +446,13 @@ async def complete_application(message: Message, state: FSMContext):
         await notify_admins(tenant_id, app_id, message.bot)
     except Exception:
         logger.exception("Adminlarga xabar yuborib bo'lmadi (app_id=%s).", app_id)
+
+    # --- Sinov limiti: agar bu mijoz hali SINOV rejimida bo'lsa va limitga
+    # yetgan bo'lsa, sinovni yopib, to'lov so'raymiz. ---
+    try:
+        await _maybe_expire_trial(tenant_id, message.bot)
+    except Exception:
+        logger.exception("Sinov limitini tekshirishda xato (tenant_id=%s).", tenant_id)
 
     # --- Sell bosqichi: agar nomzod yuqori ball olsa, avtomatik taklif yuboriladi ---
     try:

@@ -10,6 +10,7 @@ Ishga tushirilganda, bazadagi barcha FAOL mijozlar uchun webhook o'rnatiladi.
 Yangi mijoz keyinroq (Phase 3/4) `register_new_tenant_webhook()` orqali,
 serverni qayta ishga tushirmasdan qo'shiladi.
 """
+import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher, Router
@@ -107,6 +108,25 @@ async def on_startup(app: web.Application):
             logger.info("Founder Bot webhooki ornatildi.")
         except Exception:
             logger.exception("Founder Bot webhookini ornatib bolmadi.")
+
+    # To'lovlarni avtomatik aniqlovchi userbot — ALOHIDA Render xizmati
+    # sifatida EMAS, balki shu jarayon ichida fon vazifasi (background task)
+    # sifatida ishga tushiriladi. Sabab: u ham xuddi shu (jonli) data.db
+    # faylini ko'rishi SHART — aks holda yangi mijozlarning to'lov
+    # buyurtmalarini hech qachon topa olmaydi.
+    # try/except bilan o'ralgan: bu — QO'SHIMCHA (ixtiyoriy) xususiyat,
+    # undagi har qanday kutilmagan xato ASOSIY bot serverini yiqitmasligi
+    # SHART (nomzodlar va adminlar uchun bot ishlashda davom etishi kerak).
+    try:
+        from userbot import is_userbot_configured, start_userbot
+
+        if is_userbot_configured():
+            asyncio.create_task(start_userbot())
+            logger.info("Userbot (to'lovlarni aniqlash) fon vazifasi sifatida ishga tushirildi.")
+        else:
+            logger.info("Userbot sozlanmagan (TELEGRAM_API_ID/HASH/SESSION yo'q) — o'tkazib yuborildi.")
+    except Exception:
+        logger.exception("Userbot ishga tushmadi — asosiy bot ishlashda davom etadi.")
 
     logger.info("Webhook server ishga tushdi: %d ta faol mijoz.", len(tenants))
 

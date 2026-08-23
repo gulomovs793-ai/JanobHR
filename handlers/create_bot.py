@@ -22,7 +22,7 @@ logger = logging.getLogger("janob_hr_bot")
 router = Router(name="create_bot")
 
 TRIAL_APPLICATION_LIMIT = 5
-_AI_CONVERSATION_TURNS = 3
+_AI_CONVERSATION_TURNS = 4  # Diagnostika -> Muammo -> Eskalatsiya -> Vizualizatsiya
 _PRESENTATION_PATH = "assets/janobHR_taqdimot.pptx"
 
 _OPENING_STORY = (
@@ -80,9 +80,14 @@ async def cmd_create_bot(message: Message, state: FSMContext):
 
 async def _start_signup(message: Message, state: FSMContext):
     await message.answer(
-        f"🎁 Shuning uchun — birinchi <b>{TRIAL_APPLICATION_LIMIT} ta ariza</b> "
-        "SIZGA BUTUNLAY BEPUL. Hech qanday to'lov qilmasdan, o'z haqiqiy "
-        "vakansiyangiz bilan sinab ko'rasiz."
+        "Aynan shu — Janob HR. AI orqali nomzodlarni inson omilisiz, aniq "
+        "mezonlar bo'yicha saralaydi, sizga faqat tayyor, mos nomzodlarni "
+        "qoldiradi."
+    )
+    await message.answer(
+        f"🎁 Buni o'zingiz ko'rish uchun — birinchi <b>{TRIAL_APPLICATION_LIMIT} ta "
+        "ariza</b> SIZGA BUTUNLAY BEPUL. Hech qanday to'lov qilmasdan, o'z "
+        "haqiqiy vakansiyangiz bilan sinab ko'rasiz."
     )
     await message.answer(
         "Endi sozlashni boshlaymiz. Sizga IKKITA bot kerak bo'ladi:\n"

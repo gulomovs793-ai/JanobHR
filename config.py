@@ -43,7 +43,7 @@ TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 TELEGRAM_USERBOT_SESSION = os.getenv("TELEGRAM_USERBOT_SESSION", "")
 CARD_BOT_USERNAME = os.getenv("CARD_BOT_USERNAME", "CardXabarBot").lstrip("@")
 
-AI_API_KEY = os.getenv("AI_API_KEY", "")
+AI_API_KEY = os.getenv("AI_API_KEY") or os.getenv("AI_API_KEY_1", "")
 AI_API_BASE = os.getenv("AI_API_BASE", "https://api.openai.com/v1")
 AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
 

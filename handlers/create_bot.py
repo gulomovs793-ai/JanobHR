@@ -107,7 +107,7 @@ async def continue_ai_conversation(message: Message, state: FSMContext):
     history.append({"role": "user", "content": message.text.strip()})
     turn_count = data.get("ai_turn_count", 0) + 1
 
-    reply = await get_next_message(history)
+    reply = await get_next_message(history, current_step=turn_count)
 
     if reply is None:
         # AI hech qanday provayderdan javob bermasa - xavfsiz zaxira:

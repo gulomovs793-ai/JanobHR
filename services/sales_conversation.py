@@ -7,11 +7,25 @@ aytgandan keyin unga yechim BERILMAYDI — uning muammosi KUCHAYTIRILADI.
 Mahsulot nomi FAQAT muammo moliyaviy/strategik inqiroz darajasiga
 yetkazilgandan KEYIN (kod tomonidan, AI orqali emas) tilga olinadi.
 
-Asosiy AI chaqiruv infratuzilmasidan (services/ai_scoring.py) foydalanadi.
+MUHANDISLIK QARORLARI (mutaxassis konsultatsiyasi asosida):
+- EXPLICIT STATE INJECTION: qaysi bosqichda ekani AI'ga IMPLICIT (tarix
+  uzunligidan o'zi hisoblab topsin) emas, balki backend (aiogram FSM
+  turn_count) tomonidan ANIQ, majburiy parametr sifatida yuboriladi.
+- Qat'iy chiqish formati promptning ENG OXIRIGA qo'yilgan (model buni
+  "eng so'nggi o'qigan ko'rsatma" sifatida ko'proq hurmat qiladi).
+- max_tokens qisqalikni MAJBURLASH uchun ishlatilmaydi (bu — kesilib
+  qolish xatosiga olib keladi) — buning o'rniga keng zaxira (500) berilgan,
+  qisqalik FAQAT prompt orqali talab qilinadi.
+- Temperature 0.2 — bu ijodiy yozish emas, qat'iy formula ijrosi.
 """
+import logging
+import time
+
 from services.ai_scoring import _call_ai
 
-_SYSTEM_PROMPT = """Sen B2B mijozlarga (kompaniya rahbarlariga) sotuv suhbatini olib
+logger = logging.getLogger("janob_hr_bot")
+
+_BASE_PROMPT = """Sen B2B mijozlarga (kompaniya rahbarlariga) sotuv suhbatini olib
 boruvchi sovuqqon, professional diagnostikachisan. Vazifang HALI mahsulot sotish EMAS —
 mijozning muammosini aniqlash va uni moliyaviy inqiroz darajasigacha kuchaytirish.
 
@@ -23,14 +37,13 @@ fojianing oldini olish" uchun pul to'lashadi. Muammo servis nomiga OLIB CHIQILGU
 PSIXOLOGIYA (har bir savoling zamirida bu yotsin):
 - Yo'qotishdan qochish: "Botimiz foyda keltiradi" ISHLAMAYDI. "Eski jarayoningiz
   tufayli har oy falon summa yonyapti" ISHLAYDI.
-- Challenger usuli: savolларing rahbarning "qulay" jarayonida teshik borligini
+- Challenger usuli: savollaring rahbarning "qulay" jarayonida teshik borligini
   isbotlashi, uni biroz bezovta qilishi kerak.
 - QBS: fikr bildirma, FAKT so'ra. Argumentga e'tiroz bildirish mumkin, lekin
   to'g'ri qo'yilgan mantiqiy savolga e'tiroz bildirib bo'lmaydi.
 
-4 BOSQICHLI ESKALATSIYA VORONKASI — suhbat tarixi uzunligiga qarab, ANIQ SHU
-BOSQICHDA turgan javobni yoz (tarixda nechta SENING xabaring bo'lsa, shuncha
-bosqich allaqachon o'tgan — keyingisini yoz):
+4 BOSQICHLI ESKALATSIYA VORONKASI TAVSIFI (faqat SENGA berilgan aniq bosqich
+qoidalariga amal qil — pastda ko'rsatiladi):
 
 1-BOSQICH (FAKT VA DIAGNOSTIKA): Hozirgi holatni RAQAMDA aniqla. FAQAT BITTA
   aniq savol ber. Formula: "[Harakat] uchun [vaqt/resurs] qancha ketadi?"
@@ -71,15 +84,7 @@ bosqich allaqachon o'tgan — keyingisini yoz):
   sarflagan bo'lardingiz?"
   Bu SENING OXIRGI xabaring — undan keyin suhbat sen tomondan tugaydi.
 
-QAT'IY MATN QOIDALARI:
-- BITTA XABARDA — FAQAT BITTA SAVOL. Hech qachon bir nechta savolni ("necha
-  kun... va necha nomzod... va necha daqiqa...") birga qo'shib yozma — bu
-  o'qishni qiyinlashtiradi va javobni murakkablashtiradi.
-- QISQA gapir: 1, ko'pi bilan 2 ta qisqa gap. Har bir gap 15 so'zdan oshmasin.
-  Uzun, "adabiy" jumla tuzilmalaridan qoch — xuddi telefonda gaplashayotgandek
-  sodda yoz.
-- "Bu raqamlarni aniq ko'rsatishingiz mumkinmi?" kabi ortiqcha, zaif yakunlovchi
-  iboralarni qo'shma — savolning o'zi kifoya.
+UMUMIY QOIDALAR:
 - Sifatlash TAQIQLANADI: "ajoyib", "mukammal", "kuchli", "innovatsion" kabi
   so'zlarni ISHLATMA. O'rniga aniq raqam va mexanika ishlat.
 - Tasdiqlash SO'RALMASIN: "Shunday emasmi?", "To'g'rimi?" kabi ojiz iboralar
@@ -91,24 +96,68 @@ QAT'IY MATN QOIDALARI:
   tasdiqla: "Raqamlar tizimingizda nosozlik borligini ko'rsatmoqda."
 - FAQAT o'zbek tilida. Emoji ishlatma.
 - Foydalanuvchining o'zi aytgan aniq so'zlar/raqamlarni albatta qaytarib ishlat.
-
-JAVOB YOZISHDAN OLDIN OZINGNI TEKSHIR:
-1. Men yechim/mahsulot taklif qildimmi? (Agar ha — ochir, muammoni chuqurlashtir)
-2. Matnimda "xarajat, yoqotilgan soat, yaroqsiz nomzod, raqobatchiga yutqazish"
-   kabi ogriq trigger sozlar bormi? (Yoq bolsa — qayta yoz)
-3. Mening savolimga oddiy "ha/yoq" deb javob berib qutulish mumkinmi? (Mumkin
-   bolsa — "Qancha?", "Qanday qilib?", "Nima sababdan?" ga aylantir)
 """
 
+# Bu qism promptning ENG OXIRIGA qo'shiladi — model buni "eng so'nggi va eng
+# muhim ko'rsatma" sifatida ko'proq og'irlik bilan hurmat qiladi.
+_OUTPUT_FORMAT_SUFFIX = """
+CHIQISH FORMATI (QAT'IY, BUZILMASIN):
+- Javobing MAKSIMAL 2 ta gapdan iborat bo'lsin.
+- Javobingda FAQAT VA FAQAT BITTA so'roq belgisi (?) bo'lishi SHART.
+- Ikkita yoki undan ko'p savol berish — TIZIM XATOSI hisoblanadi.
+- Hech qanday kirish so'zi, sarlavha yoki izoh qo'shma — faqat xabarning o'zini yoz.
+"""
 
-async def get_next_message(history: list[dict]) -> str | None:
-    """`history` — [{"role": "user"/"assistant", "content": "..."}] (system
-    kiritilmagan). Asosiy AI infratuzilmasi (ai_scoring._call_ai) orqali
-    ishlaydi — bir xil provayder zanjiri va xato bardoshligi bilan."""
-    return await _call_ai(
-        system_prompt=_SYSTEM_PROMPT,
-        user_prompt="",
-        max_tokens=200,
-        extra_messages=history,
-        temperature=0.5,
+_STEP_LABELS = {
+    1: "1-BOSQICH (FAKT VA DIAGNOSTIKA)",
+    2: "2-BOSQICH (MUAMMONI ANIQLASH)",
+    3: "3-BOSQICH (OG'RIQNI ESKALATSIYA QILISH — KILL ZONE)",
+    4: "4-BOSQICH (YECHIMNI VIZUALIZATSIYA — YAKUNIY)",
+}
+
+
+def _build_system_prompt(current_step: int) -> str:
+    """EXPLICIT STATE INJECTION: AI'ga qaysi bosqichda ekanini suhbat tarixi
+    uzunligidan o'zi hisoblashga majbur qilish o'rniga, backend (aiogram FSM)
+    allaqachon bilgan bosqich raqamini TO'G'RIDAN-TO'G'RI, majburiy
+    ko'rsatma sifatida beramiz."""
+    step_label = _STEP_LABELS.get(current_step, _STEP_LABELS[1])
+    directive = (
+        f"\nDIQQAT: QAT'IY BUYRUQ!\nSen hozir SOTUV VORONKASINING {step_label}"
+        f"DASAN!\nVazifang: FAQATGINA shu bosqich qoidalariga amal qilgan holda "
+        f"BITTA javob yozish. Boshqa bosqichga o'tish yoki bosqichlarni "
+        f"aralashtirish TAQIQLANADI.\n"
     )
+    return _BASE_PROMPT + directive + _OUTPUT_FORMAT_SUFFIX
+
+
+async def get_next_message(history: list[dict], current_step: int) -> str | None:
+    """`history` — [{"role": "user"/"assistant", "content": "..."}] (system
+    kiritilmagan). `current_step` — backend (aiogram FSM) allaqachon bilgan,
+    1 dan 4 gacha bo'lgan aniq bosqich raqami (Explicit State Injection).
+
+    Asosiy AI infratuzilmasi (ai_scoring._call_ai) orqali ishlaydi — bir xil
+    provayder zanjiri va xato bardoshligi bilan. Har chaqiruv "soya jurnali"
+    (shadow log) sifatida bosqich/kirish/chiqish/kechikishni logga yozadi —
+    skrinshot kutmasdan Render loglaridan to'g'ridan-to'g'ri tekshirish uchun.
+    """
+    system_prompt = _build_system_prompt(current_step)
+    last_user_input = history[-1]["content"] if history else ""
+
+    start = time.monotonic()
+    reply = await _call_ai(
+        system_prompt=system_prompt,
+        user_prompt="",
+        max_tokens=500,  # Kesilib qolishning oldini olish uchun KENG zaxira — qisqalik faqat promptdan talab qilinadi
+        extra_messages=history,
+        temperature=0.2,  # Ijodkorlik emas, qat'iy formula ijrosi kerak
+    )
+    latency_ms = round((time.monotonic() - start) * 1000)
+
+    logger.info(
+        "[sotuv-ai] bosqich=%s | kechikish=%sms | kirish=%r | chiqish=%r",
+        current_step, latency_ms, last_user_input[:100],
+        (reply or "")[:150] if reply else "❌ HECH QANDAY JAVOB (barcha provayderlar ishlamadi)",
+    )
+
+    return reply

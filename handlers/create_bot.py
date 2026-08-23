@@ -80,10 +80,6 @@ async def cmd_create_bot(message: Message, state: FSMContext):
 
 async def _start_signup(message: Message, state: FSMContext):
     await message.answer(
-        "💡 Aynan shu — vaqt yo'qotish va noto'g'ri yollash xarajati — bizning "
-        "tizim hal qiladigan muammo. Bitta noto'g'ri yollash — oylik "
-        "maoshning 15 barobarigacha zarar keltirishi mumkin (HR "
-        "tadqiqotlariga ko'ra).\n\n"
         f"🎁 Shuning uchun — birinchi <b>{TRIAL_APPLICATION_LIMIT} ta ariza</b> "
         "SIZGA BUTUNLAY BEPUL. Hech qanday to'lov qilmasdan, o'z haqiqiy "
         "vakansiyangiz bilan sinab ko'rasiz."

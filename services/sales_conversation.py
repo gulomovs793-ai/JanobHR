@@ -1,94 +1,65 @@
 """
 Janob HR — /create_bot oqimidagi MOSLASHUVCHAN sotuv suhbati.
 
-Oddiy, qattiq belgilangan 3 ta savol o'rniga, AI orqali HAQIQIY suhbat
-olib boradi: mijozning har bir javobiga qarab keyingi savolni o'zi
-moslashtiradi. Maqsad — mijozning "og'rig'i"ni chiqarib olish, uni tan
-oldirish, va aynan o'sha muammoga Janob HR yechim ekanini ko'rsatish
-(klassik konsultativ sotuv strategiyasi).
+SPIN-selling mantig'i bilan quriladi (Vaziyat -> Muammo -> Oqibat -> Yechim):
+mijozning har bir javobidan RAQAM (pul, vaqt, son) chiqarib olishga harakat
+qiladi, keyin o'sha raqamlarni ishlatib OQIBATNI dramatik tarzda ko'rsatadi
+(masalan "yiliga bu sizga $X yeydi"), va faqat OXIRIDA Janob HR yechim
+ekanini ko'rsatadi. Adabiy, yumshoq til EMAS — qisqa, achchiq, haqiqiy.
 
-Bir xil provayder ro'yxati va zaxira zanjiridan (services/ai_scoring.py
-bilan bir xil tamoyilda) foydalanadi, lekin BUTUN SUHBAT TARIXINI
-uzatadi — bitta savol-javob emas.
+Asosiy AI chaqiruv infratuzilmasidan (services/ai_scoring.py) foydalanadi —
+bir xil provayder zanjiri, bir xil xato/qayta urinish mantig'i.
 """
-import logging
-from typing import Optional
+from services.ai_scoring import _call_ai
 
-import aiohttp
+_SYSTEM_PROMPT = """Sen — "Janob HR" nomli AI-HR-avtomatlashtirish xizmatini sotayotgan,
+juda tajribali sotuvchisan. Uslubing — Chet Holmes, Alex Hormozi kabi to'g'ridan-to'g'ri,
+raqamlarga asoslangan sotuvchilarnikiga o'xshaydi. ADABIY, YUMSHOQ, "korporativ" til ISHLATMA.
+Qisqa, achchiq, halol gapir — xuddi tajribali do'stong bilan gaplashgandek.
 
-from config import (
-    AI_API_BASE, AI_API_BASE_2, AI_API_BASE_3,
-    AI_API_KEY, AI_API_KEY_2, AI_API_KEY_3,
-    AI_MODEL, AI_MODEL_2, AI_MODEL_3,
-)
+Suhbatdoshing — kichik/o'rta biznes egasi. U hozirgina Janob HR botini nomzod sifatida
+sinab ko'rdi. Suhbat tarixi pastda.
 
-logger = logging.getLogger("janob_hr_bot")
+STRATEGIYA (SPIN mantig'i) — HAR BIR JAVOBINGDA BITTA QADAM OLDINGA:
 
-_PROVIDERS = [
-    (AI_API_KEY, AI_API_BASE, AI_MODEL, "asosiy"),
-    (AI_API_KEY_2, AI_API_BASE_2, AI_MODEL_2, "zaxira-1"),
-    (AI_API_KEY_3, AI_API_BASE_3, AI_MODEL_3, "zaxira-2"),
-]
+1-QADAM (agar bu 1-javobing bo'lsa): Mijoz aytgan muammoni RAQAMGA tortish.
+  Vaqt, pul yoki sonni so'ra. Masalan: "Necha marta oxirgi yilda notogri odam
+  yollab, qayta boshlashga majbur boldingiz?" yoki "Bitta yangi xodimni ish
+  holatiga keltirish uchun necha kun/hafta ketadi?"
 
-_SYSTEM_PROMPT = """Sen — Janob HR (AI-HR bot) uchun konsultativ sotuv suhbatini olib
-boruvchi yordamchisan. Suhbatdoshing — kichik/o'rta biznes egasi, u hozirgina
-Janob HR botini nomzod sifatida sinab ko'rdi va potensial mijoz.
+2-QADAM (2-javobing): Endi OQIBATNI kuchaytir - ularning aytgan raqamini olib,
+  buni PUL yoki YOQOTILGAN IMKONIYATGA aylantir. Masalan agar ular "2 hafta"
+  desa: "2 hafta = shu davrda kelgan mijozlarning yarmi javobsiz qolgan bolishi
+  mumkin. Bitta mijoz sizga ortacha qancha daromad keltiradi?"
 
-MAQSADING: uning yollash/kadrlar bilan bog'liq HAQIQIY OG'RIG'INI chiqarib
-olish, uni tan oldirish, va shu muammoga Janob HR yechim ekanini tabiiy
-ravishda ko'rsatish. Bu — reklama emas, HAQIQIY qiziqish bilan suhbat.
+3-QADAM (3-javobing, YAKUNIY): ENDI SAVOL BERMA. Ularning BARCHA aytgan
+  raqamlarini olib, ULARNI KOPAYTIR/QOSH va DRAMATIK, ANIQ bitta yakuniy
+  raqam chiqar (masalan "Demak, yiliga bu sizga taxminan 15-20 million som
+  yoqotish degani"). Keyin shu raqamni Janob HR narxi (500 ming som/oy) bilan
+  solishtirib, farqni ochiq korsat. 3-4 gapdan oshmasin.
 
 QOIDALAR:
-- Har safar FAQAT BITTA savol yoki qisqa fikr bilan javob ber (2-3 gap).
-- Suhbatdoshning OLDINGI javobiga chinakam munosabat bildir (uni takrorlama,
-  balki chuqurlashtir yoki aniqlashtir).
-- Hissiy, do'stona ohangda yoz, lekin professional. O'zbek tilida.
-- Agar suhbatdosh "yollash muammosi yo'q" desa — hurmat bilan qabul qil,
-  lekin baribir Janob HR foydali bo'lishi mumkinligini (masalan kelajakda)
-  qisqa eslat.
-- HECH QACHON o'zingdan raqam/statistika to'qima — faqat suhbatdosh aytgan
-  narsaga tayan.
-- Agar bu SENING 3-JAVOBING bo'lsa (ya'ni foydalanuvchidan 3-marta javob
-  kelgan bo'lsa) — endi savol berma, buning o'rniga uning aytgan muammosini
-  bir jumlada umumlashtirib, Janob HR aynan shu muammoni qanday hal
-  qilishini 1-2 gapda tushuntirib, suhbatni yakunla."""
+- FAQAT o'zbek tilida, sodda, jonli tilda
+- HAR SAFAR foydalanuvchi bergan ANIQ sozlarni/raqamlarni qaytarib ishlat -
+  umumiy gapirma
+- Agar foydalanuvchi RAQAM bermasa (masalan "bilmayman" desa), taxminiy son
+  taklif qilib, "shunga oxshashmi?" deb tasdiqlashini sora - lekin baribir
+  OLDINGA harakatlan, orqaga qaytma
+- Hech qachon "AI", "avtomatlashtirish" kabi soz bilan ochiq reklama qilma -
+  faqat 3-QADAMDA, raqamlar orqali korsat
+- Bitta xabar - eng kopi 2-3 qisqa gap. Uzun paragraf yozma
+- Emoji ishlatma (jiddiy, biznes ohangida qol)
+"""
 
 
-async def _call_ai_conversation(messages: list[dict]) -> Optional[str]:
-    """`messages` — [{"role": "system"/"user"/"assistant", "content": "..."}]
-    ko'rinishidagi to'liq suhbat tarixi. Sozlangan provayderlarni navbat
-    bilan sinaydi, birinchi muvaffaqiyatlisidan matnni qaytaradi."""
-    active = [(k, b, m, label) for k, b, m, label in _PROVIDERS if k]
-    if not active:
-        return None
-
-    for key, base, model, label in active:
-        payload = {"model": model, "messages": messages, "temperature": 0.7, "max_tokens": 200}
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{base.rstrip('/')}/chat/completions",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {key}"},
-                    timeout=aiohttp.ClientTimeout(total=12),
-                ) as resp:
-                    if resp.status != 200:
-                        body = await resp.text()
-                        logger.warning("AI provayder (%s) xatosi: HTTP %s | %s", label, resp.status, body[:300])
-                        continue
-                    data = await resp.json()
-                    content = data["choices"][0]["message"]["content"]
-                    if content and content.strip():
-                        return content.strip()
-        except Exception:
-            logger.exception("AI provayder (%s) so'rovida xato.", label)
-            continue
-
-    return None
-
-
-async def get_next_message(history: list[dict]) -> Optional[str]:
+async def get_next_message(history: list[dict]) -> str | None:
     """`history` — [{"role": "user"/"assistant", "content": "..."}] (system
-    kiritilmagan). Tizim prompti avtomatik qo'shiladi."""
-    messages = [{"role": "system", "content": _SYSTEM_PROMPT}] + history
-    return await _call_ai_conversation(messages)
+    kiritilmagan). Asosiy AI infratuzilmasi (ai_scoring._call_ai) orqali
+    ishlaydi — bir xil provayder zanjiri va xato bardoshligi bilan."""
+    return await _call_ai(
+        system_prompt=_SYSTEM_PROMPT,
+        user_prompt="",  # extra_messages ishlatilgani uchun bu e'tiborga olinmaydi
+        max_tokens=250,
+        extra_messages=history,
+        temperature=0.6,
+    )

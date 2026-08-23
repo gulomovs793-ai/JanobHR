@@ -45,22 +45,33 @@ _PROVIDERS = [
 ]
 
 
-async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> Optional[str]:
+async def _call_ai(
+    system_prompt: str, user_prompt: str, max_tokens: int,
+    extra_messages: Optional[list[dict]] = None, temperature: float = 0,
+) -> Optional[str]:
     """Sozlangan provayderlarni navbat bilan sinaydi, birinchi muvaffaqiyatlisidan
     xom matnni qaytaradi. Hech biri sozlanmagan yoki barchasi ishlamasa — None.
+
+    `extra_messages` — agar berilsa (masalan ko'p-turli suhbat tarixi), ular
+    system+user juftligi ORASIGA emas, balki UNING O'RNIGA emas — system
+    xabaridan KEYIN, asosiy user_prompt o'rniga to'liq tarix sifatida
+    ishlatiladi (bunda `user_prompt` e'tiborga olinmaydi).
     """
     active = [(k, b, m, label) for k, b, m, label in _PROVIDERS if k]
     if not active:
         return None
 
     for key, base, model, label in active:
+        messages = [{"role": "system", "content": system_prompt}]
+        if extra_messages:
+            messages += extra_messages
+        else:
+            messages.append({"role": "user", "content": user_prompt})
+
         payload = {
             "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0,
+            "messages": messages,
+            "temperature": temperature,
             "max_tokens": max_tokens,
         }
         try:

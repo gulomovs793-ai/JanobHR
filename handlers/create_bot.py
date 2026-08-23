@@ -114,7 +114,7 @@ async def continue_ai_conversation(message: Message, state: FSMContext):
         # suhbatni to'xtatib, darhol royxatdan otishga otamiz.
         logger.warning("Sotuv suhbati uchun AI javob bermadi - royxatdan otishga otamiz.")
         await message.answer(
-            "Tushunarli! Aytganlaringiz — aynan Janob HR yordam beradigan muammo."
+            "Qayd etdim. Bu — aynan Janob HR yordam beradigan muammo."
         )
         await state.update_data(ai_history=history, ai_turn_count=turn_count)
         await _start_signup(message, state)

@@ -1,11 +1,11 @@
 """
 Janob HR — "O'z HR botingizni yarating" bo'limi.
 
-Joriy botni sinab ko'rgan HAR QANDAY kishi shu bo'lim orqali o'ziga shu
-tizimning nusxasini buyurtma qilishi mumkin. Avval 2-3 ta savol orqali
-o'z muammosini "his qilishiga" yordam beramiz, keyin ikkita bot (nomzod +
-admin) yaratamiz va DARHOL sinov rejimida (5 ta arizagacha bepul)
-ishga tushiramiz — to'lov FAQAT sinov tugagandan keyin so'raladi.
+YANGI STRATEGIYA (konsultativ sotuv): qattiq belgilangan savollar o'rniga —
+avval kuchli hikoya + taqdimot bilan muammoni "his qildiramiz", keyin AI
+orqali MOSLASHUVCHAN suhbat olib boramiz (mijozning har bir javobiga qarab
+keyingi savol o'zgaradi). Faqat shundan keyin — ro'yxatdan o'tish (2 ta bot)
+va DARHOL sinov rejimida (5 ta arizagacha bepul) ishga tushirish.
 """
 import logging
 
@@ -13,7 +13,7 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message
 
 from services import database
 
@@ -22,12 +22,26 @@ logger = logging.getLogger("janob_hr_bot")
 router = Router(name="create_bot")
 
 TRIAL_APPLICATION_LIMIT = 5
+_AI_CONVERSATION_TURNS = 3
+_PRESENTATION_PATH = "assets/janobHR_taqdimot.pptx"
+
+_OPENING_STORY = (
+    "🤔 Kichik bir hikoya aytib beray...\n\n"
+    "Bir kompaniya 12 oy ichida 10 ta yangi xodim ishga oldi. Ammo deyarli har "
+    "biri 1 oy ham to'liq ishlamasdan, ishdan ketib qolardi. Har safar yangi "
+    "kelgan xodimni yana boshidan o'rgatish kerak bo'lardi — vaqt, kuch va pul "
+    "sarflanardi.\n\n"
+    "Shu orada, ular qo'lga kiritishi mumkin bo'lgan issiq mijozlar (lidlar) "
+    "e'tiborsiz qolib, raqobatchilarga ketardi — chunki savdo bo'limida "
+    "barqaror jamoa yo'q edi. Potensial mijozlar shunchaki yo'qolib borardi.\n\n"
+    "Bu — ko'plab kompaniyalarda jim ichida takrorlanadigan holat.\n\n"
+    "Aytingchi — sizning kompaniyangizda kadrlar bilan bog'liq ENG KATTA "
+    "muammo nima?"
+)
 
 
 class CreateBotForm(StatesGroup):
-    waiting_q1_time = State()
-    waiting_q2_cost = State()
-    waiting_q3_frequency = State()
+    in_ai_conversation = State()
     waiting_company_name = State()
     waiting_candidate_token = State()
     waiting_admin_token = State()
@@ -50,43 +64,26 @@ async def _validate_token(token: str) -> str | None:
 @router.message(Command("create_bot"))
 async def cmd_create_bot(message: Message, state: FSMContext):
     await state.clear()
+
+    try:
+        await message.answer_document(
+            FSInputFile(_PRESENTATION_PATH),
+            caption="📊 Avval, Janob HR haqida qisqa taqdimot:",
+        )
+    except Exception:
+        logger.exception("Taqdimotni yuborib bo'lmadi — matn bilan davom etamiz.")
+
+    await message.answer(_OPENING_STORY)
+    await state.update_data(ai_history=[], ai_turn_count=0)
+    await state.set_state(CreateBotForm.in_ai_conversation)
+
+
+async def _start_signup(message: Message, state: FSMContext):
     await message.answer(
-        "🚀 <b>O'z HR botingizni yarating!</b>\n\n"
-        "Avval, sizga aynan qanday foyda berishini aniqlash uchun 3 ta qisqa "
-        "savol beraman — bu bir daqiqa vaqtingizni oladi."
-    )
-    await message.answer("1️⃣ Hozir yangi xodim topish uchun OYIGA qancha vaqt (soat) sarflaysiz?")
-    await state.set_state(CreateBotForm.waiting_q1_time)
-
-
-@router.message(CreateBotForm.waiting_q1_time, F.text)
-async def receive_q1(message: Message, state: FSMContext):
-    await state.update_data(answer_time=message.text.strip())
-    await message.answer(
-        "2️⃣ Oxirgi marta noto'g'ri odam yollaganingizda, bu sizga qanday zarar "
-        "keltirdi? (vaqt, pul, yoki umuman esingizga tushmasa — \"yo'q\" deb yozing)"
-    )
-    await state.set_state(CreateBotForm.waiting_q2_cost)
-
-
-@router.message(CreateBotForm.waiting_q2_cost, F.text)
-async def receive_q2(message: Message, state: FSMContext):
-    await state.update_data(answer_cost=message.text.strip())
-    await message.answer("3️⃣ Oyiga o'rtacha necha marta yangi xodim qidirasiz?")
-    await state.set_state(CreateBotForm.waiting_q3_frequency)
-
-
-@router.message(CreateBotForm.waiting_q3_frequency, F.text)
-async def receive_q3(message: Message, state: FSMContext):
-    await state.update_data(answer_frequency=message.text.strip())
-
-    await message.answer(
-        "Rahmat! Aynan shu — vaqt va xato yollash xarajati — bizning tizim "
-        "hal qiladigan muammo. AI orqali nomzodlarni avtomatik saralab, sizga "
-        "faqat ENG MOS nomzodlarni qoldiradi.\n\n"
-        "💡 Taqqoslash uchun: bitta noto'g'ri yollash — oylik maoshning "
-        "15 barobarigacha zarar keltirishi mumkin (HR tadqiqotlariga ko'ra). "
-        "Bizning xizmat esa buning ozgina qismini tashkil qiladi.\n\n"
+        "💡 Aynan shu — vaqt yo'qotish va noto'g'ri yollash xarajati — bizning "
+        "tizim hal qiladigan muammo. Bitta noto'g'ri yollash — oylik "
+        "maoshning 15 barobarigacha zarar keltirishi mumkin (HR "
+        "tadqiqotlariga ko'ra).\n\n"
         f"🎁 Shuning uchun — birinchi <b>{TRIAL_APPLICATION_LIMIT} ta ariza</b> "
         "SIZGA BUTUNLAY BEPUL. Hech qanday to'lov qilmasdan, o'z haqiqiy "
         "vakansiyangiz bilan sinab ko'rasiz."
@@ -98,6 +95,41 @@ async def receive_q3(message: Message, state: FSMContext):
         "Avval, kompaniyangiz nomini yozing:"
     )
     await state.set_state(CreateBotForm.waiting_company_name)
+
+
+@router.message(CreateBotForm.in_ai_conversation, F.text)
+async def continue_ai_conversation(message: Message, state: FSMContext):
+    from services.sales_conversation import get_next_message
+
+    data = await state.get_data()
+    history = data.get("ai_history", [])
+    history.append({"role": "user", "content": message.text.strip()})
+    turn_count = data.get("ai_turn_count", 0) + 1
+
+    reply = await get_next_message(history)
+
+    if reply is None:
+        # AI hech qanday provayderdan javob bermasa - xavfsiz zaxira:
+        # suhbatni to'xtatib, darhol royxatdan otishga otamiz.
+        logger.warning("Sotuv suhbati uchun AI javob bermadi - royxatdan otishga otamiz.")
+        await message.answer(
+            "Tushunarli! Aytganlaringiz — aynan Janob HR yordam beradigan muammo."
+        )
+        await state.update_data(ai_history=history, ai_turn_count=turn_count)
+        await _start_signup(message, state)
+        return
+
+    history.append({"role": "assistant", "content": reply})
+    await state.update_data(ai_history=history, ai_turn_count=turn_count)
+    await message.answer(reply)
+
+    if turn_count >= _AI_CONVERSATION_TURNS:
+        await _start_signup(message, state)
+
+
+@router.message(CreateBotForm.in_ai_conversation)
+async def wrong_type_in_conversation(message: Message, state: FSMContext):
+    await message.answer("Iltimos, javobingizni oddiy matn ko'rinishida yozing.")
 
 
 @router.message(CreateBotForm.waiting_company_name, F.text)
@@ -197,7 +229,7 @@ async def receive_admin_token(message: Message, state: FSMContext):
         await wait_msg.edit_text("⚠️ Texnik xatolik yuz berdi. Iltimos, /create_bot bilan qayta urinib ko'ring.")
         return
 
-    # --- Darhol SINOV rejimida faollashtiramiz - tolov hali sorالmaydi ---
+    # --- Darhol SINOV rejimida faollashtiramiz - tolov hali sorалmaydi ---
     from services.tenant_activation import activate_tenant
 
     result = await activate_tenant(tenant_id, status="trial")
@@ -213,6 +245,11 @@ async def receive_admin_token(message: Message, state: FSMContext):
         "Bir necha soniyada ikkala bot ham ishlay boshlaydi — hoziroq sinab ko'rishingiz mumkin!\n\n"
         f"Buyurtma raqamingiz: <code>{tenant_id}</code>"
     )
+
+    ai_history = data.get("ai_history", [])
+    conversation_summary = "\n".join(
+        f"  {'Mijoz' if m['role'] == 'user' else 'Bot'}: {m['content'][:150]}" for m in ai_history
+    )
     await state.clear()
 
     logger.info(
@@ -226,10 +263,7 @@ async def receive_admin_token(message: Message, state: FSMContext):
         f"Nomzod-bot: @{result['candidate_username']}\n"
         f"Admin-bot: @{result['admin_username']}\n"
         f"Kim orqali: <code>{admin_id}</code>\n\n"
-        f"📋 Javoblari:\n"
-        f"1) Oyiga sarflagan vaqti: {data.get('answer_time', '—')}\n"
-        f"2) Notogri yollash zarari: {data.get('answer_cost', '—')}\n"
-        f"3) Oyiga necha marta yollaydi: {data.get('answer_frequency', '—')}"
+        f"💬 Sotuv suhbati:\n{conversation_summary or '(sahbat bo\u2019lmagan)'}"
     )
     try:
         from services.tenant_activation import notify_founder_admin_panel

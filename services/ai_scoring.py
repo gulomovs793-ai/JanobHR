@@ -39,9 +39,9 @@ logger = logging.getLogger("janob_hr_bot")
 # (kalit, manzil, model, log-yorlig'i) — kalit bo'sh bo'lgan provayderlar
 # avtomatik o'tkazib yuboriladi.
 _PROVIDERS = [
-    (AI_API_KEY, AI_API_BASE, AI_MODEL, "asosiy"),
-    (AI_API_KEY_2, AI_API_BASE_2, AI_MODEL_2, "zaxira-1"),
-    (AI_API_KEY_3, AI_API_BASE_3, AI_MODEL_3, "zaxira-2"),
+    (AI_API_KEY_3, AI_API_BASE_3, AI_MODEL_3, "asosiy (DeepSeek)"),
+    (AI_API_KEY_2, AI_API_BASE_2, AI_MODEL_2, "zaxira-1 (Groq)"),
+    (AI_API_KEY, AI_API_BASE, AI_MODEL, "zaxira-2 (Gemini)"),
 ]
 
 

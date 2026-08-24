@@ -343,62 +343,71 @@ holatda nomzodlarni QANDAY saralaydi (HOZIRGI JARAYON), (3) qaysi muammo hal
 bo'lsa Janob HR bilan MUNTAZAM ishlashga tayyor (MAHSULOT MOSLIGI ishorasi).
 
 VAZIFANG: shu 3 ta javobni, FAQAT mijoz AYTGAN so'zlar asosida (hech narsa
-o'ylab topmasdan, raqam/fakt uydirmasdan), quyidagi MANTIQIY ZANJIRGA bog'lab,
-QISQA (3-5 gap, 40-70 so'z), KUNDALIK SO'ZLASHUV tilida (RASMIY-YOZMA EMAS)
-bitta KUCHLI, TA'SIRCHAN xabar sifatida yoz:
+o'ylab topmasdan, raqam/fakt uydirmasdan), ANIQ 3 TA QISQA GAPDA yoz — HAR BIR
+GAP BITTA ZANJIR BO'G'INIGA MOS:
+1-gap = MUAMMO + HOZIRGI JARAYONDAGI TESHIK (ikkalasini BITTA gapga sig'dir)
+2-gap = shu teshik NEGA OG'RIQLI ekani (KUCHLI, HISSIY, lekin uydirma raqamsiz)
+3-gap = "Janob HR aynan shuni hal qiladi" + NIMA O'ZGARISHINI qisqa ko'rsatuvchi
+ISHONCHLI yakun
 
-MUAMMO -> HOZIRGI JARAYON -> OG'RIQ/TA'SIR -> MAHSULOT MOSLIGI
+QAT'IY HAJM CHEGARASI: JAMI 25-40 SO'Z, 3 TADAN ORTIQ GAP YO'Q. Bundan
+oshirish TAQIQLANADI — bu QISQA, ZARBali xabar, insho EMAS.
 
-Ya'ni: mijozning muammosini bir necha so'z bilan (ORTIQCHA SHARHLAMASDAN) qayta
-tuting, hozirgi jarayonidagi teshikni ko'rsat, SO'NG bu teshik NEGA OG'RIQLI
-ekanini KUCHLIROQ, ANIQROQ his qildir (masalan yo'qotilgan vaqt, pul yoki
-imkoniyat — lekin mijoz aytmagan RAQAMNI o'ylab topmasdan, faqat UMUMIY oqibat
-sifatida), va OXIRIDA ISHONCH bilan, NATIJA-YO'NALTIRILGAN tarzda tugat: "Janob
-HR aynan shu [mijoz aytgan ANIQ muammo]ni hal qiladi — [shu orqali nima
-yaxshilanishini bir necha so'zda ko'rsat]." Shunchaki "hal qiladi" deb
-tugatib qo'ymasdan, mijozga NIMA O'ZGARISHINI his qildir. Bu SENING YAGONA
-xabaring — undan keyin taqdimot avtomatik davom etadi, shuning uchun mahsulot
-xususiyatlarini BATAFSIL TUSHUNTIRMA, faqat ULASH jumlasi bilan tugat.
-
-QAT'IY TAQIQLAR (real testlardan aniqlangan xatolar):
-- "Demak,", "Shunday ekan,", "Aniqlik kiritay:" kabi RASMIY-YOZMA ulash so'zlar
-  bilan BOSHLASH taqiqlanadi — kundalik gap kabi to'g'ridan-to'g'ri boshla.
-- Mijoz AYTMAGAN raqam, voqea yoki sabab (masalan "ishdan ketadi", "zarar
-  ko'radi") ni FAKT sifatida qo'shish taqiqlanadi.
-- Savol berish SHART EMAS — bu XULOSA/KO'PRIK xabari, so'roq-javob emas.
+USLUB (QAT'IY):
+- KUNDALIK SO'ZLASHUV tili, RASMIY-YOZMA EMAS.
+- "Demak", "Shunday ekan", "Aniqlik kiritay", "ya'ni", "bu esa" kabi RASMIY
+  ULASH SO'ZLARI xabarning HECH QAYERIDA (boshida ham, o'rtasida ham)
+  ishlatilmasin — bular yozma-akademik hisobot tiliga xos, og'zaki emas.
+- Gaplarni ulash o'rniga QISQA, MUSTAQIL gaplar bilan yoz.
+- Savol berish SHART EMAS — bu XULOSA/KO'PRIK xabari.
 - Sifatlash so'zlari ("ajoyib", "kuchli", "innovatsion") TAQIQLANADI.
+- Mijoz AYTMAGAN raqam yoki voqeani FAKT sifatida qo'shish TAQIQLANADI.
 - FAQAT o'zbek tilida, emoji ishlatma.
+
+Bu SENING YAGONA xabaring — undan keyin taqdimot avtomatik davom etadi, shuning
+uchun mahsulot xususiyatlarini BATAFSIL TUSHUNTIRMA.
 """
+
+_SYNTHESIS_BANNED_ANYWHERE = ["Demak", "Shunday ekan", "Aniqlik kiritay"]
+_SYNTHESIS_MAX_WORDS = 45
+
+
+def _validate_synthesis(text: str) -> list[str]:
+    issues = []
+    word_count = len(text.split())
+    if word_count > _SYNTHESIS_MAX_WORDS:
+        issues.append(f"{word_count} ta so'z ({_SYNTHESIS_MAX_WORDS} tadan oshmasligi kerak, ideal 25-40)")
+    for phrase in _SYNTHESIS_BANNED_ANYWHERE:
+        if phrase.lower() in text.lower():
+            issues.append(f"taqiqlangan rasmiy ulash so'zi ishlatilgan: '{phrase}' (xabarning istalgan joyida taqiqlangan)")
+    return issues
 
 
 async def generate_synthesis_pitch(history: list[dict]) -> str | None:
     """3 ta shablon savol-javobdan keyin chaqiriladi. MUAMMO -> HOZIRGI
     JARAYON -> OG'RIQ -> MAHSULOT MOSLIGI mantig'ida, faqat mijoz aytgan
-    so'zlar asosida, QISQA moslashtirilgan ko'prik xabarini yaratadi (bu
-    joyda AI FAQAT BITTA marta, bitta yakuniy xabar uchun chaqiriladi —
+    so'zlar asosida, QISQA (25-40 so'z) va ZARBALI ko'prik xabarini yaratadi
+    (bu joyda AI FAQAT BITTA marta, bitta yakuniy xabar uchun chaqiriladi —
     ko'p bosqichli AI-suhbat ARXITEKTURASI endi ishlatilmaydi)."""
-    reply = await _call_ai(
-        system_prompt=_SYNTHESIS_PROMPT, user_prompt="", max_tokens=500,
-        extra_messages=history, temperature=0.7,
-        frequency_penalty=0.3, presence_penalty=0.3,
-    )
-    if not reply:
-        return None
 
-    stripped = reply.lstrip()
-    if any(stripped.lower().startswith(opener.lower()) for opener in _BANNED_OPENERS):
-        logger.warning("[tahlil-xabari] taqiqlangan ochilish so'zi bilan boshlangan, qayta so'ralmoqda.")
-        retry_prompt = (
-            _SYNTHESIS_PROMPT
-            + "\nOGOHLANTIRISH: oldingi urinishing rasmiy-yozma ulash so'zi bilan "
-              "boshlangan edi — bu TAQIQLANGAN. Bu safar to'g'ridan-to'g'ri, "
-              "kundalik gap kabi boshla.\n"
-        )
-        retry = await _call_ai(
-            system_prompt=retry_prompt, user_prompt="", max_tokens=500,
+    async def _try_once(note: str = "") -> str | None:
+        prompt = _SYNTHESIS_PROMPT
+        if note:
+            prompt += f"\nOGOHLANTIRISH: oldingi urinishing rad etildi — sababi: {note}. Buni albatta tuzat.\n"
+        return await _call_ai(
+            system_prompt=prompt, user_prompt="", max_tokens=300,
             extra_messages=history, temperature=0.7,
             frequency_penalty=0.3, presence_penalty=0.3,
         )
+
+    reply = await _try_once()
+    if not reply:
+        return None
+
+    issues = _validate_synthesis(reply)
+    if issues:
+        logger.warning("[tahlil-xabari] validatsiya muvaffaqiyatsiz, qayta so'ralmoqda: %s", issues)
+        retry = await _try_once("; ".join(issues))
         if retry:
             reply = retry
 

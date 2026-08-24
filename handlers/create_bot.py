@@ -17,7 +17,9 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import FSInputFile, Message
+from aiogram.types import (
+    FSInputFile, KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove,
+)
 
 from services import database
 
@@ -102,9 +104,15 @@ async def _start_signup(message: Message, state: FSMContext):
         "ariza</b> SIZGA BUTUNLAY BEPUL. Hech qanday to'lov qilmasdan, o'z "
         "haqiqiy vakansiyangiz bilan sinab ko'rasiz."
     )
+    phone_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Raqamimni yuborish", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
     await message.answer(
         "Botingizni sozlashni boshlaymiz. Avval, siz bilan bog'lanishimiz uchun "
-        "telefon raqamingizni yozing (masalan: +998901234567):"
+        "pastdagi tugmani bosing — raqamingiz avtomatik yuboriladi:",
+        reply_markup=phone_keyboard,
     )
     await state.set_state(CreateBotForm.waiting_phone)
 
@@ -145,23 +153,38 @@ async def wrong_type_in_conversation(message: Message, state: FSMContext):
     await message.answer("Iltimos, javobingizni oddiy matn ko'rinishida yozing.")
 
 
+@router.message(CreateBotForm.waiting_phone, F.contact)
+async def receive_phone_contact(message: Message, state: FSMContext):
+    # Telegramning o'z "kontakt ulashish" tugmasi orqali — eng aniq va tezkor yo'l.
+    phone = message.contact.phone_number
+    if not phone.startswith("+"):
+        phone = "+" + phone
+    await state.update_data(contact_phone=phone)
+    await message.answer(
+        "Endi ism va familyangizni to'liq yozing:", reply_markup=ReplyKeyboardRemove()
+    )
+    await state.set_state(CreateBotForm.waiting_full_name)
+
+
 @router.message(CreateBotForm.waiting_phone, F.text)
 async def receive_phone(message: Message, state: FSMContext):
     phone = message.text.strip()
     if not _looks_like_phone(phone):
         await message.answer(
-            "Iltimos, telefon raqamingizni to'g'ri kiriting (masalan: +998901234567)."
+            "Iltimos, tugmani bosing yoki raqamni to'g'ri kiriting (masalan: +998901234567)."
         )
         return
 
     await state.update_data(contact_phone=phone)
-    await message.answer("Endi ism va familyangizni to'liq yozing:")
+    await message.answer(
+        "Endi ism va familyangizni to'liq yozing:", reply_markup=ReplyKeyboardRemove()
+    )
     await state.set_state(CreateBotForm.waiting_full_name)
 
 
 @router.message(CreateBotForm.waiting_phone)
 async def wrong_phone_type(message: Message, state: FSMContext):
-    await message.answer("Iltimos, telefon raqamingizni oddiy matn ko'rinishida yuboring.")
+    await message.answer("Iltimos, tugmani bosing yoki raqamni oddiy matn ko'rinishida yuboring.")
 
 
 @router.message(CreateBotForm.waiting_full_name, F.text)

@@ -58,12 +58,16 @@ async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str
 
     builder = InlineKeyboardBuilder()
     toggle_text = "🔴 Faolsizlantirish" if vacancy["active"] else "🟢 Faollashtirish"
-    builder.button(text=toggle_text, callback_data=f"vactoggle:{key}")
+    # Tartib mantiqiy guruhlarga bo'lingan: (1) natija/hisobot — eng ko'p
+    # ishlatiladigan, xavfsiz amallar; (2) savollarni tahrirlash — birga;
+    # (3) holat o'zgartirish va o'chirish — kamdan-kam va ehtiyotkorlik talab
+    # qiladigan amallar, shuning uchun pastda; (4) orqaga — doim eng oxirida.
     builder.button(text="🏆 Eng yaxshi nomzodlar", callback_data=f"vacranking:{key}")
     builder.button(text="📥 Excel yuklab olish", callback_data=f"vacexport:{key}")
     builder.button(text="🔄 Savollarni AI bilan yangilash", callback_data=f"vacregen:{key}")
     builder.button(text="✏️ Bitta savolni tahrirlash", callback_data=f"vaceditlist:{key}")
     builder.button(text="✍️ Savollarni to'liq qayta yozish", callback_data=f"vacmanual:{key}")
+    builder.button(text=toggle_text, callback_data=f"vactoggle:{key}")
     builder.button(text="🗑 O'chirish", callback_data=f"vacdel:{key}")
     builder.button(text="⬅️ Ro'yxatga qaytish", callback_data="menu:vacancies")
     builder.adjust(1)

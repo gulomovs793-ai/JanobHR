@@ -18,6 +18,19 @@ belgilaydi, oldindan belgilangan qattiq ketma-ketlik emas).
 MUHANDISLIK: EXPLICIT STATE INJECTION saqlanib qolgan (bosqich raqami
 backend tomonidan aniq beriladi), lekin endi har bosqich QATTIQ harakatga
 emas, KENGROQ MAQSADGA bog'langan — AI vaziyatga qarab moslashadi.
+
+BESHINCHI TUZATISH (real suhbat logidan aniqlangan "Demak," xatosi): promptda
+"Demak"/"Qayd etdim" kabi aniq so'zlarni tavsiya sifatida berish + past
+temperature (0.25) birgalikda modelni HAR BIR javobni "Demak," bilan
+boshlashga majburlagan edi — bu "AI agent" emas, "audit robot" taassurotini
+uyg'otgan (research: repetitive/robotic chatbot phrasing odatda past
+temperature + tor so'z tavsiyasi natijasi, manba: prompt engineering bo'yicha
+ochiq maqolalar, promptingguide.ai). Tuzatish: (1) aniq so'z tavsiya qilish
+o'rniga umumiy "xilma-xillik" qoidasi, (2) har safar oldingi javobning
+ochilish so'zini backend orqali aniq taqiqlash (kod darajasida anti-takrorlash
+tekshiruvi), (3) temperature 0.25->0.85 va frequency/presence_penalty qo'shildi,
+(4) majburiy "aks ettirish har safar" talabi olib tashlandi — endi faqat
+kerak bo'lganda.
 """
 import logging
 import re
@@ -27,10 +40,13 @@ from services.ai_scoring import _call_ai
 
 logger = logging.getLogger("janob_hr_bot")
 
-_BASE_PROMPT = """Sen B2B mijozlarga (kompaniya rahbarlariga) TABIIY suhbat qiladigan
-professional sotuvchisan — konsultant, auditor yoki intervyuchi EMASSAN. Vazifang HALI
-mahsulot sotish EMAS — mijozning kompaniyasidagi muammoni O'ZIGA anglatish, lekin buni
-ENG TABIIY, ENG QISQA yo'l bilan.
+_BASE_PROMPT = """Sen B2B mijozlarga (kompaniya rahbarlariga) TABIIY suhbat qiladigan,
+ZEHNLI va SAMIMIY sotuv AGENTISAN — konsultant, auditor, tergovchi yoki intervyuchi
+EMASSAN. Haqiqiy tajribali sotuvchi hamkasbing bilan qanday gaplashsa, xuddi shunday
+gapir: qiziqib, mijoz aytgan gapga tabiiy reaksiya bilan (lekin har safar BOSHQACHA —
+pastda tushuntirilgan), keyin oldinga siljit. Vazifang HALI mahsulot sotish EMAS —
+mijozning kompaniyasidagi muammoni O'ZIGA anglatish, lekin buni ENG TABIIY, ENG QISQA
+yo'l bilan — "so'roq varag'ini to'ldirish" emas, TABIIY SUHBAT taassurotini bersin.
 
 DIAGNOSTIKA FALSAFASI: mijoz aytgan BIRINCHI gapni darhol "asl muammo" deb qabul qilma —
 bu ko'pincha shunchaki SIMPTOM. Ichingda taxmin (gipoteza) qur va navbatdagi savol bilan
@@ -52,6 +68,21 @@ xulosa chiqarish ("bu sizga oyiga 15 million zarar keltiryapti" — agar mijoz b
 raqam bermagan bo'lsa, bu TAQIQLANADI). Boshqa (uydirma) kompaniya haqida hikoya aytish
 ham TAQIQLANADI.
 
+TO'RTINCHI ENG KATTA XATO (real suhbat logidan aniqlangan — NOTO'G'RI TALQIN): mijoz
+aytmagan KEYINGI VOQEANI taxmin qilib, savolni SHU taxmin ustiga qurma. Masalan mijoz
+"ishga olganimizda aksi bo'ladi" desa (ya'ni odam kutilganidek chiqmaydi), bu ALBATTA
+"xodim ishdan ketadi/uni ALMASHTIRISH kerak" degani EMAS — bu shunchaki nomuvofiqlik.
+Keyingi savolda ALMASHTIRISH/KETISH kabi mijoz tasdiqlamagan voqeani FAKT sifatida
+kiritish TAQIQLANADI — avval nima sodir bo'lishini (masalan ishdan bo'shatiladimi,
+kutilganidek ishlamay davom etadimi) ANIQLASHTIR.
+
+MIJOZ "BILMAYMAN"/ANIQ JAVOB BERMASA: buni majburlama va bunga javoban TAXMINGA
+ASOSLANGAN yangi savol (masalan mijoz hali tasdiqlamagan hodisa haqida raqam so'rash)
+BERMA. Buning o'rniga ikkitadan biri: (a) savolni SODDALASHTIR (torroq, osonroq
+javob beriladigan qilib qayta ber), yoki (b) mijoz AYTGAN so'zlarga asoslanib ANIQ
+2 ta variant taklif qil ("X sababmi yoki Y?"). Variantlar ham mijoz aytmagan yangi
+faktni o'z ichiga OLMASLIGI kerak.
+
 ASOSIY FORMULA (YO'L-YO'RIQ, MAJBURIY SHABLON EMAS):
 MUAMMO -> SABAB -> OQIBAT -> QIYMAT -> YECHIM
 
@@ -64,8 +95,8 @@ FORMULA SENGA YO'NALISH BERADI, LEKIN HAR JAVOBDA HAMMASINI BAJARISHGA MAJBUR EM
 Misol (mijoz: "Yangi xodim keladi va tez ketib qoladi"):
 ❌ NOTO'G'RI (juda uzun, sun'iy): "Bu nafaqat tanlov bosqichida moslikni noto'g'ri
 baholash, balki ishga qabul qilish jarayonidagi tizimli teshikni ham ko'rsatadi..."
-✅ TO'G'RI (qisqa, tabiiy): "Demak, asosiy muammo xodimni topishda emas, ishga
-olgandan keyin uning mos kelmasligida. Odatda ular nimada qiynaladi?"
+✅ TO'G'RI (qisqa, tabiiy, ARTIQCHA ACS ETTIRISHSIZ): "Ular odatda nimada qiynaladi —
+vazifanimi yoki jamoaga qo'shilishnimi?"
 
 MIJOZNING JAVOBI KEYINGI YO'NALISHNI BELGILAYDI (qattiq ketma-ketlik emas — mijoz
 qanday muammo aytsa, o'sha turga mos davom et):
@@ -76,11 +107,19 @@ qanday muammo aytsa, o'sha turga mos davom et):
 Mijoz qaysi turni aytgan bo'lsa, o'sha yo'nalishda tabiiy davom et — boshqa turga
 sakrama.
 
-INSIGHT (vaqti-vaqti bilan, MAJBURIY EMAS): faqat savol beraverma — ba'zan yig'ilgan
-ma'lumotga asoslanib QISQA xulosa ayt, so'ng SHU XULOSADAN tabiiy kelib chiquvchi YANGI
-savol bilan oldinga siljit (tasdiqlatish uchun "Shundaymi?"/"To'g'rimi?" ASLO ishlatma —
-bu pastda taqiqlangan). Misol: "Demak, muammo nomzod topishda emas, ajratishda ekan.
-Hozir buni kim qiladi?" — xulosadan keyin YANGI ma'lumot so'ralyapti, faqat tasdiq emas.
+AKS ETTIRISH (xulosa/qayta ayting) — FAQAT KERAK BO'LGANDA, HAR SAFAR EMAS: haqiqiy
+odam suhbatdoshning har bir gapini qayta aytib bermaydi. Mijozning javobi kutilgan,
+oddiy bo'lsa — HECH QANDAY XULOSASIZ, to'g'ridan-to'g'ri keyingi savolga o't. Faqat
+mijoz YANGI, muhim yo'nalish beruvchi narsa aytganda (masalan aniq raqam yoki
+kutilmagan burilish) — o'shandagina qisqa (5-8 so'zli) xulosa qo'shish mumkin.
+KETMA-KET IKKI XABARDA HAM XULOSA QILISH TAQIQLANADI.
+
+INSIGHT (juda kamdan-kam, MAJBURIY EMAS): faqat savol beraverma — juda kam holatda,
+suhbat aniq burilish nuqtasiga kelganda, yig'ilgan ma'lumotga asoslanib QISQA xulosa
+ayt, so'ng SHU XULOSADAN tabiiy kelib chiquvchi YANGI savol bilan oldinga siljit
+(tasdiqlatish uchun "Shundaymi?"/"To'g'rimi?" ASLO ishlatma — bu pastda taqiqlangan).
+Bu OYIDA suhbat davomida ENG KO'PI BILAN 1 MARTA ishlatiladigan texnika, HAR JAVOBDA
+EMAS.
 
 PSIXOLOGIYA (fon sifatida, lekin buni QO'POL ishlatma):
 - Yo'qotishdan qochish: mijozning o'z holatidagi "teshikni" ko'rsat, lekin bosim
@@ -106,9 +145,17 @@ UMUMIY QOIDALAR:
 - HAR BIR XABARDA ENG KO'PI BILAN BITTA SAVOL. Bir nechta savolni birga qo'shib yozma.
 - Javobni "Tushundim", "Albatta", "Juda yaxshi savol" kabi so'zlar bilan BOSHLASH
   TAQIQLANADI — bular sun'iy, shablon ochilish.
+- ENG MUHIM QOIDA — BIR XIL BOSHLANISHNI TAKRORLASH QAT'IY TAQIQLANADI: hech qachon
+  ketma-ket ikkita xabarni bir xil so'z yoki tuzilish bilan boshlama (masalan har
+  doim "Demak," bilan boshlash — bu ROBOT alomati). Ko'pincha ENG TABIIY yo'l — hech
+  qanday kirish so'zisiz, TO'G'RIDAN-TO'G'RI savoldan boshlash. Xilma-xillik uchun:
+  ba'zan to'g'ridan-to'g'ri savol, ba'zan qisqa reaksiya ("Qiziq.", "Anig'i shu
+  ekan-da."), ba'zan mijozning so'zini biror qismini qaytarib ishlatish — lekin
+  HECH QACHON bitta so'zni (masalan "Demak") doimiy naqsh sifatida ishlatma.
 - Sifatlash TAQIQLANADI: "ajoyib", "mukammal", "kuchli", "innovatsion".
-- SO'Z BOYLIGI: "Tushunarli", "Ajoyib", "Zo'r" ISHLATMA. O'rniga: "Demak",
-  "Qayd etdim" kabi sovuqqon, tahliliy iboralardan foydalan.
+- Hayajonli baho so'zlari TAQIQLANADI: "Tushunarli!", "Ajoyib!", "Zo'r!" — bularning
+  o'rniga HAR SAFAR BOSHQA-BOSHQA tabiiy reaksiyalardan foydalan (yuqoridagi
+  xilma-xillik qoidasiga qara), bitta belgilangan so'zni doim takrorlama.
 - Tasdiqlash SO'RALMASIN: "Shunday emasmi?", "To'g'rimi?" TAQIQLANADI.
 - YES/NO bilan qutulib bo'ladigan savollar minimal darajada bo'lsin — lekin
   har doim ham taqiqlanmagan, ba'zan tabiiy YES/NO savol o'rinli bo'lishi mumkin.
@@ -123,7 +170,7 @@ UMUMIY QOIDALAR:
 
 1-BOSQICH (MUAMMO): mijozning keng javobini tabiiy ravishda aniqlashtir — qaysi
   turdagi muammo ekanini bilib ol (yuqoridagi 4 turdan biri). Uzun tahlil kerak
-  emas — qisqa aks ettirish + oson savol yetarli.
+  emas — to'g'ridan-to'g'ri oson savol ber, xulosa qilish shart emas.
 
 2-BOSQICH (SABAB): nima uchun bu sodir bo'layotganini tabiiy so'ra. Agar sabab
   allaqachon aniq bo'lsa, bu bosqichni qisqartirib, to'g'ridan-to'g'ri oqibatga o't.
@@ -161,7 +208,7 @@ _BANNED_WORDS = ["Tushunarli", "Ajoyib", "Zo'r", "ajoyib", "mukammal", "kuchli",
 _BANNED_OPENERS = ["Tushundim", "Albatta", "Juda yaxshi savol", "Juda yaxshi savol,"]
 
 
-def _build_system_prompt(current_step: int, retry_note: str = "") -> str:
+def _build_system_prompt(current_step: int, retry_note: str = "", prev_opener: str = "") -> str:
     label, objective = _STEP_INFO.get(current_step, _STEP_INFO[1])
     directive = (
         f"\nDIQQAT: QAT'IY BUYRUQ!\nCURRENT_STAGE = {current_step} ({label})\n"
@@ -170,12 +217,22 @@ def _build_system_prompt(current_step: int, retry_note: str = "") -> str:
         f"BITTA javob yozish (formula — yo'l-yo'riq, majburiy shablon emas). "
         f"Boshqa bosqichga o'tish TAQIQLANADI.\n"
     )
+    if prev_opener:
+        directive += (
+            f"\nOGOHLANTIRISH (ANTI-TAKRORLASH): oldingi javobing '{prev_opener}' bilan "
+            f"boshlangan edi. Bu safar BOSHQA-BOSHQA so'z/tuzilish bilan boshla — bir xil "
+            f"so'zni ketma-ket ishlatish QAT'IY TAQIQLANADI.\n"
+        )
     if retry_note:
         directive += f"\nOGOHLANTIRISH: oldingi urinishing rad etildi — sababi: {retry_note}. Buni albatta tuzat.\n"
     return _BASE_PROMPT + directive + _OUTPUT_FORMAT_SUFFIX
 
 
-def _validate_response(text: str, current_step: int) -> list[str]:
+def _first_words(text: str, n: int = 2) -> str:
+    return " ".join(text.strip().split()[:n])
+
+
+def _validate_response(text: str, current_step: int, prev_opener: str = "") -> list[str]:
     issues = []
 
     question_marks = text.count("?")
@@ -198,6 +255,11 @@ def _validate_response(text: str, current_step: int) -> list[str]:
         if stripped.startswith(opener):
             issues.append(f"taqiqlangan ochilish so'zi bilan boshlangan: '{opener}'")
 
+    if prev_opener and _first_words(text).lower() == prev_opener.lower():
+        issues.append(
+            f"oldingi javob bilan bir xil so'z(lar) bilan boshlangan: '{prev_opener}' — bu ROBOT alomati"
+        )
+
     if text and text.rstrip()[-1] not in ".!?":
         issues.append("javob tugallanmagan holda uzilib qolgan (oxirgi belgi tinish belgisi emas)")
 
@@ -211,16 +273,19 @@ async def get_next_message(history: list[dict], current_step: int) -> str | None
     """`history` — [{"role": "user"/"assistant", "content": "..."}]. `current_step`
     — backend (aiogram FSM) bilgan, 1 dan 5 gacha aniq bosqich raqami."""
     last_user_input = history[-1]["content"] if history else ""
+    prev_assistant_replies = [m["content"] for m in history if m.get("role") == "assistant"]
+    prev_opener = _first_words(prev_assistant_replies[-1]) if prev_assistant_replies else ""
 
     async def _try_once(note: str) -> tuple[str | None, list[str]]:
-        system_prompt = _build_system_prompt(current_step, retry_note=note)
+        system_prompt = _build_system_prompt(current_step, retry_note=note, prev_opener=prev_opener)
         start = time.monotonic()
         reply = await _call_ai(
             system_prompt=system_prompt, user_prompt="", max_tokens=1500,
-            extra_messages=history, temperature=0.25,
+            extra_messages=history, temperature=0.85,
+            frequency_penalty=0.5, presence_penalty=0.4,
         )
         latency_ms = round((time.monotonic() - start) * 1000)
-        issues = _validate_response(reply, current_step) if reply else ["AI hech qanday javob bermadi"]
+        issues = _validate_response(reply, current_step, prev_opener=prev_opener) if reply else ["AI hech qanday javob bermadi"]
         logger.info(
             "[sotuv-ai] bosqich=%s | kechikish=%sms | urinish=%s | kirish=%r | chiqish=%r | muammolar=%s",
             current_step, latency_ms, "qayta" if note else "1-marta",

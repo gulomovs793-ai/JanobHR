@@ -48,6 +48,7 @@ _PROVIDERS = [
 async def _call_ai(
     system_prompt: str, user_prompt: str, max_tokens: int,
     extra_messages: Optional[list[dict]] = None, temperature: float = 0,
+    frequency_penalty: float = 0.0, presence_penalty: float = 0.0,
 ) -> Optional[str]:
     """Sozlangan provayderlarni navbat bilan sinaydi, birinchi muvaffaqiyatlisidan
     xom matnni qaytaradi. Hech biri sozlanmagan yoki barchasi ishlamasa — None.
@@ -56,6 +57,12 @@ async def _call_ai(
     system+user juftligi ORASIGA emas, balki UNING O'RNIGA emas — system
     xabaridan KEYIN, asosiy user_prompt o'rniga to'liq tarix sifatida
     ishlatiladi (bunda `user_prompt` e'tiborga olinmaydi).
+
+    `frequency_penalty`/`presence_penalty` — 0 bo'lsa payloadga qo'shilmaydi
+    (eski xatti-harakat o'zgarmaydi). Repetitiv, "bir xil so'z bilan boshlanadigan"
+    javoblarni kamaytirish uchun (masalan sotuv suhbatida) musbat qiymat berish
+    mumkin — OpenAI-compatible barcha provayderlar (DeepSeek/Groq/Gemini) buni
+    qo'llab-quvvatlaydi.
     """
     active = [(k, b, m, label) for k, b, m, label in _PROVIDERS if k]
     if not active:
@@ -74,6 +81,10 @@ async def _call_ai(
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if frequency_penalty:
+            payload["frequency_penalty"] = frequency_penalty
+        if presence_penalty:
+            payload["presence_penalty"] = presence_penalty
         if "deepseek" in base.lower():
             # DeepSeek V4 modellari DEFAULT holda "thinking mode"da ishlaydi —
             # bu butun token byudjetini "ichki fikrlash"ga sarflab, ko'rinadigan

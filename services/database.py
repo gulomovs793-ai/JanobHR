@@ -435,11 +435,19 @@ async def mark_lead_converted(lead_id: int, tenant_id: int) -> None:
         await db.commit()
 
 
-async def list_leads(limit: int = 30) -> list[dict]:
+async def count_leads() -> int:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute("SELECT COUNT(*) FROM sales_leads")
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
+
+async def list_leads(limit: int = 10, offset: int = 0) -> list[dict]:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM sales_leads ORDER BY created_at DESC LIMIT ?", (limit,)
+            "SELECT * FROM sales_leads ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]

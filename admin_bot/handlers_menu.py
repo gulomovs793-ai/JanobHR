@@ -60,7 +60,10 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext, tenant: dict 
     await callback.answer()
 
 
-@router.callback_query(F.data == "menu:leads")
+_LEADS_PAGE_SIZE = 10
+
+
+@router.callback_query(F.data.startswith("menu:leads"))
 async def show_leads(callback: CallbackQuery, tenant: dict = None):
     # Ehtiyot chorasi: faqat asoschining o'z admin-boti orqali ruxsat —
     # tugma boshqalarga umuman ko'rsatilmaydi, lekin himoyani ikki marta
@@ -69,19 +72,28 @@ async def show_leads(callback: CallbackQuery, tenant: dict = None):
         await callback.answer("Ruxsat yo'q.", show_alert=True)
         return
 
-    leads = await database.list_leads(limit=20)
+    parts = callback.data.split(":")
+    page = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+
+    total = await database.count_leads()
+    leads = await database.list_leads(limit=_LEADS_PAGE_SIZE, offset=page * _LEADS_PAGE_SIZE)
+
     builder = InlineKeyboardBuilder()
-    builder.button(text="⬅️ Orqaga", callback_data="menu:main")
+    if page > 0:
+        builder.button(text="⬅️ Oldingi", callback_data=f"menu:leads:{page - 1}")
+    if (page + 1) * _LEADS_PAGE_SIZE < total:
+        builder.button(text="Keyingi ➡️", callback_data=f"menu:leads:{page + 1}")
+    builder.button(text="🏠 Bosh menyu", callback_data="menu:main")
+    builder.adjust(2, 1)
 
     if not leads:
-        await callback.message.edit_text(
-            "🎯 <b>Lidlar</b>\n\nHozircha hech qanday lid yo'q.",
-            reply_markup=builder.as_markup(),
-        )
+        text = "🎯 <b>Lidlar</b>\n\nHozircha hech qanday lid yo'q." if page == 0 else "Boshqa lid yo'q."
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
         await callback.answer()
         return
 
-    lines = ["🎯 <b>Lidlar</b> (oxirgi 20 tasi)", ""]
+    total_pages = (total + _LEADS_PAGE_SIZE - 1) // _LEADS_PAGE_SIZE
+    lines = [f"🎯 <b>Lidlar</b> — jami {total} ta (sahifa {page + 1}/{total_pages})", ""]
     for lead in leads:
         status_icon = "✅" if lead["status"] == "mijozga aylandi" else "🟡"
         created = (lead["created_at"] or "")[:16].replace("T", " ")

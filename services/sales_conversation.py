@@ -202,6 +202,9 @@ def _validate_response(text: str, current_step: int) -> list[str]:
         if banned in text:
             issues.append(f"taqiqlangan so'z ishlatilgan: '{banned}'")
 
+    if text and text.rstrip()[-1] not in ".!?":
+        issues.append("javob tugallanmagan holda uzilib qolgan (oxirgi belgi tinish belgisi emas)")
+
     if current_step < 5 and "janob hr" in text.lower():
         issues.append("mahsulot nomi ('Janob HR') hali aytilmasligi kerak edi")
 
@@ -224,7 +227,7 @@ async def get_next_message(history: list[dict], current_step: int) -> str | None
         system_prompt = _build_system_prompt(current_step, retry_note=note)
         start = time.monotonic()
         reply = await _call_ai(
-            system_prompt=system_prompt, user_prompt="", max_tokens=500,
+            system_prompt=system_prompt, user_prompt="", max_tokens=1500,
             extra_messages=history, temperature=0.25,
         )
         latency_ms = round((time.monotonic() - start) * 1000)

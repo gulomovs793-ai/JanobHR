@@ -83,6 +83,15 @@ javob beriladigan qilib qayta ber), yoki (b) mijoz AYTGAN so'zlarga asoslanib AN
 2 ta variant taklif qil ("X sababmi yoki Y?"). Variantlar ham mijoz aytmagan yangi
 faktni o'z ichiga OLMASLIGI kerak.
 
+BESHINCHI ENG KATTA XATO (real suhbat logidan aniqlangan — TAVTOLOGIK SAVOL): mijoz
+allaqachon aytgan faktni boshqacha so'z bilan "shu ma'noni tasdiqlaysizmi" tarzida
+qayta so'rash TAQIQLANADI — bu mijozni chalkashtiradi. YOMON MISOL: mijoz "norma
+bajarilmayapti" desa, "Bu normani bajarmaslik sifatida ko'rinadimi yoki boshqa yo'l
+bilanmi?" kabi savol MA'NOSIZ, chunki javob allaqachon savolning ICHIDA. Har bir
+savol ANIQ, mijoz hali AYTMAGAN yangi ma'lumot so'rashi SHART (masalan qachon, qanday
+oqibat, kim, qancha vaqt/pul kabi KONKRET narsa) — mavhum "qanday ko'rinishda
+namoyon bo'ladi" turidagi savollardan qoch.
+
 ASOSIY FORMULA (YO'L-YO'RIQ, MAJBURIY SHABLON EMAS):
 MUAMMO -> SABAB -> OQIBAT -> QIYMAT -> YECHIM
 
@@ -184,9 +193,12 @@ UMUMIY QOIDALAR:
   masalan bu vaqt boshqa qaysi ishlar hisobiga ketyapti.
 
 5-BOSQICH (YECHIM — YAKUNIY, mahsulot hali aytilmaydi): mijozning O'ZINI O'ZIGA
-  yechim sotishga ko'ndir. Misol: "Agar suhbatning o'zidayoq mos kelmaydigan
-  nomzodlarni ajratish mumkin bo'lsa, bu siz uchun qanchalik foydali bo'lardi?"
-  Bu SENING OXIRGI xabaring — undan keyin suhbat sen tomondan tugaydi.
+  yechim sotishga ko'ndir. QAT'IY TUZILISH: "Agar [mijoz aytgan ANIQ muammo/oqibat]
+  hal bo'lsa, bu sizga qanchalik foydali bo'lardi?" turidagi GIPOTETIK ("agar...bo'lsa")
+  savol bilan tugashi SHART — bu OQIBAT haqida yana savol so'rash EMAS, balki
+  YECHIM haqida mijozni o'ylantirish. Misol: "Agar suhbatning o'zidayoq mos
+  kelmaydigan nomzodlarni ajratish mumkin bo'lsa, bu siz uchun qanchalik foydali
+  bo'lardi?" Bu SENING OXIRGI xabaring — undan keyin suhbat sen tomondan tugaydi.
 """
 
 _OUTPUT_FORMAT_SUFFIX = """
@@ -208,15 +220,26 @@ _BANNED_WORDS = ["Tushunarli", "Ajoyib", "Zo'r", "ajoyib", "mukammal", "kuchli",
 _BANNED_OPENERS = ["Tushundim", "Albatta", "Juda yaxshi savol", "Juda yaxshi savol,"]
 
 
-def _build_system_prompt(current_step: int, retry_note: str = "", prev_opener: str = "") -> str:
+def _build_system_prompt(current_step: int, retry_note: str = "", prev_opener: str = "", clarify: bool = False) -> str:
     label, objective = _STEP_INFO.get(current_step, _STEP_INFO[1])
-    directive = (
-        f"\nDIQQAT: QAT'IY BUYRUQ!\nCURRENT_STAGE = {current_step} ({label})\n"
-        f"CURRENT_OBJECTIVE = \"{objective}\"\n"
-        f"Vazifang: shu bosqich MAQSADIGA xizmat qiladigan, QISQA va TABIIY "
-        f"BITTA javob yozish (formula — yo'l-yo'riq, majburiy shablon emas). "
-        f"Boshqa bosqichga o'tish TAQIQLANADI.\n"
-    )
+    if clarify:
+        directive = (
+            f"\nDIQQAT: MIJOZ OLDINGI SAVOLINGNI TUSHUNMADI (masalan 'nima demoqchisan?' "
+            f"kabi javob berdi). Bosqichni O'ZGARTIRMA — hali ham CURRENT_STAGE = "
+            f"{current_step} ({label}), CURRENT_OBJECTIVE = \"{objective}\". Vazifang: "
+            f"XUDDI SHU maqsaddagi savolni ANCHA SODDAROQ, QISQAROQ va ANIQROQ so'z bilan "
+            f"qayta yoz — abstrakt/murakkab iboralarni olib tashla, kundalik so'zlashuv "
+            f"tiliga tushir. Yangi mavzuga o'tish yoki oldingi javoblarni takrorlash "
+            f"TAQIQLANADI.\n"
+        )
+    else:
+        directive = (
+            f"\nDIQQAT: QAT'IY BUYRUQ!\nCURRENT_STAGE = {current_step} ({label})\n"
+            f"CURRENT_OBJECTIVE = \"{objective}\"\n"
+            f"Vazifang: shu bosqich MAQSADIGA xizmat qiladigan, QISQA va TABIIY "
+            f"BITTA javob yozish (formula — yo'l-yo'riq, majburiy shablon emas). "
+            f"Boshqa bosqichga o'tish TAQIQLANADI.\n"
+        )
     if prev_opener:
         directive += (
             f"\nOGOHLANTIRISH (ANTI-TAKRORLASH): oldingi javobing '{prev_opener}' bilan "
@@ -266,18 +289,25 @@ def _validate_response(text: str, current_step: int, prev_opener: str = "") -> l
     if current_step < 5 and "janob hr" in text.lower():
         issues.append("mahsulot nomi ('Janob HR') hali aytilmasligi kerak edi")
 
+    if current_step >= 5 and "agar" not in text.lower():
+        issues.append(
+            "5-bosqich 'Agar ... bo'lsa, ... foydali bo'lardi?' turidagi gipotetik "
+            "yakuniy taklif savoli bo'lishi SHART, hozirgi javob buni bermayapti"
+        )
+
     return issues
 
 
-async def get_next_message(history: list[dict], current_step: int) -> str | None:
+async def get_next_message(history: list[dict], current_step: int, clarify: bool = False) -> str | None:
     """`history` — [{"role": "user"/"assistant", "content": "..."}]. `current_step`
-    — backend (aiogram FSM) bilgan, 1 dan 5 gacha aniq bosqich raqami."""
+    — backend (aiogram FSM) bilgan, 1 dan 5 gacha aniq bosqich raqami. `clarify=True`
+    — mijoz oldingi savolni tushunmagan holat (bosqich o'zgarmaydi, savol soddalashadi)."""
     last_user_input = history[-1]["content"] if history else ""
     prev_assistant_replies = [m["content"] for m in history if m.get("role") == "assistant"]
     prev_opener = _first_words(prev_assistant_replies[-1]) if prev_assistant_replies else ""
 
     async def _try_once(note: str) -> tuple[str | None, list[str]]:
-        system_prompt = _build_system_prompt(current_step, retry_note=note, prev_opener=prev_opener)
+        system_prompt = _build_system_prompt(current_step, retry_note=note, prev_opener=prev_opener, clarify=clarify)
         start = time.monotonic()
         reply = await _call_ai(
             system_prompt=system_prompt, user_prompt="", max_tokens=1500,

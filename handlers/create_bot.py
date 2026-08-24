@@ -34,6 +34,28 @@ _OPENING_MESSAGE = (
 )
 
 
+_CLARIFICATION_PATTERNS = [
+    "nima demoqchisan", "nima demoqchi", "tushunmadim", "tushunarsiz",
+    "aniqroq ayt", "aniqroq yoz", "netayapsan", "nima haqida",
+    "qanaqa savol", "savolingni tushunmadim", "qanday savol",
+]
+_MAX_CLARIFY_RETRIES = 2  # cheksiz aylanib qolmaslik uchun cheklov
+
+
+def _is_clarification_request(text: str) -> bool:
+    """Mijoz oldingi savolni tushunmagani (javob emas, qarshi savol/chalkashlik)ni
+    aniqlaydi. Bunday holatda bosqich SARFLANMASLIGI kerak."""
+    t = text.strip().lower()
+    if not t:
+        return False
+    if any(p in t for p in _CLARIFICATION_PATTERNS):
+        return True
+    # juda qisqa, faqat savol belgisi bilan tugaydigan, raqamsiz xabar (masalan "?", "nima?")
+    if len(t) <= 15 and t.endswith("?") and not any(ch.isdigit() for ch in t):
+        return True
+    return False
+
+
 class CreateBotForm(StatesGroup):
     in_ai_conversation = State()
     waiting_company_name = State()
@@ -68,7 +90,7 @@ async def cmd_create_bot(message: Message, state: FSMContext):
         logger.exception("Taqdimotni yuborib bo'lmadi — matn bilan davom etamiz.")
 
     await message.answer(_OPENING_MESSAGE)
-    await state.update_data(ai_history=[], ai_turn_count=0)
+    await state.update_data(ai_history=[], ai_turn_count=0, ai_clarify_count=0)
     await state.set_state(CreateBotForm.in_ai_conversation)
 
 
@@ -99,9 +121,25 @@ async def continue_ai_conversation(message: Message, state: FSMContext):
     data = await state.get_data()
     history = data.get("ai_history", [])
     history.append({"role": "user", "content": message.text.strip()})
-    turn_count = data.get("ai_turn_count", 0) + 1
+    current_turn = data.get("ai_turn_count", 0)
+    clarify_count = data.get("ai_clarify_count", 0)
 
-    reply = await get_next_message(history, current_step=turn_count)
+    is_clarification = (
+        current_turn > 0
+        and _is_clarification_request(message.text)
+        and clarify_count < _MAX_CLARIFY_RETRIES
+    )
+
+    if is_clarification:
+        # Mijoz oldingi savolni tushunmadi — bosqichni SARFLAMASDAN, xuddi shu
+        # bosqich maqsadida SODDAROQ savol bilan qayta murojaat qilamiz.
+        turn_count = current_turn
+        reply = await get_next_message(history, current_step=turn_count, clarify=True)
+        clarify_count += 1
+    else:
+        turn_count = current_turn + 1
+        reply = await get_next_message(history, current_step=turn_count)
+        clarify_count = 0
 
     if reply is None:
         # AI hech qanday provayderdan javob bermasa - xavfsiz zaxira:
@@ -110,12 +148,12 @@ async def continue_ai_conversation(message: Message, state: FSMContext):
         await message.answer(
             "Qayd etdim. Bu — aynan Janob HR yordam beradigan muammo."
         )
-        await state.update_data(ai_history=history, ai_turn_count=turn_count)
+        await state.update_data(ai_history=history, ai_turn_count=turn_count, ai_clarify_count=0)
         await _start_signup(message, state)
         return
 
     history.append({"role": "assistant", "content": reply})
-    await state.update_data(ai_history=history, ai_turn_count=turn_count)
+    await state.update_data(ai_history=history, ai_turn_count=turn_count, ai_clarify_count=clarify_count)
     await message.answer(reply)
 
     if turn_count >= _AI_CONVERSATION_TURNS:

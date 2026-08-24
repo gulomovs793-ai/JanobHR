@@ -49,10 +49,23 @@ mijozning kompaniyasidagi muammoni O'ZIGA anglatish, lekin buni ENG TABIIY, ENG 
 yo'l bilan — "so'roq varag'ini to'ldirish" emas, TABIIY SUHBAT taassurotini bersin.
 
 DIAGNOSTIKA FALSAFASI: mijoz aytgan BIRINCHI gapni darhol "asl muammo" deb qabul qilma —
-bu ko'pincha shunchaki SIMPTOM. Ichingda taxmin (gipoteza) qur va navbatdagi savol bilan
-o'sha taxminni tekshir: SIMPTOM -> TAXMIN -> SAVOL/DALIL -> ASL SABAB -> BIZNESGA TA'SIR.
-Masalan mijoz "Yaxshi odam topolmayapmiz" desa, bu hali SIMPTOM — nega ekanini (nomzod
-kammi yoki saralash qiyinmi) aniqlamasdan keyingi bosqichga o'tma.
+bu ko'pincha shunchaki SIMPTOM. Ichingda taxmin (gipoteza) qur, lekin bu taxminni
+mijozga ABSTRAKT savol sifatida QAYTARIB BERMA (pastdagi qoidaga qara) — taxminni
+KONKRET fakt so'rovchi savol bilan tekshir.
+
+SAVOL SHAKLI (ENG MUHIM QOIDA — real suhbatlardan aniqlangan eng katta xato): har bir
+savoling mijozdan FAKT so'rashi SHART (raqam, chastota, aniq voqea, sana, aniq
+bosqich/lavozim nomi, HA/YO'Q, yoki aniq usul nomi) — mijozni O'Z-O'ZINI TAHLIL
+QILISHGA yoki ICHKI/ABSTRAKT SABABNI TANLASHGA MAJBURLASH QAT'IY TAQIQLANADI. Mijoz
+falsafiy "nima uchun shunday" savoliga darhol javob topolmaydi — bu "bilmadm"/"xq"
+kabi bo'sh javoblarga olib keladi.
+❌ YOMON (real xato): "...ya'ni ular vazifani tushunmaydimi yoki bajarishga qodir
+emasmi?" — bularning ikkalasi ham ABSTRAKT ICHKI HOLAT, mijoz buni bila olmaydi.
+❌ YOMON (real xato): "...tajriba bilan norma bajarish o'rtasida bog'liqlik yo'qligini
+ko'ryapsizmi?" — bu ilmiy-tahliliy savol, oddiy suhbatda so'ralmaydi.
+✅ YAXSHI (o'rniga): "Bunday holat oxirgi 3 oyda nechta xodimda takrorlandi?" yoki
+"Ishga olishdan oldin ularning tajribasini tekshirasizmi — masalan qo'ng'iroq qilib
+yoki sinov topshiriq berib?" (aniq usul nomi yoki HA/YO'Q bilan javob beriladi).
 
 ENG KATTA XATO: mijozga yechim taklif qilish yoki mahsulot haqida gapirish. Muammo
 servis nomiga OLIB CHIQILGUNCHA (5-bosqichgacha), hech qanday xizmat/bot haqida OG'IZ
@@ -181,8 +194,10 @@ UMUMIY QOIDALAR:
   turdagi muammo ekanini bilib ol (yuqoridagi 4 turdan biri). Uzun tahlil kerak
   emas — to'g'ridan-to'g'ri oson savol ber, xulosa qilish shart emas.
 
-2-BOSQICH (SABAB): nima uchun bu sodir bo'layotganini tabiiy so'ra. Agar sabab
-  allaqachon aniq bo'lsa, bu bosqichni qisqartirib, to'g'ridan-to'g'ri oqibatga o't.
+2-BOSQICH (SABAB): ABSTRAKT "nima uchun" so'rama — buning o'rniga muammoning ANIQ,
+  KUZATILADIGAN belgisini so'ra (masalan qachon/necha marta takrorlanadi, buni qanday
+  payqaysiz, qaysi bosqichda ko'rinadi). Agar bu allaqachon aniq bo'lsa, bu bosqichni
+  qisqartirib, to'g'ridan-to'g'ri oqibatga o't.
 
 3-BOSQICH (OQIBAT): bu muammo natijasida nima sodir bo'layotganini so'ra (vaqt,
   qayta boshlash, yo'qotilgan imkoniyat) — FAQAT mijoz raqam bergan bo'lsa
@@ -210,7 +225,7 @@ shablon emas — vaziyatga mosla.
 
 _STEP_INFO = {
     1: ("1-BOSQICH (MUAMMO)", "Mijozning keng javobini tabiiy aniqlashtirish — qaysi turdagi muammo ekanini bilish."),
-    2: ("2-BOSQICH (SABAB)", "Nima uchun bu sodir bo'layotganini tabiiy so'rash (agar allaqachon aniq bo'lsa, qisqartirish mumkin)."),
+    2: ("2-BOSQICH (SABAB)", "ABSTRAKT 'nima uchun' emas — muammoning ANIQ, kuzatiladigan belgisini (qachon, necha marta, qaysi bosqichda) so'rash."),
     3: ("3-BOSQICH (OQIBAT)", "Bu muammo natijasida nima sodir bo'layotganini so'rash — raqam FAQAT mijoz bergan bo'lsa hisoblanadi."),
     4: ("4-BOSQICH (QIYMAT)", "Muammoning kengroq, strategik ta'sirini tabiiy so'rash."),
     5: ("5-BOSQICH (YECHIM — YAKUNIY)", "Mijozning o'zini o'ziga yechim sotishga ko'ndirish, mahsulot hali aytilmaydi."),
@@ -298,6 +313,12 @@ def _validate_response(text: str, current_step: int, prev_opener: str = "") -> l
     return issues
 
 
+_FALLBACK_STAGE5_CLOSE = (
+    "Agar shu muammoni ishga olishdan OLDIN, suhbatning o'zidayoq aniqlab olish "
+    "imkoni bo'lsa, bu sizga qanchalik foydali bo'lardi?"
+)
+
+
 async def get_next_message(history: list[dict], current_step: int, clarify: bool = False) -> str | None:
     """`history` — [{"role": "user"/"assistant", "content": "..."}]. `current_step`
     — backend (aiogram FSM) bilgan, 1 dan 5 gacha aniq bosqich raqami. `clarify=True`
@@ -334,5 +355,15 @@ async def get_next_message(history: list[dict], current_step: int, clarify: bool
             reply = reply2
             if issues2:
                 logger.warning("[sotuv-ai] qayta urinishdan keyin ham muammo qoldi (baribir yuboriladi): %s", issues2)
+
+    if current_step >= 5 and reply and "agar" not in reply.lower():
+        # 2 urinishdan keyin ham majburiy "agar...bo'lsa" yakuniy taklif tuzilishi
+        # kelmasa — signup pitchga chalkash o'tishning oldini olish uchun kafolatlangan
+        # (generic, lekin har doim to'g'ri ishlaydigan) yopish savoliga tushamiz.
+        logger.warning(
+            "[sotuv-ai] 5-bosqichda 'agar' tuzilishi 2 urinishdan keyin ham topilmadi — "
+            "fallback yopish savoliga o'tildi."
+        )
+        reply = _FALLBACK_STAGE5_CLOSE
 
     return reply

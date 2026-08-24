@@ -58,17 +58,13 @@ async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str
 
     builder = InlineKeyboardBuilder()
     toggle_text = "🔴 Faolsizlantirish" if vacancy["active"] else "🟢 Faollashtirish"
-    # Tartib mantiqiy guruhlarga bo'lingan: (1) natija/hisobot — eng ko'p
-    # ishlatiladigan, xavfsiz amallar; (2) savollarni tahrirlash — birga;
-    # (3) holat o'zgartirish va o'chirish — kamdan-kam va ehtiyotkorlik talab
-    # qiladigan amallar, shuning uchun pastda; (4) orqaga — doim eng oxirida.
+    # QISQARTIRILGAN asosiy menyu: faqat eng ko'p kerak bo'ladigan 4 ta amal.
+    # Savollarni tahrirlashga oid 3 ta amal + o'chirish alohida "✏️ Tahrirlash"
+    # submenyusiga ko'chirildi (_show_edit_menu) — bu yerda ortiqcha tugma yo'q.
     builder.button(text="🏆 Eng yaxshi nomzodlar", callback_data=f"vacranking:{key}")
     builder.button(text="📥 Excel yuklab olish", callback_data=f"vacexport:{key}")
-    builder.button(text="🔄 Savollarni AI bilan yangilash", callback_data=f"vacregen:{key}")
-    builder.button(text="✏️ Bitta savolni tahrirlash", callback_data=f"vaceditlist:{key}")
-    builder.button(text="✍️ Savollarni to'liq qayta yozish", callback_data=f"vacmanual:{key}")
+    builder.button(text="✏️ Tahrirlash", callback_data=f"vacedit:{key}")
     builder.button(text=toggle_text, callback_data=f"vactoggle:{key}")
-    builder.button(text="🗑 O'chirish", callback_data=f"vacdel:{key}")
     builder.button(text="⬅️ Ro'yxatga qaytish", callback_data="menu:vacancies")
     builder.adjust(1)
 
@@ -76,10 +72,37 @@ async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str
     await callback.answer()
 
 
+async def _show_edit_menu(callback: CallbackQuery, tenant_id: int, key: str):
+    vacancy = await database.get_vacancy(tenant_id, key)
+    if not vacancy:
+        await callback.answer("Bu vakansiya topilmadi (o'chirilgan bo'lishi mumkin).", show_alert=True)
+        return
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔄 Savollarni AI bilan yangilash", callback_data=f"vacregen:{key}")
+    builder.button(text="✏️ Bitta savolni tahrirlash", callback_data=f"vaceditlist:{key}")
+    builder.button(text="✍️ Savollarni to'liq qayta yozish", callback_data=f"vacmanual:{key}")
+    builder.button(text="🗑 O'chirish", callback_data=f"vacdel:{key}")
+    builder.button(text="⬅️ Orqaga", callback_data=f"vac:{key}")
+    builder.adjust(1)
+
+    await callback.message.edit_text(
+        f"✏️ <b>{vacancy['title']}</b> — savollarni tahrirlash:",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("vac:"))
 async def vacancy_detail(callback: CallbackQuery, tenant_id: int):
     key = callback.data.split(":", 1)[1]
     await _show_vacancy_detail(callback, tenant_id, key)
+
+
+@router.callback_query(F.data.startswith("vacedit:"))
+async def edit_menu(callback: CallbackQuery, tenant_id: int):
+    key = callback.data.split(":", 1)[1]
+    await _show_edit_menu(callback, tenant_id, key)
 
 
 @router.callback_query(F.data.startswith("vactoggle:"))
@@ -103,7 +126,7 @@ async def confirm_delete(callback: CallbackQuery, tenant_id: int):
 
     builder = InlineKeyboardBuilder()
     builder.button(text="⚠️ Ha, butunlay o'chirish", callback_data=f"vacdelconfirm:{key}")
-    builder.button(text="Bekor qilish", callback_data=f"vac:{key}")
+    builder.button(text="Bekor qilish", callback_data=f"vacedit:{key}")
     builder.adjust(1)
 
     await callback.message.edit_text(

@@ -30,7 +30,18 @@ _DEFAULT_REJECT_MESSAGE = (
 # ============================= 1) YANGI VAKANSIYA BOSHLASH =============================
 
 @router.callback_query(F.data == "menu:new")
-async def start_new_vacancy(callback: CallbackQuery, state: FSMContext):
+async def start_new_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: int, tenant: dict = None):
+    # Tarif bo'yicha vakansiya limiti (sinov paytida cheklov yo'q).
+    if tenant and tenant.get("status") != "trial" and tenant.get("plan_vacancy_limit") is not None:
+        active_count = len(await database.list_vacancies(tenant_id, active_only=False))
+        if active_count >= tenant["plan_vacancy_limit"]:
+            await callback.answer(
+                f"Joriy tarifingizda ko'pi bilan {tenant['plan_vacancy_limit']} ta vakansiya "
+                "mumkin. Yuqoriroq tarifga o'ting yoki eski vakansiyani o'chiring.",
+                show_alert=True,
+            )
+            return
+
     await state.clear()  # editing_vacancy_key bo'lmasligi kerak — bu YANGI yaratish
     await callback.message.edit_text(
         "➕ <b>Yangi vakansiya</b>\n\nLavozim nomini yozing (masalan: \"Quruvchi\", \"Buxgalter\", \"Haydovchi\")."

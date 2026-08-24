@@ -45,7 +45,7 @@ def _build_dispatcher(fsm_storage: SQLiteStorage) -> Dispatcher:
     from handlers import start, vacancy, questions, files, sell, contact, resume_upfront, create_bot
     from admin_bot import (
         handlers_menu, handlers_vacancy_list, handlers_vacancy_edit,
-        handlers_decisions, handlers_interview, handlers_export,
+        handlers_decisions, handlers_interview, handlers_export, handlers_billing,
     )
 
     dp = Dispatcher(storage=fsm_storage)
@@ -67,6 +67,7 @@ def _build_dispatcher(fsm_storage: SQLiteStorage) -> Dispatcher:
     for r in (
         handlers_menu.router, handlers_vacancy_list.router, handlers_vacancy_edit.router,
         handlers_decisions.router, handlers_interview.router, handlers_export.router,
+        handlers_billing.router,
     ):
         admin_root.include_router(r)
     dp.include_router(admin_root)

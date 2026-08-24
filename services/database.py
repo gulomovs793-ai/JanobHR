@@ -384,6 +384,21 @@ async def init_db():
             await db.execute("ALTER TABLE tenants ADD COLUMN contact_phone TEXT")
         if "contact_full_name" not in tenant_columns:
             await db.execute("ALTER TABLE tenants ADD COLUMN contact_full_name TEXT")
+        if "plan" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN plan TEXT")
+        if "plan_applications_limit" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN plan_applications_limit INTEGER")
+        if "plan_vacancy_limit" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN plan_vacancy_limit INTEGER")
+        if "plan_expires_at" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN plan_expires_at TEXT")
+        if "period_started_at" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN period_started_at TEXT")
+
+        cursor = await db.execute("PRAGMA table_info(payment_orders)")
+        payment_columns = {row[1] for row in await cursor.fetchall()}
+        if "plan" not in payment_columns:
+            await db.execute("ALTER TABLE payment_orders ADD COLUMN plan TEXT")
 
         cursor = await db.execute("PRAGMA table_info(payment_orders)")
         po_columns = {row[1] for row in await cursor.fetchall()}
@@ -978,6 +993,33 @@ async def count_tenant_applications(tenant_id: int) -> int:
     return row[0] if row else 0
 
 
+async def count_applications_since(tenant_id: int, since_iso: str) -> int:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM applications WHERE tenant_id = ? AND created_at >= ?",
+            (tenant_id, since_iso),
+        )
+        row = await cursor.fetchone()
+    return row[0] if row else 0
+
+
+async def set_tenant_plan(tenant_id: int, plan_key: str) -> None:
+    """To'lov tasdiqlangach chaqiriladi — tarifni faollashtiradi, davrni
+    (ariza/vakansiya limiti, muddat) HOZIRDAN boshlab hisoblaydi."""
+    from services.plans import PLANS
+
+    plan = PLANS[plan_key]
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(days=plan["days"])).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE tenants SET plan = ?, plan_applications_limit = ?, plan_vacancy_limit = ?, "
+            "plan_expires_at = ?, period_started_at = ?, status = 'active' WHERE id = ?",
+            (plan_key, plan["applications"], plan["vacancies"], expires_at, now.isoformat(), tenant_id),
+        )
+        await db.commit()
+
+
 async def get_time_based_stats(tenant_id: int) -> dict:
     """Bugun/bu hafta/bu oy nechta ariza tushganini hisoblaydi — asoschiga
     faoliyat tendensiyasini (o'sish/pasayish) ko'rsatish uchun."""
@@ -1096,16 +1138,16 @@ async def get_vacancy_stats(tenant_id: int) -> list[dict]:
 
 async def create_payment_order(
     tenant_id: int, order_code: str, base_amount: int, amount: int, expires_at: str,
-    notify_bot_token: str = None, notify_chat_id: int = None,
+    notify_bot_token: str = None, notify_chat_id: int = None, plan: str = None,
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
             "INSERT INTO payment_orders (tenant_id, order_code, base_amount, amount, "
-            "status, created_at, expires_at, notify_bot_token, notify_chat_id) "
-            "VALUES (?, ?, ?, ?, 'awaiting_payment', ?, ?, ?, ?)",
+            "status, created_at, expires_at, notify_bot_token, notify_chat_id, plan) "
+            "VALUES (?, ?, ?, ?, 'awaiting_payment', ?, ?, ?, ?, ?)",
             (tenant_id, order_code, base_amount, amount, created_at, expires_at,
-             notify_bot_token, notify_chat_id),
+             notify_bot_token, notify_chat_id, plan),
         )
         await db.commit()
         return cursor.lastrowid

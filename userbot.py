@@ -44,10 +44,12 @@ async def _notify_founders(text: str):
     await notify_founder_admin_panel(text)
 
 
-async def _activate_tenant_wrapper(tenant_id: int):
+async def _activate_tenant_wrapper(tenant_id: int, plan: str = None):
     result = await activate_tenant(tenant_id)
     if not result["ok"]:
         raise RuntimeError(result["error"])
+    if plan:
+        await database.set_tenant_plan(tenant_id, plan)
 
 
 async def start_userbot():

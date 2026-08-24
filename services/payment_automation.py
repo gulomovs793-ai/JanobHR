@@ -132,10 +132,13 @@ async def _pick_unique_amount(base_price: int) -> int:
 
 async def create_payment_order(
     tenant_id: int, base_amount: int = None,
-    notify_bot_token: str = None, notify_chat_id: int = None,
+    notify_bot_token: str = None, notify_chat_id: int = None, plan: str = None,
 ) -> dict:
     """Mijoz uchun yangi to'lov buyurtmasi yaratadi (avvalgi ochiq
     buyurtmalarini bekor qilib). Noyob summa va tugash muddati bilan.
+
+    `plan` — tanlangan tarif kaliti (start/business/pro), to'lov tasdiqlanganda
+    aynan qaysi tarif faollashtirilishini bilish uchun saqlanadi.
 
     `notify_bot_token`/`notify_chat_id` — to'lov TASDIQLANGANDA, mijozga
     "to'lovingiz amalga oshirildi" xabarini AYNAN QAYSI BOT ORQALI VA
@@ -152,7 +155,7 @@ async def create_payment_order(
     order_id = await database.create_payment_order(
         tenant_id=tenant_id, order_code=order_code,
         base_amount=base_amount, amount=amount, expires_at=expires_at,
-        notify_bot_token=notify_bot_token, notify_chat_id=notify_chat_id,
+        notify_bot_token=notify_bot_token, notify_chat_id=notify_chat_id, plan=plan,
     )
     return {"id": order_id, "order_code": order_code, "amount": amount, "expires_at": expires_at}
 
@@ -161,8 +164,9 @@ async def handle_payment_notification(raw_text: str, notify_founders, activate_t
     """Userbot orqali kelgan xom bildirishnoma matnini qayta ishlaydi.
 
     `notify_founders(text: str)` — asoschilarga xabar yuborish uchun async chaqiruv.
-    `activate_tenant(tenant_id: int)` — mos buyurtma topilganda tenantni
-    faollashtiruvchi async chaqiruv (webhooklarni o'rnatish va h.k.).
+    `activate_tenant(tenant_id: int, plan: str | None)` — mos buyurtma
+    topilganda tenantni faollashtiruvchi async chaqiruv (webhooklarni
+    o'rnatish, tarifni yoqish va h.k.).
     """
     text = (raw_text or "").strip()
     if not text:
@@ -221,7 +225,7 @@ async def handle_payment_notification(raw_text: str, notify_founders, activate_t
         return {"status": "duplicate", "amount": amount}
 
     try:
-        await activate_tenant(order["tenant_id"])
+        await activate_tenant(order["tenant_id"], order.get("plan"))
     except Exception:
         logger.exception("Tolov aniqlandi, lekin tenantni faollashtirishda xato (order=%s).", order["order_code"])
         await database.mark_payment_order_needs_review(order["id"], str(text[:200]))

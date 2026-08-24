@@ -351,64 +351,82 @@ async def finish_questions(message: Message, state: FSMContext):
 _TRIAL_APPLICATION_LIMIT = 5
 
 
-async def _maybe_expire_trial(tenant_id: int, bot):
-    """Agar mijoz "trial" holatida bo'lsa va {_TRIAL_APPLICATION_LIMIT} ta
-    arizaga yetgan bo'lsa — sinovni yopadi ("trial_expired"), to'lov
-    buyurtmasi yaratadi va adminga to'lov ko'rsatmasini yuboradi. Bu — faqat
-    5-arizaning O'ZIDA (limitga aynan yetganda) bir marta ishlaydi."""
-    tenant = await database.get_tenant(tenant_id)
-    if not tenant or tenant["status"] != "trial":
+def _tariff_choice_keyboard():
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from services.plans import PLAN_ORDER, PLANS
+
+    builder = InlineKeyboardBuilder()
+    for key in PLAN_ORDER:
+        plan = PLANS[key]
+        builder.button(text=f"{plan['name']} — {plan['price']:,} so'm".replace(",", " "),
+                        callback_data=f"billing:plan:{key}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+async def _send_tariff_choices(tenant: dict, reason: str):
+    """Sinov yoki tarif muddati/limiti tugaganda, mijozning O'Z Admin
+    panel-boti orqali 3 ta tarifni tavsiflari bilan yuboradi."""
+    from aiogram import Bot
+    from services.plans import PLAN_ORDER, PLANS, format_plan_line
+
+    if not tenant["admin_user_ids"] or not tenant.get("admin_bot_token"):
         return
 
-    count = await database.count_tenant_applications(tenant_id)
-
-    if count < _TRIAL_APPLICATION_LIMIT:
-        return
-
-    await database.update_tenant_status(tenant_id, "trial_expired")
-    logger.info("Mijoz (id=%s) sinov limitiga yetdi (%s ta ariza) — trial_expired.", tenant_id, count)
-
-    from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
-    from services.payment_automation import create_payment_order
-
-    if not tenant["admin_user_ids"]:
-        return
-
-    admin_chat_id = tenant["admin_user_ids"][0]
-
-    if not PAYMENT_CARD_NUMBER:
-        try:
-            await bot.send_message(
-                chat_id=admin_chat_id,
-                text=(
-                    f"🎁 Bepul sinovingiz tugadi ({_TRIAL_APPLICATION_LIMIT} ta ariza qabul qilindi)!\n\n"
-                    "Davom ettirish uchun tez orada siz bilan bog'lanamiz."
-                ),
-            )
-        except Exception:
-            logger.exception("Mijozga sinov tugagani haqida xabar berib bo'lmadi (tenant_id=%s).", tenant_id)
-        return
-
-    order = await create_payment_order(
-        tenant_id, notify_bot_token=tenant["admin_bot_token"], notify_chat_id=admin_chat_id,
+    header = (
+        "🎁 Bepul sinovingiz tugadi!" if reason == "trial"
+        else "⏳ Joriy tarifingizning muddati yoki limiti tugadi!"
     )
-    card_digits = PAYMENT_CARD_NUMBER.replace(" ", "")
+    lines = [header, "", "Davom ettirish uchun mos tarifni tanlang:", ""]
+    for key in PLAN_ORDER:
+        lines.append(format_plan_line(PLANS[key]))
+        lines.append("")
 
+    bot = Bot(token=tenant["admin_bot_token"])
     try:
         await bot.send_message(
-            chat_id=admin_chat_id,
-            text=(
-                f"🎁 Bepul sinovingiz tugadi! ({_TRIAL_APPLICATION_LIMIT} ta ariza qabul qilindi)\n\n"
-                "Yangi arizalar qabul qilishni davom ettirish uchun to'lov qiling:\n\n"
-                f"💳 Karta: <code>{card_digits}</code>\n"
-                f"👤 {PAYMENT_CARD_HOLDER}\n"
-                f"💰 Summa: <code>{order['amount']}</code> so'm\n\n"
-                f"⚠️ Aynan <code>{order['amount']}</code> so'm o'tkazing. To'lov tushishi bilan "
-                "botlaringiz avtomatik davom etadi."
-            ),
+            chat_id=tenant["admin_user_ids"][0],
+            text="\n".join(lines),
+            reply_markup=_tariff_choice_keyboard(),
         )
     except Exception:
-        logger.exception("Mijozga sinov tugagani/tolov korsatmasini yuborib bolmadi (tenant_id=%s).", tenant_id)
+        logger.exception("Mijozga tarif tanlovini yuborib bo'lmadi (tenant_id=%s).", tenant["id"])
+    finally:
+        await bot.session.close()
+
+
+async def _maybe_expire_trial(tenant_id: int):
+    """Sinov (5 ta ariza) yoki joriy tarif (ariza soni/kun) tugaganda —
+    davrni yopadi ('trial_expired') va 3 ta tarifni tanlash uchun yuboradi."""
+    tenant = await database.get_tenant(tenant_id)
+    if not tenant:
+        return
+
+    if tenant["status"] == "trial":
+        count = await database.count_tenant_applications(tenant_id)
+        if count < _TRIAL_APPLICATION_LIMIT:
+            return
+        await database.update_tenant_status(tenant_id, "trial_expired")
+        logger.info("Mijoz (id=%s) sinov limitiga yetdi (%s ta ariza).", tenant_id, count)
+        await _send_tariff_choices(tenant, reason="trial")
+        return
+
+    if tenant["status"] == "active" and tenant.get("plan"):
+        from datetime import datetime, timezone
+
+        limit = tenant.get("plan_applications_limit")
+        expires_at = tenant.get("plan_expires_at")
+        used = await database.count_applications_since(tenant_id, tenant.get("period_started_at") or "")
+
+        expired_by_count = limit is not None and used >= limit
+        expired_by_date = bool(expires_at) and datetime.now(timezone.utc) >= datetime.fromisoformat(expires_at)
+        if not (expired_by_count or expired_by_date):
+            return
+
+        await database.update_tenant_status(tenant_id, "trial_expired")
+        logger.info("Mijoz (id=%s) tarif limitiga yetdi (ariza=%s/%s, muddat=%s).",
+                    tenant_id, used, limit, expires_at)
+        await _send_tariff_choices(tenant, reason="plan")
 
 
 async def complete_application(message: Message, state: FSMContext):
@@ -450,7 +468,7 @@ async def complete_application(message: Message, state: FSMContext):
     # --- Sinov limiti: agar bu mijoz hali SINOV rejimida bo'lsa va limitga
     # yetgan bo'lsa, sinovni yopib, to'lov so'raymiz. ---
     try:
-        await _maybe_expire_trial(tenant_id, message.bot)
+        await _maybe_expire_trial(tenant_id)
     except Exception:
         logger.exception("Sinov limitini tekshirishda xato (tenant_id=%s).", tenant_id)
 

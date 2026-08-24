@@ -160,26 +160,89 @@ CREATE TABLE IF NOT EXISTS bot_starts (
 # 3 ta namunaviy vakansiya (avvalgi bir-mijozli tizimdan meros).
 _DEFAULT_VACANCIES = [
     {
-        "key": "namuna", "title": "🎯 Namunaviy vakansiya (sinov uchun)",
+        "key": "sales", "title": "🧑‍💼 Sotuv menejeri",
+        "reject_message": (
+            "Anketangiz uchun rahmat! Hozircha ushbu tajriba talablarimizga to'liq mos "
+            "kelmayapti, shu sababli ushbu bosqichda davom eta olmaymiz. "
+            "Boshqa vakansiyalarimizni kuzatib boring — omad tilaymiz! 🙏"
+        ),
+        "resume_required": False,
+        "questions": [
+            {"key": "experience", "text": "Oldin sotuv sohasida ishlaganmisiz? (Ha/Yo'q)", "hard_filter": True},
+            {"key": "experience_details", "text": "Qayerda va qancha muddat sotuv qilgansiz? Qisqacha yozing."},
+            {"key": "crm", "text": "Qanday CRM tizimlarida ishlagansiz? (Bitrix24, amoCRM va h.k.)"},
+            {"key": "scorecard_plan", "text": (
+                "Bizning kompaniya keyingi chorakda sotuvni kamida $20,000 ga oshirishi kerak. "
+                "Ishga kelganingizdan keyin birinchi 30 kun ichida bunga qanday hissa qo'shasiz? "
+                "Aniq rejangizni 3 ta qadamda yozing."
+            ), "ai_score": True},
+            {"key": "achievement", "text": (
+                "Oldingi ish joyingizda erishgan eng katta va aniq yutug'ingizni yozing "
+                "(iloji bo'lsa, raqamlar bilan)."
+            ), "ai_score": True},
+            {"key": "mistake_lesson", "text": (
+                "Ishingizda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va undan qanday dars oldingiz?"
+            ), "ai_score": True},
+            {"key": "hard_client", "text": "Qiyin mijoz bilan qanday ishlaysiz? Bitta real holatni yozib bering.", "ai_score": True},
+            {"key": "teamwork", "text": "Jamoada ishlash tajribangizni bitta real misol bilan tushuntiring.", "ai_score": True},
+            {"key": "motivation", "text": "Nega aynan bizning kompaniyada ishlashni xohlaysiz?", "ai_score": True},
+            {"key": "salary_expectation", "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)"},
+        ],
+    },
+    {
+        "key": "designer", "title": "🎨 Dizayner",
+        "reject_message": (
+            "Anketangiz uchun rahmat! Hozircha tajribangiz talablarimizga mos kelmayapti. "
+            "Portfolioingizni boyitib, keyinroq qayta murojaat qilishingiz mumkin. Omad! 🙏"
+        ),
+        "resume_required": True,
+        "questions": [
+            {"key": "tool", "text": "Figma yoki Adobe (Photoshop/Illustrator) dasturlaridan qaysi birida ishlaysiz?"},
+            {"key": "portfolio", "text": "Portfolio (ishlaringiz namunasi) linkini yuboring.", "hard_filter": True},
+            {"key": "scorecard_output", "text": (
+                "Bizning brend uchun ijtimoiy tarmoqlarda oyiga kamida 20 ta post dizayni "
+                "tayyorlashingiz kerak bo'ladi. Birinchi haftada ishni qanday tashkil qilasiz "
+                "va sifatni qanday ta'minlaysiz?"
+            ), "ai_score": True},
+            {"key": "achievement", "text": (
+                "Eng faxrlanadigan loyihangizni tasvirlab bering — u qanday aniq natija "
+                "(masalan, mijoz sotuvi, engagement o'sishi) keltirdi?"
+            ), "ai_score": True},
+            {"key": "mistake_lesson", "text": "Dizaynda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va undan qanday dars oldingiz?", "ai_score": True},
+            {"key": "style", "text": "Sizga qaysi dizayn yo'nalishi (uslub) yaqinroq va nega?", "ai_score": True},
+            {"key": "deadline_handling", "text": "Bir vaqtning o'zida bir nechta muhim topshiriq kelib qolsa, ularni qanday tartibga solasiz?", "ai_score": True},
+            {"key": "feedback_handling", "text": "Mijoz yoki rahbar ishingizni qattiq tanqid qilsa, munosabatingiz qanday bo'ladi?", "ai_score": True},
+            {"key": "salary_expectation", "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)"},
+        ],
+    },
+    {
+        "key": "smm", "title": "📱 SMM mutaxassis",
         "reject_message": (
             "Anketangiz uchun rahmat! Hozircha tajribangiz talablarimizga mos kelmayapti. "
             "Boshqa vakansiyalarimizni kuzatib boring — omad tilaymiz! 🙏"
         ),
         "resume_required": False,
-        # ATIGI 5 TA savol (haqiqiy vakansiyada odatda 9 ta bo'ladi) — maqsad
-        # yangi mijozning O'ZI botni tezda sinab ko'rishi: har bir savol turini
-        # (filtr, oddiy faktik, AI tahlil, MAJBURIY OVOZLI javob) ko'rsatadi.
-        # NOFAOL holda yaratiladi (pastda active=0) — haqiqiy nomzodlarga
-        # ko'rinmaydi, faqat Admin panelning "Vakansiyalar" ro'yxatida turadi;
-        # mijoz xohlasa vaqtincha faollashtirib, o'zi ariza topshirib ko'rishi
-        # mumkin.
         "questions": [
-            {"key": "experience", "text": "Bu sohada oldin ishlaganmisiz? (Ha/Yo'q)", "hard_filter": True},
-            {"key": "tools", "text": "Ish jarayonida qanday dastur yoki vositalardan foydalanasiz?"},
-            {"key": "achievement", "text": (
-                "Oldingi ish joyingizdagi eng katta yutug'ingizni raqamlar bilan yozib bering."
+            {"key": "platforms", "text": "Qaysi platformalarda (Instagram, Telegram, TikTok) tajribangiz bor?"},
+            {"key": "content_plan", "text": "Kontent-reja tuzish tajribangiz bormi? (Ha/Yo'q)", "hard_filter": True},
+            {"key": "scorecard_growth", "text": (
+                "Bizning Instagram sahifamizni 3 oy ichida kamida 5,000 ta yangi obunachiga "
+                "olib chiqishingiz kerak. Buni qanday aniq qadamlar bilan amalga oshirasiz?"
             ), "ai_score": True},
-            {"key": "motivation", "text": "Nega aynan shu sohada ishlashni xohlaysiz?", "voice": True},
+            {"key": "cases", "text": (
+                "Oldingi ishlaringizdan eng yaxshi natija bergan case'ni raqamlar bilan yozib "
+                "bering (masalan: \"Reels 100,000 ko'rishga yetdi\")."
+            ), "ai_score": True},
+            {"key": "mistake_lesson", "text": "SMMda qilgan eng katta xatoyingiz nima edi va undan qanday xulosa chiqardingiz?", "ai_score": True},
+            {"key": "trend_reaction", "text": (
+                "Ijtimoiy tarmoqlarda tez o'zgaruvchi trendlarga qanday moslashasiz? "
+                "Oxirgi kuzatgan va ishlatgan trendingizni ayting."
+            ), "ai_score": True},
+            {"key": "crisis_management", "text": (
+                "Agar brend haqida salbiy komment yoki kichik inqiroziy vaziyat yuzaga kelsa, "
+                "birinchi qadamingiz nima bo'ladi?"
+            ), "ai_score": True},
+            {"key": "tools", "text": "Qanday dizayn/analitika vositalaridan (Canva, Meta Business Suite va h.k.) foydalanasiz?"},
             {"key": "salary_expectation", "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)"},
         ],
     },
@@ -295,7 +358,7 @@ async def _ensure_founder_tenant(db) -> None:
     for v in _DEFAULT_VACANCIES:
         await db.execute(
             "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
-            "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+            "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
             (founder_id, v["key"], v["title"], v["reject_message"],
              json.dumps(v["questions"], ensure_ascii=False), int(v["resume_required"]), created_at),
         )
@@ -412,7 +475,7 @@ async def create_tenant(
         for v in _DEFAULT_VACANCIES:
             await db.execute(
                 "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
-                "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+                "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
                 (tenant_id, v["key"], v["title"], v["reject_message"],
                  json.dumps(v["questions"], ensure_ascii=False), int(v["resume_required"]), created_at),
             )

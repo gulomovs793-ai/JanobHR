@@ -49,11 +49,23 @@ _TEMPLATE_QUESTIONS = [
 
 class CreateBotForm(StatesGroup):
     in_ai_conversation = State()
+    awaiting_interest = State()
     waiting_phone = State()
     waiting_full_name = State()
     waiting_company_name = State()
     waiting_candidate_token = State()
     waiting_admin_token = State()
+
+
+_DECLINE_PATTERNS = [
+    "yo'q", "kerak emas", "hozir emas", "hozircha yo'q", "keyinroq",
+    "qiziqmayman", "bo'lmaydi", "shart emas",
+]
+
+
+def _looks_like_decline(text: str) -> bool:
+    t = text.strip().lower()
+    return any(p in t for p in _DECLINE_PATTERNS)
 
 
 def _looks_like_phone(text: str) -> bool:
@@ -94,24 +106,17 @@ async def cmd_create_bot(message: Message, state: FSMContext):
 
 
 async def _start_signup(message: Message, state: FSMContext):
-    await message.answer(
-        "Aynan shu — Janob HR. AI orqali nomzodlarni inson omilisiz, aniq "
-        "mezonlar bo'yicha saralaydi, sizga faqat tayyor, mos nomzodlarni "
-        "qoldiradi."
-    )
-    await message.answer(
-        f"🎁 Buni o'zingiz ko'rish uchun — birinchi <b>{TRIAL_APPLICATION_LIMIT} ta "
-        "ariza</b> SIZGA BUTUNLAY BEPUL. Hech qanday to'lov qilmasdan, o'z "
-        "haqiqiy vakansiyangiz bilan sinab ko'rasiz."
-    )
+    """Foydalanuvchi qiziqish bildirgandan (awaiting_interest) KEYIN chaqiriladi.
+    Reklama-uslubidagi qayta pitch YO'Q — bu allaqachon sintez xabarida aytilgan
+    edi. Faqat texnik sozlashga o'tish."""
     phone_keyboard = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Raqamimni yuborish", request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
     await message.answer(
-        "Botingizni sozlashni boshlaymiz. Avval, siz bilan bog'lanishimiz uchun "
-        "pastdagi tugmani bosing — raqamingiz avtomatik yuboriladi:",
+        "Unda boshlaymiz. Siz bilan bog'lanishimiz uchun pastdagi tugmani "
+        "bosing — raqamingiz avtomatik yuboriladi:",
         reply_markup=phone_keyboard,
     )
     await state.set_state(CreateBotForm.waiting_phone)
@@ -135,17 +140,37 @@ async def continue_ai_conversation(message: Message, state: FSMContext):
         return
 
     # Oxirgi (3-chi) savolga ham javob keldi — 3 ta javobni tahlil qilib,
-    # PROBLEM->CURRENT PROCESS->PAIN/IMPACT->PRODUCT FIT mantig'ida
-    # moslashtirilgan ko'prik xabarini yaratamiz (YAGONA AI chaqiruvi).
+    # 3 paragrafli DIAGNOSTIK XULOSA + YUMSHOQ CTA xabarini yaratamiz (YAGONA
+    # AI chaqiruvi). Bu xabardan keyin DARHOL ro'yxatdan o'tishga O'TMAYMIZ —
+    # foydalanuvchining qiziqish bildirishini KUTAMIZ (awaiting_interest).
     await state.update_data(ai_history=history)
     synthesis = await generate_synthesis_pitch(history)
     if synthesis:
         history.append({"role": "assistant", "content": synthesis})
         await state.update_data(ai_history=history)
         await message.answer(synthesis)
+        await state.set_state(CreateBotForm.awaiting_interest)
     else:
         logger.warning("Tahlil xabari uchun AI javob bermadi — royxatdan otishga otamiz.")
+        await _start_signup(message, state)
+
+
+@router.message(CreateBotForm.awaiting_interest, F.text)
+async def receive_interest_response(message: Message, state: FSMContext):
+    if _looks_like_decline(message.text):
+        await message.answer(
+            "Tushunarli, bosim qilmayman. Xohlagan vaqtingizda /create_bot "
+            "buyrug'i bilan qaytishingiz mumkin."
+        )
+        await state.clear()
+        return
+
     await _start_signup(message, state)
+
+
+@router.message(CreateBotForm.awaiting_interest)
+async def wrong_type_in_interest(message: Message, state: FSMContext):
+    await message.answer("Iltimos, javobingizni oddiy matn ko'rinishida yozing.")
 
 
 @router.message(CreateBotForm.in_ai_conversation)

@@ -337,56 +337,81 @@ _FALLBACK_STAGE5_CLOSE = (
 
 
 _SYNTHESIS_PROMPT = """Sen Janob HR nomli B2B AI-HR mahsulotining ZEHNLI va SAMIMIY
-sotuv AGENTISAN — konsultant yoki auditor EMASSAN. Mijoz senga 3 ta ANIQ savolga
-javob berdi (tartibi bilan): (1) hozir eng ko'p qiynayotgan MUAMMO, (2) hozirgi
-holatda nomzodlarni QANDAY saralaydi (HOZIRGI JARAYON), (3) qaysi muammo hal
-bo'lsa Janob HR bilan MUNTAZAM ishlashga tayyor (MAHSULOT MOSLIGI ishorasi).
+sotuv AGENTISAN — konsultant, auditor yoki reklama e'lonchisi EMASSAN. Mijoz senga
+3 ta ANIQ savolga javob berdi (tartibi bilan): (1) hozir eng ko'p qiynayotgan
+MUAMMO, (2) hozirgi holatda nomzodlarni QANDAY saralaydi (HOZIRGI JARAYON),
+(3) qaysi natijaga erishsa mamnun bo'lardi (XOHLAGAN NATIJA).
 
-VAZIFANG: shu 3 ta javobni, FAQAT mijoz AYTGAN so'zlar asosida (hech narsa
-o'ylab topmasdan, raqam/fakt uydirmasdan), ANIQ 3 TA QISQA GAPDA yoz — HAR BIR
-GAP BITTA ZANJIR BO'G'INIGA MOS:
-1-gap = MUAMMO + HOZIRGI JARAYONDAGI TESHIK (ikkalasini BITTA gapga sig'dir)
-2-gap = shu teshik NEGA OG'RIQLI ekani (KUCHLI, HISSIY, lekin uydirma raqamsiz)
-3-gap = "Janob HR aynan shuni hal qiladi" + NIMA O'ZGARISHINI qisqa ko'rsatuvchi
-ISHONCHLI yakun
+VAZIFANG: 3 ta javobni birlashtirib, ANIQ 3 TA QISQA PARAGRAFDAN iborat BITTA
+tabiiy xabar yoz — bu DIAGNOSTIK XULOSA + INDIVIDUAL YECHIM, reklama EMAS:
 
-QAT'IY HAJM CHEGARASI: JAMI 25-40 SO'Z, 3 TADAN ORTIQ GAP YO'Q. Bundan
-oshirish TAQIQLANADI — bu QISQA, ZARBali xabar, insho EMAS.
+1-PARAGRAF (1 gap): mijozning muammosini O'Z SO'ZI bilan emas, INSIGHT bilan
+qayta ayt — ya'ni uning aytganlarini BIRLASHTIRIB, yangi xulosa chiqar (shunchaki
+copy-paste qilib qaytarish TAQIQLANADI). Agar asl sabab noaniq bo'lsa, buni
+QAT'IY HUKM sifatida emas, "ko'rinyapti"/"aytganlaringizdan qaraganda" kabi
+YUMSHOQ taxmin sifatida ayt.
+2-PARAGRAF (2 gap): hozirgi jarayonini bir gapda qayta tuting, so'ng Janob HR
+buni ANIQ QANDAY to'ldirishini bitta gapda bog'lang (pastdagi TAQIQLANGAN
+IBORALARSIZ).
+3-PARAGRAF (1 gap): YUMSHOQ CTA — "xohlasangiz sinab ko'ring" ohangida, 5 ta
+bepul ariza bilan. Bu yumshoq taklif, BOSIM EMAS. Telefon raqami yoki
+ro'yxatdan o'tishni BU YERDA SO'RAMA — bu keyingi, ALOHIDA bosqich.
+
+QAT'IY TAQIQLANGAN IBORALAR (haddan tashqari va'da/kafolat beradi):
+"inson omilisiz", "kafolatlaydi", "100% mos", "aniq topadi", "eng yaxshi
+nomzodni topadi", "sizga mos xodimni topadi", "noto'g'ri nomzodni chiqarib
+tashlaydi", "topib beradi". BULARNING O'RNIGA: "tahlil qiladi", "saralaydi",
+"ajratishga yordam beradi", "mezonlar asosida baholaydi", "HRga qaror
+qilishda yordam beradi" kabi EHTIYOTKOR fe'llardan foydalan — Janob HR
+odamni ALMASHTIRMAYDI, HRga yordam beradi.
+
+HAJM: JAMI 50-80 SO'Z, ANIQ 3 TA PARAGRAF (paragraflar orasida bo'sh qator).
 
 USLUB (QAT'IY):
 - KUNDALIK SO'ZLASHUV tili, RASMIY-YOZMA EMAS.
 - "Demak", "Shunday ekan", "Aniqlik kiritay", "ya'ni", "bu esa" kabi RASMIY
-  ULASH SO'ZLARI xabarning HECH QAYERIDA (boshida ham, o'rtasida ham)
-  ishlatilmasin — bular yozma-akademik hisobot tiliga xos, og'zaki emas.
-- Gaplarni ulash o'rniga QISQA, MUSTAQIL gaplar bilan yoz.
-- Savol berish SHART EMAS — bu XULOSA/KO'PRIK xabari.
+  ULASH SO'ZLARI xabarning HECH QAYERIDA ishlatilmasin.
 - Sifatlash so'zlari ("ajoyib", "kuchli", "innovatsion") TAQIQLANADI.
 - Mijoz AYTMAGAN raqam yoki voqeani FAKT sifatida qo'shish TAQIQLANADI.
+- "Aynan shu — Janob HR" kabi reklama sloganlarini ishlatma.
+- Mahsulotning BARCHA funksiyalarini sanab o'tma — faqat shu muammoga tegishli
+  qismini ayt.
 - FAQAT o'zbek tilida, emoji ishlatma.
 
-Bu SENING YAGONA xabaring — undan keyin taqdimot avtomatik davom etadi, shuning
-uchun mahsulot xususiyatlarini BATAFSIL TUSHUNTIRMA.
+Bu SENING YAGONA xabaring. Undan keyin AVTOMATIK "Aynan shu — Janob HR..." yoki
+"5 ta ariza bepul" degan qo'shimcha xabar YUBORILMAYDI — mijozning javobini
+KUTAMIZ, shuning uchun BARCHA taklifni shu YAGONA xabarga sig'dirishing SHART.
 """
 
-_SYNTHESIS_BANNED_ANYWHERE = ["Demak", "Shunday ekan", "Aniqlik kiritay"]
-_SYNTHESIS_MAX_WORDS = 45
+_SYNTHESIS_BANNED_ANYWHERE = [
+    "Demak", "Shunday ekan", "Aniqlik kiritay", "Aynan shu — Janob HR",
+    "inson omilisiz", "kafolatlaydi", "100% mos", "aniq topadi",
+    "eng yaxshi nomzodni topadi", "sizga mos xodimni topadi",
+    "noto'g'ri nomzodni chiqarib tashlaydi", "topib beradi",
+]
+_SYNTHESIS_MIN_WORDS = 35
+_SYNTHESIS_MAX_WORDS = 100
 
 
 def _validate_synthesis(text: str) -> list[str]:
     issues = []
     word_count = len(text.split())
     if word_count > _SYNTHESIS_MAX_WORDS:
-        issues.append(f"{word_count} ta so'z ({_SYNTHESIS_MAX_WORDS} tadan oshmasligi kerak, ideal 25-40)")
+        issues.append(f"{word_count} ta so'z ({_SYNTHESIS_MAX_WORDS} tadan oshmasligi kerak, ideal 50-80)")
+    elif word_count < _SYNTHESIS_MIN_WORDS:
+        issues.append(f"{word_count} ta so'z (juda qisqa, kamida {_SYNTHESIS_MIN_WORDS} ta, ideal 50-80)")
     for phrase in _SYNTHESIS_BANNED_ANYWHERE:
         if phrase.lower() in text.lower():
-            issues.append(f"taqiqlangan rasmiy ulash so'zi ishlatilgan: '{phrase}' (xabarning istalgan joyida taqiqlangan)")
+            issues.append(f"taqiqlangan ibora ishlatilgan: '{phrase}'")
+    if text.count("\n\n") < 2:
+        issues.append("aniq 3 ta paragraf (orasida bo'sh qator bilan) bo'lishi kerak, hozirgi javobda yetarli emas")
     return issues
 
 
 async def generate_synthesis_pitch(history: list[dict]) -> str | None:
     """3 ta shablon savol-javobdan keyin chaqiriladi. MUAMMO -> HOZIRGI
-    JARAYON -> OG'RIQ -> MAHSULOT MOSLIGI mantig'ida, faqat mijoz aytgan
-    so'zlar asosida, QISQA (25-40 so'z) va ZARBALI ko'prik xabarini yaratadi
+    JARAYON -> XOHLAGAN NATIJA javoblarini birlashtirib, 3 paragrafli
+    (1-INSIGHT, 2-jarayon+yechim, 3-yumshoq CTA) DIAGNOSTIK xabar yaratadi
     (bu joyda AI FAQAT BITTA marta, bitta yakuniy xabar uchun chaqiriladi —
     ko'p bosqichli AI-suhbat ARXITEKTURASI endi ishlatilmaydi)."""
 

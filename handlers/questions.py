@@ -403,7 +403,7 @@ async def _maybe_expire_trial(tenant_id: int):
         return
 
     if tenant["status"] == "trial":
-        count = await database.count_tenant_applications(tenant_id)
+        count = tenant.get("applications_ever_count", 0)
         if count < _TRIAL_APPLICATION_LIMIT:
             return
         await database.update_tenant_status(tenant_id, "trial_expired")
@@ -416,7 +416,7 @@ async def _maybe_expire_trial(tenant_id: int):
 
         limit = tenant.get("plan_applications_limit")
         expires_at = tenant.get("plan_expires_at")
-        used = await database.count_applications_since(tenant_id, tenant.get("period_started_at") or "")
+        used = tenant.get("applications_used_in_period", 0)
 
         expired_by_count = limit is not None and used >= limit
         expired_by_date = bool(expires_at) and datetime.now(timezone.utc) >= datetime.fromisoformat(expires_at)

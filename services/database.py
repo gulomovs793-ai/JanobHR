@@ -394,6 +394,17 @@ async def init_db():
             await db.execute("ALTER TABLE tenants ADD COLUMN plan_expires_at TEXT")
         if "period_started_at" not in tenant_columns:
             await db.execute("ALTER TABLE tenants ADD COLUMN period_started_at TEXT")
+        if "applications_ever_count" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN applications_ever_count INTEGER NOT NULL DEFAULT 0")
+            # Backfill: mavjud tenantlar uchun hozirgi (hali o'chirilmagan) arizalar
+            # sonini boshlang'ich qiymat sifatida olamiz — aks holda ular
+            # noto'g'ri ravishda "0" dan boshlangan bo'lib qolardi.
+            await db.execute(
+                "UPDATE tenants SET applications_ever_count = "
+                "(SELECT COUNT(*) FROM applications WHERE applications.tenant_id = tenants.id)"
+            )
+        if "applications_used_in_period" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN applications_used_in_period INTEGER NOT NULL DEFAULT 0")
 
         cursor = await db.execute("PRAGMA table_info(payment_orders)")
         payment_columns = {row[1] for row in await cursor.fetchall()}
@@ -621,6 +632,11 @@ async def save_application(
              resume_file_id, video_file_id, status, phone_number, lang,
              json.dumps(ai_suspect_flags or [], ensure_ascii=False),
              json.dumps(voice_answers or {}, ensure_ascii=False), created_at),
+        )
+        await db.execute(
+            "UPDATE tenants SET applications_ever_count = applications_ever_count + 1, "
+            "applications_used_in_period = applications_used_in_period + 1 WHERE id = ?",
+            (tenant_id,),
         )
         await db.commit()
         return cursor.lastrowid
@@ -993,16 +1009,6 @@ async def count_tenant_applications(tenant_id: int) -> int:
     return row[0] if row else 0
 
 
-async def count_applications_since(tenant_id: int, since_iso: str) -> int:
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        cursor = await db.execute(
-            "SELECT COUNT(*) FROM applications WHERE tenant_id = ? AND created_at >= ?",
-            (tenant_id, since_iso),
-        )
-        row = await cursor.fetchone()
-    return row[0] if row else 0
-
-
 async def set_tenant_plan(tenant_id: int, plan_key: str) -> None:
     """To'lov tasdiqlangach chaqiriladi — tarifni faollashtiradi, davrni
     (ariza/vakansiya limiti, muddat) HOZIRDAN boshlab hisoblaydi."""
@@ -1014,7 +1020,8 @@ async def set_tenant_plan(tenant_id: int, plan_key: str) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
             "UPDATE tenants SET plan = ?, plan_applications_limit = ?, plan_vacancy_limit = ?, "
-            "plan_expires_at = ?, period_started_at = ?, status = 'active' WHERE id = ?",
+            "plan_expires_at = ?, period_started_at = ?, applications_used_in_period = 0, "
+            "status = 'active' WHERE id = ?",
             (plan_key, plan["applications"], plan["vacancies"], expires_at, now.isoformat(), tenant_id),
         )
         await db.commit()

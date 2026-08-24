@@ -37,36 +37,57 @@ def _settings_summary(settings: dict) -> str:
 async def _show_menu(message: Message, state: FSMContext, tenant_id: int):
     await state.clear()
     slots = await database.list_interview_slots(tenant_id, active_only=True)
-    settings = await database.get_interview_settings(tenant_id)
 
-    lines = ["📅 <b>Suhbat vaqtlari va sozlamalar</b>", ""]
+    lines = ["📅 <b>Suhbat vaqtlari</b>", ""]
     if slots:
         lines.append("<b>Mavjud vaqtlar:</b>")
         for s in slots:
             lines.append(f"• {s['label']} (sig'imi: {s['capacity']})")
     else:
         lines.append("Hozircha hech qanday vaqt qo'shilmagan.")
-    lines.append("")
-    lines.append(_settings_summary(settings))
 
+    # QISQARTIRILGAN menyu: manzil/ism/telefon/eslatma sozlamalari alohida
+    # "⚙️ Sozlamalar" submenyusiga ko'chirildi (_show_settings_menu) — bu
+    # yerda faqat eng ko'p ishlatiladigan 2 ta amal qoladi.
     builder = InlineKeyboardBuilder()
     builder.button(text="➕ Vaqt qo'shish", callback_data="ivslot:add")
     if slots:
         builder.button(text="🗑 Vaqtni o'chirish", callback_data="ivslot:dellist")
-    builder.button(text="📍 Manzilni sozlash", callback_data="ivset:location")
-    builder.button(text="👤 Intervyuchi ismi", callback_data="ivset:name")
-    builder.button(text="📞 Intervyuchi raqami", callback_data="ivset:phone")
-    builder.button(text="📝 Eslatma matni", callback_data="ivset:notes")
+    builder.button(text="⚙️ Sozlamalar", callback_data="ivset:menu")
     builder.button(text="⬅️ Bosh menyu", callback_data="menu:main")
     builder.adjust(1)
 
     await message.answer("\n".join(lines), reply_markup=builder.as_markup())
 
 
+async def _show_settings_menu(message: Message, tenant_id: int):
+    settings = await database.get_interview_settings(tenant_id)
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📍 Manzilni sozlash", callback_data="ivset:location")
+    builder.button(text="👤 Intervyuchi ismi", callback_data="ivset:name")
+    builder.button(text="📞 Intervyuchi raqami", callback_data="ivset:phone")
+    builder.button(text="📝 Eslatma matni", callback_data="ivset:notes")
+    builder.button(text="⬅️ Orqaga", callback_data="menu:interview")
+    builder.adjust(1)
+
+    await message.answer(
+        f"⚙️ <b>Sozlamalar</b>\n\n{_settings_summary(settings)}",
+        reply_markup=builder.as_markup(),
+    )
+
+
 @router.callback_query(F.data == "menu:interview")
 async def open_interview_menu(callback: CallbackQuery, state: FSMContext, tenant_id: int):
     await callback.message.delete()
     await _show_menu(callback.message, state, tenant_id)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ivset:menu")
+async def open_settings_menu(callback: CallbackQuery, tenant_id: int):
+    await callback.message.delete()
+    await _show_settings_menu(callback.message, tenant_id)
     await callback.answer()
 
 
@@ -139,7 +160,8 @@ async def receive_location_pin(message: Message, state: FSMContext, tenant_id: i
         location_lng=message.location.longitude, location_text=None,
     )
     await message.answer("✅ Manzil (xarita) saqlandi.")
-    await _show_menu(message, state, tenant_id)
+    await state.clear()
+    await _show_settings_menu(message, tenant_id)
 
 
 @router.message(InterviewForm.setting_location, F.text)
@@ -148,7 +170,8 @@ async def receive_location_text(message: Message, state: FSMContext, tenant_id: 
         tenant_id, location_text=message.text.strip(), location_lat=None, location_lng=None,
     )
     await message.answer("✅ Manzil saqlandi.")
-    await _show_menu(message, state, tenant_id)
+    await state.clear()
+    await _show_settings_menu(message, tenant_id)
 
 
 @router.callback_query(F.data == "ivset:name")
@@ -162,7 +185,8 @@ async def start_set_name(callback: CallbackQuery, state: FSMContext):
 async def receive_interviewer_name(message: Message, state: FSMContext, tenant_id: int):
     await database.update_interview_settings(tenant_id, interviewer_name=message.text.strip())
     await message.answer("✅ Saqlandi.")
-    await _show_menu(message, state, tenant_id)
+    await state.clear()
+    await _show_settings_menu(message, tenant_id)
 
 
 @router.callback_query(F.data == "ivset:phone")
@@ -176,7 +200,8 @@ async def start_set_phone(callback: CallbackQuery, state: FSMContext):
 async def receive_interviewer_phone(message: Message, state: FSMContext, tenant_id: int):
     await database.update_interview_settings(tenant_id, interviewer_phone=message.text.strip())
     await message.answer("✅ Saqlandi.")
-    await _show_menu(message, state, tenant_id)
+    await state.clear()
+    await _show_settings_menu(message, tenant_id)
 
 
 @router.callback_query(F.data == "ivset:notes")
@@ -193,4 +218,5 @@ async def start_set_notes(callback: CallbackQuery, state: FSMContext):
 async def receive_notes(message: Message, state: FSMContext, tenant_id: int):
     await database.update_interview_settings(tenant_id, notes=message.text.strip())
     await message.answer("✅ Saqlandi.")
-    await _show_menu(message, state, tenant_id)
+    await state.clear()
+    await _show_settings_menu(message, tenant_id)

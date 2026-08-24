@@ -344,7 +344,7 @@ async def show_question_picker(callback: CallbackQuery, tenant_id: int):
     for i, q in enumerate(vacancy["questions"]):
         label = q["text"] if len(q["text"]) <= 45 else q["text"][:45] + "…"
         builder.button(text=f"{i + 1}. {label}", callback_data=f"vaceditq:{key}:{i}")
-    builder.button(text="⬅️ Orqaga", callback_data=f"vac:{key}")
+    builder.button(text="⬅️ Orqaga", callback_data=f"vacedit:{key}")
     builder.adjust(1)
 
     await callback.message.edit_text(
@@ -403,5 +403,5 @@ async def receive_single_question_edit(message: Message, state: FSMContext, tena
     await state.clear()
 
     builder = InlineKeyboardBuilder()
-    builder.button(text="⬅️ Vakansiyaga qaytish", callback_data=f"vac:{key}")
+    builder.button(text="⬅️ Vakansiyaga qaytish", callback_data=f"vacedit:{key}")
     await message.answer(f"✅ {idx + 1}-savol yangilandi.", reply_markup=builder.as_markup())

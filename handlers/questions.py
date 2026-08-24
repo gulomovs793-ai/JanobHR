@@ -359,7 +359,7 @@ def _tariff_choice_keyboard():
     for key in PLAN_ORDER:
         plan = PLANS[key]
         builder.button(text=f"{plan['name']} — {plan['price']:,} so'm".replace(",", " "),
-                        callback_data=f"billing:plan:{key}")
+                        callback_data=f"billing:view:{key}")
     builder.adjust(1)
     return builder.as_markup()
 

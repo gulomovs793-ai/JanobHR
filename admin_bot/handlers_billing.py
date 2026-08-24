@@ -1,19 +1,51 @@
 """Admin bot — tarif tanlash (sinov/tarif tugagach yuboriladigan xabardagi
-tugmalar) va to'lov ko'rsatmasi."""
+tugmalar), tavsifini ko'rsatish va to'lov ko'rsatmasi."""
 import logging
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from services import database
-from services.plans import PLANS
+from services.plans import PLANS, format_plan_detail
 
 logger = logging.getLogger("janob_hr_bot")
 
 router = Router(name="admin_billing")
 
 
-@router.callback_query(F.data.startswith("billing:plan:"))
+@router.callback_query(F.data.startswith("billing:view:"))
+async def view_plan(callback: CallbackQuery):
+    plan_key = callback.data.split(":")[-1]
+    plan = PLANS.get(plan_key)
+    if not plan:
+        await callback.answer("Noma'lum tarif.", show_alert=True)
+        return
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💳 To'lov qilish", callback_data=f"billing:pay:{plan_key}")
+    builder.button(text="⬅️ Orqaga", callback_data="billing:back")
+    builder.adjust(1)
+
+    await callback.message.edit_text(format_plan_detail(plan), reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "billing:back")
+async def back_to_plans(callback: CallbackQuery, tenant_id: int):
+    from handlers.questions import _send_tariff_choices
+
+    tenant = await database.get_tenant(tenant_id)
+    if not tenant:
+        await callback.answer("Xatolik yuz berdi.", show_alert=True)
+        return
+
+    await callback.message.delete()
+    await _send_tariff_choices(tenant, reason="trial")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("billing:pay:"))
 async def choose_plan(callback: CallbackQuery, tenant_id: int):
     from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
     from services.payment_automation import create_payment_order

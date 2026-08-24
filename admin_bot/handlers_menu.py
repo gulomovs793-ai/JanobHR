@@ -116,6 +116,8 @@ async def show_leads(callback: CallbackQuery, tenant: dict = None):
 async def show_stats(callback: CallbackQuery, tenant_id: int):
     overall = await database.get_overall_stats(tenant_id)
     per_vacancy = await database.get_vacancy_stats(tenant_id)
+    time_stats = await database.get_time_based_stats(tenant_id)
+    ai_stats = await database.get_ai_verdict_stats(tenant_id)
 
     lines = [
         "📊 <b>Umumiy statistika</b>",
@@ -124,6 +126,9 @@ async def show_stats(callback: CallbackQuery, tenant_id: int):
         + (f" ({overall['starts_total']} marta)" if overall['starts_total'] != overall['starts_unique'] else ""),
         f"📥 Ariza topshirganlar: <b>{overall['total']}</b>"
         + (f" ({overall['conversion_percent']}% konversiya)" if overall['conversion_percent'] is not None else ""),
+        "",
+        f"🗓 Bugun: <b>{time_stats['today']}</b> ta ariza | "
+        f"Bu hafta: <b>{time_stats['week']}</b> | Bu oy: <b>{time_stats['month']}</b>",
         "",
         f"⏳ Kutilmoqda: {overall['pending']}",
         f"✅ Qabul qilingan: {overall['accepted']}",
@@ -134,7 +139,19 @@ async def show_stats(callback: CallbackQuery, tenant_id: int):
         f"   • AI orqali yozilgan deb topildi: {overall['rejected_ai_generated']}",
     ]
 
+    if ai_stats["scored_total"]:
+        vc = ai_stats["verdict_counts"]
+        lines.append("")
+        lines.append(
+            f"🎯 <b>Nomzodlar sifati</b> (AI baholagan {ai_stats['scored_total']} ta, "
+            f"o'rtacha ball: {ai_stats['avg_score']}/100)"
+        )
+        lines.append(f"   🟢 Kuchli: {vc['yashil']} | 🟡 O'rtacha: {vc['sariq']} | 🔴 Zaif: {vc['qizil']}")
+
     if per_vacancy:
+        top = per_vacancy[0]
+        lines.append("")
+        lines.append(f"🔥 Eng faol vakansiya: <b>{top['vacancy_title']}</b> ({top['total']} ta ariza)")
         lines.append("")
         lines.append("<b>Vakansiyalar bo'yicha:</b>")
         for v in per_vacancy:
@@ -147,5 +164,9 @@ async def show_stats(callback: CallbackQuery, tenant_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(text="⬅️ Orqaga", callback_data="menu:main")
 
-    await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    text = "\n".join(lines)
+    if len(text) > 4000:
+        text = text[:3990] + "\n\n…(qisqartirildi)"
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()

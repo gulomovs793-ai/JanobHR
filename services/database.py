@@ -962,6 +962,64 @@ async def count_tenant_applications(tenant_id: int) -> int:
     return row[0] if row else 0
 
 
+async def get_time_based_stats(tenant_id: int) -> dict:
+    """Bugun/bu hafta/bu oy nechta ariza tushganini hisoblaydi — asoschiga
+    faoliyat tendensiyasini (o'sish/pasayish) ko'rsatish uchun."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT created_at FROM applications WHERE tenant_id = ?", (tenant_id,)
+        )
+        rows = await cursor.fetchall()
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=today_start.weekday())
+    month_start = today_start.replace(day=1)
+
+    today = week = month = 0
+    for (created_at,) in rows:
+        try:
+            dt = datetime.fromisoformat(created_at)
+        except (TypeError, ValueError):
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if dt >= today_start:
+            today += 1
+        if dt >= week_start:
+            week += 1
+        if dt >= month_start:
+            month += 1
+    return {"today": today, "week": week, "month": month}
+
+
+async def get_ai_verdict_stats(tenant_id: int) -> dict:
+    """Barcha arizalar bo'yicha AI verdikt (🟢/🟡/🔴) taqsimoti va o'rtacha
+    ball — nomzodlar sifatini bir qarashda ko'rsatish uchun."""
+    from services.ai_scoring import aggregate_scores
+
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT ai_scores FROM applications WHERE tenant_id = ?", (tenant_id,)
+        )
+        rows = await cursor.fetchall()
+
+    verdict_counts = {"yashil": 0, "sariq": 0, "qizil": 0}
+    scores = []
+    for (ai_scores_json,) in rows:
+        try:
+            ai_scores = json.loads(ai_scores_json) if ai_scores_json else {}
+        except (TypeError, ValueError):
+            continue
+        aggregate = aggregate_scores(ai_scores)
+        if aggregate:
+            verdict_counts[aggregate["verdict"]] = verdict_counts.get(aggregate["verdict"], 0) + 1
+            scores.append(aggregate["avg_score"])
+
+    avg_score = round(sum(scores) / len(scores)) if scores else None
+    return {"verdict_counts": verdict_counts, "avg_score": avg_score, "scored_total": len(scores)}
+
+
 async def get_overall_stats(tenant_id: int) -> dict:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(

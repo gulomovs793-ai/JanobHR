@@ -63,10 +63,18 @@ async def _call_ai(
     javoblarni kamaytirish uchun (masalan sotuv suhbatida) musbat qiymat berish
     mumkin — OpenAI-compatible barcha provayderlar (DeepSeek/Groq/Gemini) buni
     qo'llab-quvvatlaydi.
+
+    TIMEOUT: `max_tokens`ga QARAB HISOBLANADI, qattiq belgilangan emas — qisqa
+    (50-100 tokenlik) baholash so'rovlari uchun 7s yetarli, lekin 2500 tokenlik
+    savol generatsiyasi/tarjima kabi UZUN javoblar buncha vaqtda deyarli hech
+    qachon ulgurmaydi va provayderlar behuda "band" deb belgilanadi. Taxminiy
+    ~90 tokens/soniya generatsiya tezligi + 5s bufer bilan hisoblanadi.
     """
     active = [(k, b, m, label) for k, b, m, label in _PROVIDERS if k]
     if not active:
         return None
+
+    timeout_seconds = max(7, round(max_tokens / 90) + 5)
 
     for key, base, model, label in active:
         messages = [{"role": "system", "content": system_prompt}]
@@ -98,7 +106,7 @@ async def _call_ai(
                     f"{base.rstrip('/')}/chat/completions",
                     json=payload,
                     headers={"Authorization": f"Bearer {key}"},
-                    timeout=aiohttp.ClientTimeout(total=7),
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds),
                 ) as resp:
                     if resp.status != 200:
                         body = await resp.text()
@@ -122,7 +130,10 @@ async def _call_ai(
                         continue
                     return content.strip()
         except Exception:
-            logger.exception("AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi.", label)
+            logger.exception(
+                "AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi (timeout=%ss, max_tokens=%s).",
+                label, timeout_seconds, max_tokens,
+            )
             continue  # navbatdagi provayderga o'tamiz
 
     logger.error("Barcha AI provayderlar ishlamadi (%d ta sinaldi).", len(active))

@@ -2,18 +2,32 @@
 from services.database import make_vacancy_key
 
 MANUAL_FORMAT_HELP = (
-    "Har bir qatorga bitta savol yozing. Qator oxiriga (ixtiyoriy) belgi qo'shishingiz mumkin:\n"
-    "  <code>| filter</code> — bu savol majburiy filtr (salbiy javobda nomzod avtomatik rad etiladi)\n"
-    "  <code>| score</code> — bu javob AI orqali chuqur tahlil qilinadi\n"
-    "  <code>| voice</code> — bu savolga nomzod OVOZLI xabar orqali javob berishi MAJBURIY "
-    "(audio to'g'ridan-to'g'ri sizga yuboriladi, tinglab o'zingiz baholaysiz — AI tahlil "
-    "qilmaydi; ko'pi bilan 1-2 ta savolga qo'llang)\n\n"
+    "Har bir qatorga bitta savol yozing. Qator oxiriga (ixtiyoriy) belgi qo'shishingiz mumkin "
+    "— katta-kichik harf farqi yo'q, o'zbekcha yozsangiz ham tushunadi:\n"
+    "  <code>| filter</code> (yoki <code>filtr</code>) — majburiy filtr: salbiy javobda "
+    "nomzod avtomatik rad etiladi. Oddiy Ha/Yo'q savollar uchun.\n"
+    "  <code>| score</code> (yoki <code>baho</code>) — bu javob AI orqali chuqur tahlil "
+    "qilinadi. Fikr-mulohaza, reja, misol talab qiladigan savollar uchun.\n"
+    "  <code>| voice</code> (yoki <code>ovoz</code>) — nomzod OVOZLI xabar orqali javob "
+    "berishi MAJBURIY (audio to'g'ridan-to'g'ri sizga yuboriladi, tinglab o'zingiz "
+    "baholaysiz — AI tahlil qilmaydi; ko'pi bilan 1-2 ta savolga qo'llang).\n"
+    "  <b>Belgisiz</b> (hech narsa qo'shmasangiz) — oddiy FAKTIK savol (masalan yosh, "
+    "tajriba yili, bilgan dasturi). Bunday savolga, agar rezyume yuklansa, javob "
+    "AVTOMATIK topilishi mumkin — nomzoddan qayta so'ralmaydi.\n\n"
+    "Ishonchingiz komil bo'lmasa — belgi qo'shmang, oddiy savol yozing, keyin kerak "
+    "bo'lsa vakansiyani tahrirlashda o'zgartirasiz.\n\n"
     "Misol:\n"
     "<code>Tajribangiz bormi? (Ha/Yo'q) | filter\n"
     "Eng katta yutug'ingiz nima? | voice\n"
     "Rejangiz qanday? | score\n"
     "Qanday dasturlardan foydalanasiz?</code>"
 )
+
+_MARKER_SYNONYMS = {
+    "filter": "filter", "filtr": "filter",
+    "score": "score", "baho": "score", "ball": "score",
+    "voice": "voice", "ovoz": "voice", "ovozli": "voice",
+}
 
 
 def parse_manual_questions(text: str) -> list[dict]:
@@ -30,7 +44,7 @@ def parse_manual_questions(text: str) -> list[dict]:
         if "|" in line:
             content, marker = line.rsplit("|", 1)
             content = content.strip()
-            marker = marker.strip().lower()
+            marker = _MARKER_SYNONYMS.get(marker.strip().lower(), "")
             if marker == "filter":
                 hard_filter = True
             elif marker == "score":

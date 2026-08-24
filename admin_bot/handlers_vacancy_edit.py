@@ -93,11 +93,15 @@ async def _generate_and_show(message: Message, state: FSMContext):
     questions = await generate_questions(data["vacancy_title"], data.get("vacancy_description", ""))
 
     if not questions:
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔄 Qayta urinish", callback_data="vacgen:retry")
+        builder.button(text="✍️ O'zim yozaman", callback_data="vacgen:manual")
+        builder.adjust(1)
         await wait_msg.edit_text(
-            "⚠️ AI hozircha savol tuza olmadi (barcha provayderlar band yoki xato berdi). "
-            "Savollarni qo'lda kiritamiz.\n\n" + MANUAL_FORMAT_HELP
+            "⚠️ AI hozircha savol tuza olmadi (provayderlar band bo'lishi mumkin). "
+            "Qayta urinib ko'rishingiz yoki o'zingiz yozishingiz mumkin:",
+            reply_markup=builder.as_markup(),
         )
-        await state.set_state(AdminForm.entering_manual_questions)
         return
 
     await state.update_data(pending_questions=questions)
@@ -108,6 +112,19 @@ async def _generate_and_show(message: Message, state: FSMContext):
         reply_markup=_review_keyboard(),
     )
     await state.set_state(AdminForm.reviewing_ai_questions)
+
+
+@router.callback_query(F.data == "vacgen:retry")
+async def retry_generation(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("Qayta urinilmoqda...")
+    await _generate_and_show(callback.message, state)
+
+
+@router.callback_query(F.data == "vacgen:manual")
+async def switch_to_manual_after_failure(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("✍️ Savollarni o'zingiz kiriting.\n\n" + MANUAL_FORMAT_HELP)
+    await state.set_state(AdminForm.entering_manual_questions)
+    await callback.answer()
 
 
 async def _show_review(message: Message, questions: list[dict]):

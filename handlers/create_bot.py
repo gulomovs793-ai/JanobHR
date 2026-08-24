@@ -25,18 +25,12 @@ TRIAL_APPLICATION_LIMIT = 5
 _AI_CONVERSATION_TURNS = 5  # Kompaniya -> Saralash -> Pul/vaqt -> Strategik zarar -> Vizualizatsiya
 _PRESENTATION_PATH = "assets/janobHR_taqdimot.pptx"
 
-_OPENING_STORY = (
-    "🤔 Kichik bir hikoya aytib beray...\n\n"
-    "Bir kompaniya 12 oy ichida 10 ta yangi xodim ishga oldi. Ammo deyarli har "
-    "biri 1 oy ham to'liq ishlamasdan, ishdan ketib qolardi. Har safar yangi "
-    "kelgan xodimni yana boshidan o'rgatish kerak bo'lardi — vaqt, kuch va pul "
-    "sarflanardi.\n\n"
-    "Shu orada, ular qo'lga kiritishi mumkin bo'lgan issiq mijozlar (lidlar) "
-    "e'tiborsiz qolib, raqobatchilarga ketardi — chunki savdo bo'limida "
-    "barqaror jamoa yo'q edi. Potensial mijozlar shunchaki yo'qolib borardi.\n\n"
-    "Bu — ko'plab kompaniyalarda jim ichida takrorlanadigan holat.\n\n"
-    "Aytingchi — sizning kompaniyangizda kadrlar bilan bog'liq ENG KATTA "
-    "muammo nima?"
+_OPENING_MESSAGE = (
+    "Har bir kompaniyada xodim yollashdagi asosiy muammo har xil bo'ladi: "
+    "ba'zilarida mos nomzod topish, ba'zilarida saralashga ketadigan vaqt, "
+    "boshqalarida esa ishga olingan xodimning uzoq ishlamasligi muammo bo'ladi.\n\n"
+    "Sizda hozir kadrlar bilan bog'liq eng ko'p vaqt yoki pul yo'qotayotgan "
+    "jarayon qaysi?"
 )
 
 
@@ -73,7 +67,7 @@ async def cmd_create_bot(message: Message, state: FSMContext):
     except Exception:
         logger.exception("Taqdimotni yuborib bo'lmadi — matn bilan davom etamiz.")
 
-    await message.answer(_OPENING_STORY)
+    await message.answer(_OPENING_MESSAGE)
     await state.update_data(ai_history=[], ai_turn_count=0)
     await state.set_state(CreateBotForm.in_ai_conversation)
 

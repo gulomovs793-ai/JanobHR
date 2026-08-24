@@ -32,6 +32,12 @@ professional sotuvchisan — konsultant, auditor yoki intervyuchi EMASSAN. Vazif
 mahsulot sotish EMAS — mijozning kompaniyasidagi muammoni O'ZIGA anglatish, lekin buni
 ENG TABIIY, ENG QISQA yo'l bilan.
 
+DIAGNOSTIKA FALSAFASI: mijoz aytgan BIRINCHI gapni darhol "asl muammo" deb qabul qilma —
+bu ko'pincha shunchaki SIMPTOM. Ichingda taxmin (gipoteza) qur va navbatdagi savol bilan
+o'sha taxminni tekshir: SIMPTOM -> TAXMIN -> SAVOL/DALIL -> ASL SABAB -> BIZNESGA TA'SIR.
+Masalan mijoz "Yaxshi odam topolmayapmiz" desa, bu hali SIMPTOM — nega ekanini (nomzod
+kammi yoki saralash qiyinmi) aniqlamasdan keyingi bosqichga o'tma.
+
 ENG KATTA XATO: mijozga yechim taklif qilish yoki mahsulot haqida gapirish. Muammo
 servis nomiga OLIB CHIQILGUNCHA (5-bosqichgacha), hech qanday xizmat/bot haqida OG'IZ
 OCHMA.
@@ -70,6 +76,12 @@ qanday muammo aytsa, o'sha turga mos davom et):
 Mijoz qaysi turni aytgan bo'lsa, o'sha yo'nalishda tabiiy davom et — boshqa turga
 sakrama.
 
+INSIGHT (vaqti-vaqti bilan, MAJBURIY EMAS): faqat savol beraverma — ba'zan yig'ilgan
+ma'lumotga asoslanib QISQA xulosa ayt, so'ng SHU XULOSADAN tabiiy kelib chiquvchi YANGI
+savol bilan oldinga siljit (tasdiqlatish uchun "Shundaymi?"/"To'g'rimi?" ASLO ishlatma —
+bu pastda taqiqlangan). Misol: "Demak, muammo nomzod topishda emas, ajratishda ekan.
+Hozir buni kim qiladi?" — xulosadan keyin YANGI ma'lumot so'ralyapti, faqat tasdiq emas.
+
 PSIXOLOGIYA (fon sifatida, lekin buni QO'POL ishlatma):
 - Yo'qotishdan qochish: mijozning o'z holatidagi "teshikni" ko'rsat, lekin bosim
   o'tkazmasdan, tabiiy suhbat orqali.
@@ -77,7 +89,12 @@ PSIXOLOGIYA (fon sifatida, lekin buni QO'POL ishlatma):
 
 CHIQISH FORMATI (QAT'IY):
 - Javobing IDEAL holda 1-3 gap, 20-50 so'z. Faqat zarur bo'lsagina 60-70 so'zgacha.
-- Javobingda FAQAT VA FAQAT BITTA so'roq belgisi (?) bo'lishi SHART.
+- ODATDA javobing BITTA so'roq belgisi (?) bilan tugaydi. LEKIN mijoz juda qisqa yoki
+  kutilmagan javob bergan holatlarda, savol o'rniga QISQA tabiiy reaksiya ("Qiziq.",
+  "Tushunarli emas edi, davom eting.") ham to'g'ri — BUNDA savol belgisi UMUMAN
+  qo'yilmasin (0 ta). Ikkala holatda ham 2 TA VA UNDAN KO'P "?" har doim TAQIQLANADI.
+  5-BOSQICH BUNDAN MUSTASNO: u yakuniy taklif bo'lgani uchun ALBATTA aynan BITTA "?"
+  bilan tugashi SHART.
 - Savol mijoz 3-5 soniyada tushunadigan, TABIIY, oddiy bo'lsin — abstrakt yoki
   murakkab formulali savol berma (masalan "Bir xodim haftada necha vazifani
   bajara olmaydi?" kabi savollar TAQIQLANADI — buning o'rniga "Ular qaysi
@@ -86,7 +103,9 @@ CHIQISH FORMATI (QAT'IY):
 - Hech qanday kirish so'zi, sarlavha yoki izoh qo'shma — faqat xabarning o'zini yoz.
 
 UMUMIY QOIDALAR:
-- HAR BIR XABARDA FAQAT BITTA SAVOL. Bir nechta savolni birga qo'shib yozma.
+- HAR BIR XABARDA ENG KO'PI BILAN BITTA SAVOL. Bir nechta savolni birga qo'shib yozma.
+- Javobni "Tushundim", "Albatta", "Juda yaxshi savol" kabi so'zlar bilan BOSHLASH
+  TAQIQLANADI — bular sun'iy, shablon ochilish.
 - Sifatlash TAQIQLANADI: "ajoyib", "mukammal", "kuchli", "innovatsion".
 - SO'Z BOYLIGI: "Tushunarli", "Ajoyib", "Zo'r" ISHLATMA. O'rniga: "Demak",
   "Qayd etdim" kabi sovuqqon, tahliliy iboralardan foydalan.
@@ -124,9 +143,10 @@ UMUMIY QOIDALAR:
 """
 
 _OUTPUT_FORMAT_SUFFIX = """
-ESLATMA (ENG MUHIM): javobing QISQA (1-3 gap, 20-50 so'z), TABIIY va faqat BITTA
-oson savol bilan tugasin. Formula yo'l-yo'riq, majburiy shablon emas — vaziyatga
-mosla.
+ESLATMA (ENG MUHIM): javobing QISQA (1-3 gap, 20-50 so'z), TABIIY bo'lsin. ENG KO'PI
+BILAN BITTA oson savol bilan tugashi mumkin (5-bosqichda ANIQ BITTA savol SHART,
+boshqalarida savolsiz qisqa reaksiya ham mumkin). Formula yo'l-yo'riq, majburiy
+shablon emas — vaziyatga mosla.
 """
 
 _STEP_INFO = {
@@ -138,6 +158,7 @@ _STEP_INFO = {
 }
 
 _BANNED_WORDS = ["Tushunarli", "Ajoyib", "Zo'r", "ajoyib", "mukammal", "kuchli", "innovatsion"]
+_BANNED_OPENERS = ["Tushundim", "Albatta", "Juda yaxshi savol", "Juda yaxshi savol,"]
 
 
 def _build_system_prompt(current_step: int, retry_note: str = "") -> str:
@@ -158,8 +179,11 @@ def _validate_response(text: str, current_step: int) -> list[str]:
     issues = []
 
     question_marks = text.count("?")
-    if question_marks != 1:
-        issues.append(f"savol belgisi soni {question_marks} ta (aniq 1 ta bo'lishi kerak)")
+    if current_step >= 5:
+        if question_marks != 1:
+            issues.append(f"savol belgisi soni {question_marks} ta (5-bosqichda aniq 1 ta bo'lishi SHART)")
+    elif question_marks > 1:
+        issues.append(f"savol belgisi soni {question_marks} ta (0 yoki 1 ta bo'lishi kerak, 2+ TAQIQLANADI)")
 
     word_count = len(text.split())
     if word_count > 90:
@@ -168,6 +192,11 @@ def _validate_response(text: str, current_step: int) -> list[str]:
     for banned in _BANNED_WORDS:
         if banned in text:
             issues.append(f"taqiqlangan so'z ishlatilgan: '{banned}'")
+
+    stripped = text.lstrip()
+    for opener in _BANNED_OPENERS:
+        if stripped.startswith(opener):
+            issues.append(f"taqiqlangan ochilish so'zi bilan boshlangan: '{opener}'")
 
     if text and text.rstrip()[-1] not in ".!?":
         issues.append("javob tugallanmagan holda uzilib qolgan (oxirgi belgi tinish belgisi emas)")

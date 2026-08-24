@@ -74,6 +74,13 @@ async def _call_ai(
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if "deepseek" in base.lower():
+            # DeepSeek V4 modellari DEFAULT holda "thinking mode"da ishlaydi —
+            # bu butun token byudjetini "ichki fikrlash"ga sarflab, ko'rinadigan
+            # javobni BO'SH qoldirishi mumkin (rasman hujjatlashtirilgan xato
+            # holati). Bizga tezkor, oddiy javob kerak — fikrlash rejimi kerak
+            # emas.
+            payload["thinking"] = {"type": "disabled"}
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(

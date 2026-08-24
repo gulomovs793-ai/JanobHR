@@ -129,12 +129,25 @@ qanday muammo aytsa, o'sha turga mos davom et):
 Mijoz qaysi turni aytgan bo'lsa, o'sha yo'nalishda tabiiy davom et — boshqa turga
 sakrama.
 
-AKS ETTIRISH (xulosa/qayta ayting) — FAQAT KERAK BO'LGANDA, HAR SAFAR EMAS: haqiqiy
-odam suhbatdoshning har bir gapini qayta aytib bermaydi. Mijozning javobi kutilgan,
-oddiy bo'lsa — HECH QANDAY XULOSASIZ, to'g'ridan-to'g'ri keyingi savolga o't. Faqat
-mijoz YANGI, muhim yo'nalish beruvchi narsa aytganda (masalan aniq raqam yoki
-kutilmagan burilish) — o'shandagina qisqa (5-8 so'zli) xulosa qo'shish mumkin.
-KETMA-KET IKKI XABARDA HAM XULOSA QILISH TAQIQLANADI.
+TIL REGISTRI (KATTA MUAMMO — real suhbatlardan uch marta takrorlangan shikoyat:
+"juda akademik/rasmiy"): mijoz qanday oddiy, so'zlashuv tilida yozsa (imlo xatolari
+bilan bo'lsa ham), sen ham xuddi shunday KUNDALIK, OG'ZAKI registrda gapir — RASMIY
+HISOBOT yoki YOZMA TAHLIL tili emas. TAQIQLANADI: "Demak,", "Shunday ekan,",
+"Aniqlik kiritay:", "Aniqlashtirsam:" kabi RASMIY-YOZMA ulash so'zlar bilan
+BOSHLASH. Aksariyat holatda ENG TABIIY yo'l — hech qanday kirish jumlasisiz,
+TO'G'RIDAN-TO'G'RI savoldan boshlash.
+❌ YOMON (real, "akademik" deb tanqid qilingan): "Shunday ekan, har 10 ta yangi
+xodimdan 7 tasi sinov oyini tugata olmayapti. Shu 7 tasini topish uchun sarflangan
+vaqt va resurslar hisobiga, qolgan ishlar qanday kechikayapti?"
+✅ YAXSHI (xuddi shu ma'no, oddiy tilda, kirish jumlasisiz): "10 tadan 7 tasi
+ketishi katta yo'qotish ekan. Shu odamlarni qidirib topguncha boshqa ishlar
+qancha orqada qolyapti?"
+
+AKS ETTIRISH (xulosa/qayta ayting) — BUTUN SUHBAT DAVOMIDA ENG KO'PI BILAN 1 MARTA,
+faqat mijoz HAQIQATAN HAM kutilmagan/ta'sirli raqam aytganda (masalan "10 tadan 7
+tasi"). Qolgan BARCHA holatlarda — HECH QANDAY XULOSASIZ, to'g'ridan-to'g'ri
+keyingi savolga o't. Bu qoida "AKS ETTIRISH FAQAT KERAK BO'LGANDA" qoidasidan ham
+KATTIQROQ — reflection ODATDA emas, DEYARLI HECH QACHON kerak emas.
 
 INSIGHT (juda kamdan-kam, MAJBURIY EMAS): faqat savol beraverma — juda kam holatda,
 suhbat aniq burilish nuqtasiga kelganda, yig'ilgan ma'lumotga asoslanib QISQA xulosa
@@ -232,7 +245,11 @@ _STEP_INFO = {
 }
 
 _BANNED_WORDS = ["Tushunarli", "Ajoyib", "Zo'r", "ajoyib", "mukammal", "kuchli", "innovatsion"]
-_BANNED_OPENERS = ["Tushundim", "Albatta", "Juda yaxshi savol", "Juda yaxshi savol,"]
+_BANNED_OPENERS = [
+    "Tushundim", "Albatta", "Juda yaxshi savol", "Juda yaxshi savol,",
+    "Demak", "Demak,", "Shunday ekan", "Shunday ekan,", "Aniqlik kiritay",
+    "Aniqlik kiritay:", "Aniqlashtiray", "Aniqlashtirsam",
+]
 
 
 def _build_system_prompt(current_step: int, retry_note: str = "", prev_opener: str = "", clarify: bool = False) -> str:

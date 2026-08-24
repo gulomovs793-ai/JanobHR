@@ -345,16 +345,20 @@ bo'lsa Janob HR bilan MUNTAZAM ishlashga tayyor (MAHSULOT MOSLIGI ishorasi).
 VAZIFANG: shu 3 ta javobni, FAQAT mijoz AYTGAN so'zlar asosida (hech narsa
 o'ylab topmasdan, raqam/fakt uydirmasdan), quyidagi MANTIQIY ZANJIRGA bog'lab,
 QISQA (3-5 gap, 40-70 so'z), KUNDALIK SO'ZLASHUV tilida (RASMIY-YOZMA EMAS)
-bitta xabar sifatida yoz:
+bitta KUCHLI, TA'SIRCHAN xabar sifatida yoz:
 
 MUAMMO -> HOZIRGI JARAYON -> OG'RIQ/TA'SIR -> MAHSULOT MOSLIGI
 
 Ya'ni: mijozning muammosini bir necha so'z bilan (ORTIQCHA SHARHLAMASDAN) qayta
-tuting, hozirgi jarayonidagi teshikni ko'rsat, shu teshik nega og'riqli ekanini
-tabiiy tarzda ayt, va OXIRIDA aniq shunday tugat: "Janob HR aynan shu [mijoz
-aytgan ANIQ muammo]ni hal qiladi." Bu SENING YAGONA xabaring — undan keyin
-taqdimot avtomatik davom etadi, shuning uchun mahsulot xususiyatlarini BATAFSIL
-TUSHUNTIRMA, faqat ULASH jumlasi bilan tugat.
+tuting, hozirgi jarayonidagi teshikni ko'rsat, SO'NG bu teshik NEGA OG'RIQLI
+ekanini KUCHLIROQ, ANIQROQ his qildir (masalan yo'qotilgan vaqt, pul yoki
+imkoniyat — lekin mijoz aytmagan RAQAMNI o'ylab topmasdan, faqat UMUMIY oqibat
+sifatida), va OXIRIDA ISHONCH bilan, NATIJA-YO'NALTIRILGAN tarzda tugat: "Janob
+HR aynan shu [mijoz aytgan ANIQ muammo]ni hal qiladi — [shu orqali nima
+yaxshilanishini bir necha so'zda ko'rsat]." Shunchaki "hal qiladi" deb
+tugatib qo'ymasdan, mijozga NIMA O'ZGARISHINI his qildir. Bu SENING YAGONA
+xabaring — undan keyin taqdimot avtomatik davom etadi, shuning uchun mahsulot
+xususiyatlarini BATAFSIL TUSHUNTIRMA, faqat ULASH jumlasi bilan tugat.
 
 QAT'IY TAQIQLAR (real testlardan aniqlangan xatolar):
 - "Demak,", "Shunday ekan,", "Aniqlik kiritay:" kabi RASMIY-YOZMA ulash so'zlar

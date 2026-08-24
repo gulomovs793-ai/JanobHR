@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     admin_bot_token TEXT UNIQUE,
     admin_bot_username TEXT,
     admin_user_ids TEXT NOT NULL DEFAULT '[]',
+    contact_phone TEXT,
+    contact_full_name TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL
 );
@@ -360,6 +362,13 @@ async def init_db():
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
 
+        cursor = await db.execute("PRAGMA table_info(tenants)")
+        tenant_columns = {row[1] for row in await cursor.fetchall()}
+        if "contact_phone" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN contact_phone TEXT")
+        if "contact_full_name" not in tenant_columns:
+            await db.execute("ALTER TABLE tenants ADD COLUMN contact_full_name TEXT")
+
         cursor = await db.execute("PRAGMA table_info(payment_orders)")
         po_columns = {row[1] for row in await cursor.fetchall()}
         if "notify_bot_token" not in po_columns:
@@ -380,16 +389,20 @@ async def init_db():
 
 async def create_tenant(
     company_name: str, bot_token: str, admin_bot_token: str, admin_user_ids: list[int],
+    contact_phone: str = "", contact_full_name: str = "",
 ) -> int:
     """Yangi mijoz yaratadi va unga standart 3 ta namunaviy vakansiyani urug'laydi.
     Ikkita alohida token oladi: `bot_token` — nomzod-bot uchun, `admin_bot_token` —
-    faqat shu mijozning administratorlari ishlatadigan Admin panel-bot uchun."""
+    faqat shu mijozning administratorlari ishlatadigan Admin panel-bot uchun.
+    `contact_phone`/`contact_full_name` — sotuv suhbatida yig'ilgan lid ma'lumoti
+    (CRM/follow-up uchun)."""
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
             "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
-            "status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
-            (company_name, bot_token, admin_bot_token, json.dumps(admin_user_ids), created_at),
+            "contact_phone, contact_full_name, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)",
+            (company_name, bot_token, admin_bot_token, json.dumps(admin_user_ids),
+             contact_phone, contact_full_name, created_at),
         )
         tenant_id = cursor.lastrowid
 

@@ -47,9 +47,16 @@ _TEMPLATE_QUESTIONS = [
 
 class CreateBotForm(StatesGroup):
     in_ai_conversation = State()
+    waiting_phone = State()
+    waiting_full_name = State()
     waiting_company_name = State()
     waiting_candidate_token = State()
     waiting_admin_token = State()
+
+
+def _looks_like_phone(text: str) -> bool:
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return 7 <= len(digits) <= 15
 
 
 async def _validate_token(token: str) -> str | None:
@@ -96,12 +103,10 @@ async def _start_signup(message: Message, state: FSMContext):
         "haqiqiy vakansiyangiz bilan sinab ko'rasiz."
     )
     await message.answer(
-        "Endi sozlashni boshlaymiz. Sizga IKKITA bot kerak bo'ladi:\n"
-        "1️⃣ Nomzodlar ariza topshiradigan bot\n"
-        "2️⃣ Faqat sizning o'zingiz (va xodimlaringiz) ishlatadigan Admin panel-bot\n\n"
-        "Avval, kompaniyangiz nomini yozing:"
+        "Botingizni sozlashni boshlaymiz. Avval, siz bilan bog'lanishimiz uchun "
+        "telefon raqamingizni yozing (masalan: +998901234567):"
     )
-    await state.set_state(CreateBotForm.waiting_company_name)
+    await state.set_state(CreateBotForm.waiting_phone)
 
 
 @router.message(CreateBotForm.in_ai_conversation, F.text)
@@ -140,6 +145,42 @@ async def wrong_type_in_conversation(message: Message, state: FSMContext):
     await message.answer("Iltimos, javobingizni oddiy matn ko'rinishida yozing.")
 
 
+@router.message(CreateBotForm.waiting_phone, F.text)
+async def receive_phone(message: Message, state: FSMContext):
+    phone = message.text.strip()
+    if not _looks_like_phone(phone):
+        await message.answer(
+            "Iltimos, telefon raqamingizni to'g'ri kiriting (masalan: +998901234567)."
+        )
+        return
+
+    await state.update_data(contact_phone=phone)
+    await message.answer("Endi ism va familyangizni to'liq yozing:")
+    await state.set_state(CreateBotForm.waiting_full_name)
+
+
+@router.message(CreateBotForm.waiting_phone)
+async def wrong_phone_type(message: Message, state: FSMContext):
+    await message.answer("Iltimos, telefon raqamingizni oddiy matn ko'rinishida yuboring.")
+
+
+@router.message(CreateBotForm.waiting_full_name, F.text)
+async def receive_full_name(message: Message, state: FSMContext):
+    full_name = message.text.strip()
+    if len(full_name) < 3:
+        await message.answer("Iltimos, ism va familyangizni to'liq kiriting.")
+        return
+
+    await state.update_data(contact_full_name=full_name)
+    await message.answer("Kompaniyangiz nomini yozing:")
+    await state.set_state(CreateBotForm.waiting_company_name)
+
+
+@router.message(CreateBotForm.waiting_full_name)
+async def wrong_full_name_type(message: Message, state: FSMContext):
+    await message.answer("Iltimos, ism-familyangizni oddiy matn ko'rinishida yuboring.")
+
+
 @router.message(CreateBotForm.waiting_company_name, F.text)
 async def receive_company_name(message: Message, state: FSMContext):
     name = message.text.strip()
@@ -148,9 +189,36 @@ async def receive_company_name(message: Message, state: FSMContext):
         return
 
     await state.update_data(company_name=name)
+    data = await state.get_data()
+
+    # --- Erta LID bildirishnomasi: hatto mijoz keyingi (texnik, token)
+    # bosqichida to'xtab qolsa ham, asoschida TO'LIQ kontakt ma'lumoti
+    # (telefon, ism-familya, kompaniya) allaqachon qolgan bo'ladi. ---
+    ai_history = data.get("ai_history", [])
+    conversation_summary = "\n".join(
+        f"  {'Mijoz' if m['role'] == 'user' else 'Bot'}: {m['content'][:150]}" for m in ai_history
+    )
+    lead_notice = (
+        f"🟡 <b>Yangi LID</b> (hali bot yaratilmagan)\n\n"
+        f"Kompaniya: {name}\n"
+        f"Ism-familya: {data.get('contact_full_name', '-')}\n"
+        f"Telefon: {data.get('contact_phone', '-')}\n"
+        f"Telegram: <code>{message.from_user.id}</code>"
+        + (f" (@{message.from_user.username})" if message.from_user.username else "")
+        + f"\n\n💬 Sotuv suhbati:\n{conversation_summary or '(suhbat bo\u2019lmagan)'}"
+    )
+    try:
+        from services.tenant_activation import notify_founder_admin_panel
+
+        await notify_founder_admin_panel(lead_notice)
+    except Exception:
+        logger.exception("Erta LID bildirishnomasini yuborib bo'lmadi.")
+
     await message.answer(
-        "Ajoyib! Endi 1️⃣-botingiz uchun — @BotFather orqali yaratgan "
-        "<b>NOMZOD-BOT</b>ning TOKENINI yuboring.\n\n"
+        "Rahmat! Endi sizga IKKITA bot kerak bo'ladi:\n"
+        "1️⃣ Nomzodlar ariza topshiradigan bot\n"
+        "2️⃣ Faqat sizning o'zingiz (va xodimlaringiz) ishlatadigan Admin panel-bot\n\n"
+        "Avval, @BotFather orqali yaratgan <b>NOMZOD-BOT</b>ning TOKENINI yuboring.\n\n"
         "Agar hali bo'lmasa: @BotFather ga o'ting, <code>/newbot</code> yuboring, "
         "ism va username bering — sizga token beradi."
     )
@@ -231,6 +299,8 @@ async def receive_admin_token(message: Message, state: FSMContext):
             bot_token=data["candidate_bot_token"],
             admin_bot_token=token,
             admin_user_ids=[admin_id],
+            contact_phone=data.get("contact_phone", ""),
+            contact_full_name=data.get("contact_full_name", ""),
         )
     except Exception:
         logger.exception("Mijozni bazaga yozishda kutilmagan xato.")
@@ -268,6 +338,8 @@ async def receive_admin_token(message: Message, state: FSMContext):
     notice = (
         f"🆕 <b>Yangi SINOV mijozi!</b>\n\n"
         f"№{tenant_id} — {data['company_name']}\n"
+        f"Ism-familya: {data.get('contact_full_name', '-')}\n"
+        f"Telefon: {data.get('contact_phone', '-')}\n"
         f"Nomzod-bot: @{result['candidate_username']}\n"
         f"Admin-bot: @{result['admin_username']}\n"
         f"Kim orqali: <code>{admin_id}</code>\n\n"

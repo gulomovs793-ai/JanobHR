@@ -336,6 +336,71 @@ _FALLBACK_STAGE5_CLOSE = (
 )
 
 
+_SYNTHESIS_PROMPT = """Sen Janob HR nomli B2B AI-HR mahsulotining ZEHNLI va SAMIMIY
+sotuv AGENTISAN — konsultant yoki auditor EMASSAN. Mijoz senga 3 ta ANIQ savolga
+javob berdi (tartibi bilan): (1) hozir eng ko'p qiynayotgan MUAMMO, (2) hozirgi
+holatda nomzodlarni QANDAY saralaydi (HOZIRGI JARAYON), (3) qaysi muammo hal
+bo'lsa Janob HR bilan MUNTAZAM ishlashga tayyor (MAHSULOT MOSLIGI ishorasi).
+
+VAZIFANG: shu 3 ta javobni, FAQAT mijoz AYTGAN so'zlar asosida (hech narsa
+o'ylab topmasdan, raqam/fakt uydirmasdan), quyidagi MANTIQIY ZANJIRGA bog'lab,
+QISQA (3-5 gap, 40-70 so'z), KUNDALIK SO'ZLASHUV tilida (RASMIY-YOZMA EMAS)
+bitta xabar sifatida yoz:
+
+MUAMMO -> HOZIRGI JARAYON -> OG'RIQ/TA'SIR -> MAHSULOT MOSLIGI
+
+Ya'ni: mijozning muammosini bir necha so'z bilan (ORTIQCHA SHARHLAMASDAN) qayta
+tuting, hozirgi jarayonidagi teshikni ko'rsat, shu teshik nega og'riqli ekanini
+tabiiy tarzda ayt, va OXIRIDA aniq shunday tugat: "Janob HR aynan shu [mijoz
+aytgan ANIQ muammo]ni hal qiladi." Bu SENING YAGONA xabaring — undan keyin
+taqdimot avtomatik davom etadi, shuning uchun mahsulot xususiyatlarini BATAFSIL
+TUSHUNTIRMA, faqat ULASH jumlasi bilan tugat.
+
+QAT'IY TAQIQLAR (real testlardan aniqlangan xatolar):
+- "Demak,", "Shunday ekan,", "Aniqlik kiritay:" kabi RASMIY-YOZMA ulash so'zlar
+  bilan BOSHLASH taqiqlanadi — kundalik gap kabi to'g'ridan-to'g'ri boshla.
+- Mijoz AYTMAGAN raqam, voqea yoki sabab (masalan "ishdan ketadi", "zarar
+  ko'radi") ni FAKT sifatida qo'shish taqiqlanadi.
+- Savol berish SHART EMAS — bu XULOSA/KO'PRIK xabari, so'roq-javob emas.
+- Sifatlash so'zlari ("ajoyib", "kuchli", "innovatsion") TAQIQLANADI.
+- FAQAT o'zbek tilida, emoji ishlatma.
+"""
+
+
+async def generate_synthesis_pitch(history: list[dict]) -> str | None:
+    """3 ta shablon savol-javobdan keyin chaqiriladi. MUAMMO -> HOZIRGI
+    JARAYON -> OG'RIQ -> MAHSULOT MOSLIGI mantig'ida, faqat mijoz aytgan
+    so'zlar asosida, QISQA moslashtirilgan ko'prik xabarini yaratadi (bu
+    joyda AI FAQAT BITTA marta, bitta yakuniy xabar uchun chaqiriladi —
+    ko'p bosqichli AI-suhbat ARXITEKTURASI endi ishlatilmaydi)."""
+    reply = await _call_ai(
+        system_prompt=_SYNTHESIS_PROMPT, user_prompt="", max_tokens=500,
+        extra_messages=history, temperature=0.7,
+        frequency_penalty=0.3, presence_penalty=0.3,
+    )
+    if not reply:
+        return None
+
+    stripped = reply.lstrip()
+    if any(stripped.lower().startswith(opener.lower()) for opener in _BANNED_OPENERS):
+        logger.warning("[tahlil-xabari] taqiqlangan ochilish so'zi bilan boshlangan, qayta so'ralmoqda.")
+        retry_prompt = (
+            _SYNTHESIS_PROMPT
+            + "\nOGOHLANTIRISH: oldingi urinishing rasmiy-yozma ulash so'zi bilan "
+              "boshlangan edi — bu TAQIQLANGAN. Bu safar to'g'ridan-to'g'ri, "
+              "kundalik gap kabi boshla.\n"
+        )
+        retry = await _call_ai(
+            system_prompt=retry_prompt, user_prompt="", max_tokens=500,
+            extra_messages=history, temperature=0.7,
+            frequency_penalty=0.3, presence_penalty=0.3,
+        )
+        if retry:
+            reply = retry
+
+    return reply
+
+
 async def get_next_message(history: list[dict], current_step: int, clarify: bool = False) -> str | None:
     """`history` — [{"role": "user"/"assistant", "content": "..."}]. `current_step`
     — backend (aiogram FSM) bilgan, 1 dan 5 gacha aniq bosqich raqami. `clarify=True`

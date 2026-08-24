@@ -1,11 +1,15 @@
 """
-Janob HR — "O'z HR botingizni yarating" bo'limi.
+Janob HR — "O'z HR botingizni yarateng" bo'limi.
 
-YANGI STRATEGIYA (konsultativ sotuv): qattiq belgilangan savollar o'rniga —
-avval kuchli hikoya + taqdimot bilan muammoni "his qildiramiz", keyin AI
-orqali MOSLASHUVCHAN suhbat olib boramiz (mijozning har bir javobiga qarab
-keyingi savol o'zgaradi). Faqat shundan keyin — ro'yxatdan o'tish (2 ta bot)
-va DARHOL sinov rejimida (5 ta arizagacha bepul) ishga tushirish.
+STRATEGIYA (2026-08-24 yangilandi — statik shablon savollar): AI orqali
+MOSLASHUVCHAN suhbat (services/sales_conversation.py) 4 marta real testda
+muvaffaqiyatsiz chiqdi — robotik takror, tavtologik savollar, noto'g'ri
+talqin, "akademik" uslub. Har safar tuzatilgan, lekin har safar yangi
+muammo chiqqan. Shuning uchun bu qismda endi ANIQ, OLDINDAN YOZILGAN 3 ta
+shablon savolga o'tildi: ular hech qachon robotik/tavtologik/akademik
+bo'la olmaydi, chunki ular AI tomonidan yaratilmaydi. AI-driven versiya
+(services/sales_conversation.py) o'chirilmadi — kerak bo'lsa qaytarish
+mumkin, lekin hozircha CHAQIRILMAYDI.
 """
 import logging
 
@@ -22,38 +26,23 @@ logger = logging.getLogger("janob_hr_bot")
 router = Router(name="create_bot")
 
 TRIAL_APPLICATION_LIMIT = 5
-_AI_CONVERSATION_TURNS = 5  # Kompaniya -> Saralash -> Pul/vaqt -> Strategik zarar -> Vizualizatsiya
 _PRESENTATION_PATH = "assets/janobHR_taqdimot.pptx"
 
 _OPENING_MESSAGE = (
     "Har bir kompaniyada xodim yollashdagi asosiy muammo har xil bo'ladi: "
     "ba'zilarida mos nomzod topish, ba'zilarida saralashga ketadigan vaqt, "
-    "boshqalarida esa ishga olingan xodimning uzoq ishlamasligi muammo bo'ladi.\n\n"
-    "Sizda hozir kadrlar bilan bog'liq eng ko'p vaqt yoki pul yo'qotayotgan "
-    "jarayon qaysi?"
+    "boshqalarida esa ishga olingan xodimning uzoq ishlamasligi muammo bo'ladi."
 )
 
-
-_CLARIFICATION_PATTERNS = [
-    "nima demoqchisan", "nima demoqchi", "tushunmadim", "tushunarsiz",
-    "aniqroq ayt", "aniqroq yoz", "netayapsan", "nima haqida",
-    "qanaqa savol", "savolingni tushunmadim", "qanday savol",
+# Foydalanuvchi (Shahriyor) tomonidan yozilgan 3 ta ANIQ savol — ketma-ket
+# beriladi. Javoblar yig'ilgach, PROBLEM->CURRENT PROCESS->PAIN/IMPACT->
+# PRODUCT FIT mantig'ida moslashtirilgan ko'prik xabar yaratiladi
+# (generate_synthesis_pitch, faqat shu YAGONA joyda AI ishlatiladi).
+_TEMPLATE_QUESTIONS = [
+    "Hozir orzuyingizdagi xodim yollashda sizni eng ko'p qiynayotgan narsa nima?",
+    "Odatda ishingizga qiziqqan nomzodlarni qanday saralaysiz?",
+    "Qaysi muammoyingizni hal qilib bersak, Janob HR bilan muntazam ishlagan bo'lardingiz?",
 ]
-_MAX_CLARIFY_RETRIES = 2  # cheksiz aylanib qolmaslik uchun cheklov
-
-
-def _is_clarification_request(text: str) -> bool:
-    """Mijoz oldingi savolni tushunmagani (javob emas, qarshi savol/chalkashlik)ni
-    aniqlaydi. Bunday holatda bosqich SARFLANMASLIGI kerak."""
-    t = text.strip().lower()
-    if not t:
-        return False
-    if any(p in t for p in _CLARIFICATION_PATTERNS):
-        return True
-    # juda qisqa, faqat savol belgisi bilan tugaydigan, raqamsiz xabar (masalan "?", "nima?")
-    if len(t) <= 15 and t.endswith("?") and not any(ch.isdigit() for ch in t):
-        return True
-    return False
 
 
 class CreateBotForm(StatesGroup):
@@ -90,7 +79,8 @@ async def cmd_create_bot(message: Message, state: FSMContext):
         logger.exception("Taqdimotni yuborib bo'lmadi — matn bilan davom etamiz.")
 
     await message.answer(_OPENING_MESSAGE)
-    await state.update_data(ai_history=[], ai_turn_count=0, ai_clarify_count=0)
+    await message.answer(_TEMPLATE_QUESTIONS[0])
+    await state.update_data(ai_history=[{"role": "assistant", "content": _TEMPLATE_QUESTIONS[0]}], template_question_index=1)
     await state.set_state(CreateBotForm.in_ai_conversation)
 
 
@@ -116,48 +106,33 @@ async def _start_signup(message: Message, state: FSMContext):
 
 @router.message(CreateBotForm.in_ai_conversation, F.text)
 async def continue_ai_conversation(message: Message, state: FSMContext):
-    from services.sales_conversation import get_next_message
+    from services.sales_conversation import generate_synthesis_pitch
 
     data = await state.get_data()
     history = data.get("ai_history", [])
     history.append({"role": "user", "content": message.text.strip()})
-    current_turn = data.get("ai_turn_count", 0)
-    clarify_count = data.get("ai_clarify_count", 0)
+    question_index = data.get("template_question_index", 0)  # nechta savol berilgan
 
-    is_clarification = (
-        current_turn > 0
-        and _is_clarification_request(message.text)
-        and clarify_count < _MAX_CLARIFY_RETRIES
-    )
-
-    if is_clarification:
-        # Mijoz oldingi savolni tushunmadi — bosqichni SARFLAMASDAN, xuddi shu
-        # bosqich maqsadida SODDAROQ savol bilan qayta murojaat qilamiz.
-        turn_count = current_turn
-        reply = await get_next_message(history, current_step=turn_count, clarify=True)
-        clarify_count += 1
-    else:
-        turn_count = current_turn + 1
-        reply = await get_next_message(history, current_step=turn_count)
-        clarify_count = 0
-
-    if reply is None:
-        # AI hech qanday provayderdan javob bermasa - xavfsiz zaxira:
-        # suhbatni to'xtatib, darhol royxatdan otishga otamiz.
-        logger.warning("Sotuv suhbati uchun AI javob bermadi - royxatdan otishga otamiz.")
-        await message.answer(
-            "Qayd etdim. Bu — aynan Janob HR yordam beradigan muammo."
-        )
-        await state.update_data(ai_history=history, ai_turn_count=turn_count, ai_clarify_count=0)
-        await _start_signup(message, state)
+    if question_index < len(_TEMPLATE_QUESTIONS):
+        next_question = _TEMPLATE_QUESTIONS[question_index]
+        history.append({"role": "assistant", "content": next_question})
+        question_index += 1
+        await state.update_data(ai_history=history, template_question_index=question_index)
+        await message.answer(next_question)
         return
 
-    history.append({"role": "assistant", "content": reply})
-    await state.update_data(ai_history=history, ai_turn_count=turn_count, ai_clarify_count=clarify_count)
-    await message.answer(reply)
-
-    if turn_count >= _AI_CONVERSATION_TURNS:
-        await _start_signup(message, state)
+    # Oxirgi (3-chi) savolga ham javob keldi — 3 ta javobni tahlil qilib,
+    # PROBLEM->CURRENT PROCESS->PAIN/IMPACT->PRODUCT FIT mantig'ida
+    # moslashtirilgan ko'prik xabarini yaratamiz (YAGONA AI chaqiruvi).
+    await state.update_data(ai_history=history)
+    synthesis = await generate_synthesis_pitch(history)
+    if synthesis:
+        history.append({"role": "assistant", "content": synthesis})
+        await state.update_data(ai_history=history)
+        await message.answer(synthesis)
+    else:
+        logger.warning("Tahlil xabari uchun AI javob bermadi — royxatdan otishga otamiz.")
+    await _start_signup(message, state)
 
 
 @router.message(CreateBotForm.in_ai_conversation)

@@ -853,6 +853,22 @@ async def update_vacancy(tenant_id: int, key: str, **fields) -> None:
         await db.commit()
 
 
+async def delete_applications_for_vacancy(tenant_id: int, vacancy_key: str) -> int:
+    """Shu vakansiyaga tegishli BARCHA arizalarni o'chiradi (vakansiyaning
+    o'zi qoladi). Statistikadan ham chiqib ketadi. Alohida "qayta topshirishga
+    ruxsat" berish shart emas — takroriy ariza himoyasi faqat "hozir kutilayotgan
+    arizasi bormi" tekshiruviga asoslangan (handlers/start.py), vakansiyaga xos
+    emas — shuning uchun o'chirilgach, o'sha nomzodlar avtomatik qayta
+    topshira oladi."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM applications WHERE tenant_id = ? AND vacancy_key = ?",
+            (tenant_id, vacancy_key),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
 async def delete_vacancy(tenant_id: int, key: str) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute("DELETE FROM vacancies WHERE tenant_id = ? AND key = ?", (tenant_id, key))

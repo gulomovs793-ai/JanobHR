@@ -82,6 +82,7 @@ async def _show_edit_menu(callback: CallbackQuery, tenant_id: int, key: str):
     builder.button(text="🔄 Savollarni AI bilan yangilash", callback_data=f"vacregen:{key}")
     builder.button(text="✏️ Bitta savolni tahrirlash", callback_data=f"vaceditlist:{key}")
     builder.button(text="✍️ Savollarni to'liq qayta yozish", callback_data=f"vacmanual:{key}")
+    builder.button(text="🧹 Arizalarni tozalash", callback_data=f"vacclearapps:{key}")
     builder.button(text="🗑 O'chirish", callback_data=f"vacdel:{key}")
     builder.button(text="⬅️ Orqaga", callback_data=f"vac:{key}")
     builder.adjust(1)
@@ -137,6 +138,41 @@ async def confirm_delete(callback: CallbackQuery, tenant_id: int):
         reply_markup=builder.as_markup(),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("vacclearapps:"))
+async def confirm_clear_applications(callback: CallbackQuery, tenant_id: int):
+    key = callback.data.split(":", 1)[1]
+    vacancy = await database.get_vacancy(tenant_id, key)
+    if not vacancy:
+        await callback.answer("Bu vakansiya topilmadi.", show_alert=True)
+        return
+
+    stats_list = await database.get_vacancy_stats(tenant_id)
+    stats = next((s for s in stats_list if s["vacancy_key"] == key), None)
+    count = stats["total"] if stats else 0
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⚠️ Ha, hammasini o'chirish", callback_data=f"vacclearappsconfirm:{key}")
+    builder.button(text="Bekor qilish", callback_data=f"vacedit:{key}")
+    builder.adjust(1)
+
+    await callback.message.edit_text(
+        f"<b>{vacancy['title']}</b> bo'yicha {count} ta arizani butunlay o'chirmoqchimisiz?\n\n"
+        "⚠️ Bu amalni ortga qaytarib bo'lmaydi — statistika ham 0'dan boshlanadi. "
+        "Vakansiyaning o'zi va savollari SAQLANIB QOLADI.\n\n"
+        "Bu arizalarni topshirgan nomzodlar buni o'chirgach QAYTA ariza topshira oladi.",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("vacclearappsconfirm:"))
+async def clear_applications(callback: CallbackQuery, tenant_id: int):
+    key = callback.data.split(":", 1)[1]
+    deleted = await database.delete_applications_for_vacancy(tenant_id, key)
+    await callback.answer(f"{deleted} ta ariza o'chirildi.", show_alert=True)
+    await _show_edit_menu(callback, tenant_id, key)
 
 
 @router.callback_query(F.data.startswith("vacdelconfirm:"))

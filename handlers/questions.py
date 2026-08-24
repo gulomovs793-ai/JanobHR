@@ -378,6 +378,10 @@ async def _send_tariff_choices(tenant: dict, reason: str):
         else "⏳ Joriy tarifingizning muddati yoki limiti tugadi!"
     )
     lines = [header, "", "Davom ettirish uchun mos tarifni tanlang:", ""]
+    if reason == "trial":
+        lines.append("(Sinovdagi namunaviy vakansiyalar olib tashlandi — tarif tanlagach, "
+                      "o'z vakansiyangizni o'zingiz qo'shasiz.)")
+        lines.append("")
     for key in PLAN_ORDER:
         lines.append(format_plan_line(PLANS[key]))
         lines.append("")
@@ -407,7 +411,14 @@ async def _maybe_expire_trial(tenant_id: int):
         if count < _TRIAL_APPLICATION_LIMIT:
             return
         await database.update_tenant_status(tenant_id, "trial_expired")
-        logger.info("Mijoz (id=%s) sinov limitiga yetdi (%s ta ariza).", tenant_id, count)
+        # Namunaviy vakansiyalarni olib tashlaymiz — aks holda mijoz haqiqiy
+        # tarifga o'tganda ularni "bepul qoshimcha vakansiya" sifatida
+        # ishlatib, arzon tarif limitini chetlab o'tishi mumkin edi.
+        removed = await database.delete_all_vacancies(tenant_id)
+        logger.info(
+            "Mijoz (id=%s) sinov limitiga yetdi (%s ta ariza), %s ta namunaviy vakansiya olib tashlandi.",
+            tenant_id, count, removed,
+        )
         await _send_tariff_choices(tenant, reason="trial")
         return
 

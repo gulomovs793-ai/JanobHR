@@ -906,6 +906,17 @@ async def delete_vacancy(tenant_id: int, key: str) -> None:
         await db.commit()
 
 
+async def delete_all_vacancies(tenant_id: int) -> int:
+    """Sinov tugaganda chaqiriladi — namunaviy vakansiyalarni olib tashlaydi,
+    shunda mijoz haqiqiy tarifga o'tganda ULARDAN foydalanib (bepul "qo'shimcha
+    vakansiya" sifatida) tarif limitini chetlab o'ta olmaydi. Arizalar tarixi
+    (statistika) saqlanib qoladi — faqat vakansiya yozuvining o'zi o'chadi."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute("DELETE FROM vacancies WHERE tenant_id = ?", (tenant_id,))
+        await db.commit()
+        return cursor.rowcount
+
+
 # ============================= SUHBAT VAQTLARI (admin bot) =============================
 
 async def list_interview_slots(tenant_id: int, active_only: bool = True) -> list[dict]:

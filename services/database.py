@@ -104,6 +104,21 @@ CREATE TABLE IF NOT EXISTS interview_settings (
 # To'lov buyurtmalari — har biriga noyob summa beriladi (asosiy narx +
 # tasodifiy 1-200 so'm), shu orqali bank bildirishnomasi qaysi mijozga
 # tegishli ekani aniqlanadi.
+_CREATE_SALES_LEADS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS sales_leads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_user_id INTEGER NOT NULL,
+    telegram_username TEXT,
+    phone TEXT,
+    full_name TEXT,
+    company_name TEXT,
+    conversation_summary TEXT,
+    status TEXT NOT NULL DEFAULT 'yangi',
+    tenant_id INTEGER,
+    created_at TEXT NOT NULL
+);
+"""
+
 _CREATE_PAYMENT_ORDERS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS payment_orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -361,6 +376,7 @@ async def init_db():
         await db.execute(_CREATE_INTERVIEW_SLOTS_TABLE_SQL)
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
+        await db.execute(_CREATE_SALES_LEADS_TABLE_SQL)
 
         cursor = await db.execute("PRAGMA table_info(tenants)")
         tenant_columns = {row[1] for row in await cursor.fetchall()}
@@ -386,6 +402,48 @@ async def init_db():
 
 
 # ============================= MIJOZLAR (tenants) =============================
+
+# ============================= SOTUV LIDLARI (sales_leads) =============================
+# /create_bot oqimida (services/sales_conversation.py + handlers/create_bot.py)
+# kompaniya nomi kiritilgan zahoti yaratiladi — hali ikkita bot toke ni
+# tasdiqlanmagan bo'lsa ham. Asoschi buni push-xabar sifatida emas, Admin
+# panelidagi "🎯 Lidlar" bo'limini ochganda ko'radi.
+
+async def create_lead(
+    telegram_user_id: int, telegram_username: str, phone: str, full_name: str,
+    company_name: str, conversation_summary: str,
+) -> int:
+    created_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO sales_leads (telegram_user_id, telegram_username, phone, "
+            "full_name, company_name, conversation_summary, status, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'yangi', ?)",
+            (telegram_user_id, telegram_username, phone, full_name, company_name,
+             conversation_summary, created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def mark_lead_converted(lead_id: int, tenant_id: int) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE sales_leads SET status = 'mijozga aylandi', tenant_id = ? WHERE id = ?",
+            (tenant_id, lead_id),
+        )
+        await db.commit()
+
+
+async def list_leads(limit: int = 30) -> list[dict]:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM sales_leads ORDER BY created_at DESC LIMIT ?", (limit,)
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
 
 async def create_tenant(
     company_name: str, bot_token: str, admin_bot_token: str, admin_user_ids: list[int],

@@ -239,28 +239,26 @@ async def receive_company_name(message: Message, state: FSMContext):
     await state.update_data(company_name=name)
     data = await state.get_data()
 
-    # --- Erta LID bildirishnomasi: hatto mijoz keyingi (texnik, token)
-    # bosqichida to'xtab qolsa ham, asoschida TO'LIQ kontakt ma'lumoti
-    # (telefon, ism-familya, kompaniya) allaqachon qolgan bo'ladi. ---
+    # --- Lidni bazaga yozamiz (push-xabar EMAS — asoschi buni Admin
+    # panelidagi "🎯 Lidlar" bo'limini ochganda ko'radi). Hatto mijoz
+    # keyingi (texnik, token) bosqichida to'xtab qolsa ham, bu yerda
+    # TO'LIQ kontakt ma'lumoti (telefon, ism-familya, kompaniya) saqlanadi. ---
     ai_history = data.get("ai_history", [])
     conversation_summary = "\n".join(
         f"  {'Mijoz' if m['role'] == 'user' else 'Bot'}: {m['content'][:150]}" for m in ai_history
     )
-    lead_notice = (
-        f"🟡 <b>Yangi LID</b> (hali bot yaratilmagan)\n\n"
-        f"Kompaniya: {name}\n"
-        f"Ism-familya: {data.get('contact_full_name', '-')}\n"
-        f"Telefon: {data.get('contact_phone', '-')}\n"
-        f"Telegram: <code>{message.from_user.id}</code>"
-        + (f" (@{message.from_user.username})" if message.from_user.username else "")
-        + f"\n\n💬 Sotuv suhbati:\n{conversation_summary or '(suhbat bo\u2019lmagan)'}"
-    )
     try:
-        from services.tenant_activation import notify_founder_admin_panel
-
-        await notify_founder_admin_panel(lead_notice)
+        lead_id = await database.create_lead(
+            telegram_user_id=message.from_user.id,
+            telegram_username=message.from_user.username or "",
+            phone=data.get("contact_phone", ""),
+            full_name=data.get("contact_full_name", ""),
+            company_name=name,
+            conversation_summary=conversation_summary,
+        )
+        await state.update_data(lead_id=lead_id)
     except Exception:
-        logger.exception("Erta LID bildirishnomasini yuborib bo'lmadi.")
+        logger.exception("Lidni bazaga yozib bo'lmadi.")
 
     await message.answer(
         "Rahmat! Endi sizga IKKITA bot kerak bo'ladi:\n"
@@ -376,6 +374,14 @@ async def receive_admin_token(message: Message, state: FSMContext):
     conversation_summary = "\n".join(
         f"  {'Mijoz' if m['role'] == 'user' else 'Bot'}: {m['content'][:150]}" for m in ai_history
     )
+
+    lead_id = data.get("lead_id")
+    if lead_id:
+        try:
+            await database.mark_lead_converted(lead_id, tenant_id)
+        except Exception:
+            logger.exception("Lid holatini 'mijozga aylandi'ga yangilab bo'lmadi.")
+
     await state.clear()
 
     logger.info(

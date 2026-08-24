@@ -53,6 +53,7 @@ class CreateBotForm(StatesGroup):
     waiting_phone = State()
     waiting_full_name = State()
     waiting_company_name = State()
+    waiting_profession = State()
     waiting_candidate_token = State()
     waiting_admin_token = State()
 
@@ -261,6 +262,21 @@ async def receive_company_name(message: Message, state: FSMContext):
         logger.exception("Lidni bazaga yozib bo'lmadi.")
 
     await message.answer(
+        f"Rahmat, {name}! Botni sinab ko'rish uchun — qaysi lavozim/kasb uchun "
+        "xodim qidirayotganingizni yozing (masalan: Sotuv menejeri, Dizayner, Ofitsiant):"
+    )
+    await state.set_state(CreateBotForm.waiting_profession)
+
+
+@router.message(CreateBotForm.waiting_profession, F.text)
+async def receive_profession(message: Message, state: FSMContext):
+    profession = message.text.strip()
+    if len(profession) < 2:
+        await message.answer("Iltimos, lavozim nomini kiriting.")
+        return
+
+    await state.update_data(demo_profession=profession)
+    await message.answer(
         "Rahmat! Endi sizga IKKITA bot kerak bo'ladi:\n"
         "1️⃣ Nomzodlar ariza topshiradigan bot\n"
         "2️⃣ Faqat sizning o'zingiz (va xodimlaringiz) ishlatadigan Admin panel-bot\n\n"
@@ -360,6 +376,23 @@ async def receive_admin_token(message: Message, state: FSMContext):
     if not result["ok"]:
         await wait_msg.edit_text(f"⚠️ {result['error']}")
         return
+
+    # --- Namunaviy vakansiyani mijoz aytgan ANIQ kasbga moslab qayta yaratamiz
+    # (generic emas) — shu orqali botni O'Z sohasida sinab ko'rishi mumkin. ---
+    profession = data.get("demo_profession")
+    if profession:
+        try:
+            from services.ai_scoring import generate_questions
+
+            demo_questions = await generate_questions(profession, "", count=5)
+            if demo_questions:
+                await database.update_vacancy(
+                    tenant_id, "namuna",
+                    title=f"🎯 {profession} (sinov uchun)",
+                    questions=demo_questions,
+                )
+        except Exception:
+            logger.exception("Kasbga oid namunaviy savollarni generatsiya qilib bo'lmadi.")
 
     await wait_msg.edit_text(
         f"✅ Ikkala botingiz ham tayyor va SINOV rejimida ishga tushdi:\n\n"

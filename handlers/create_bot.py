@@ -22,7 +22,7 @@ logger = logging.getLogger("janob_hr_bot")
 router = Router(name="create_bot")
 
 TRIAL_APPLICATION_LIMIT = 5
-_AI_CONVERSATION_TURNS = 4  # Diagnostika -> Muammo -> Eskalatsiya -> Vizualizatsiya
+_AI_CONVERSATION_TURNS = 5  # Kompaniya -> Saralash -> Pul/vaqt -> Strategik zarar -> Vizualizatsiya
 _PRESENTATION_PATH = "assets/janobHR_taqdimot.pptx"
 
 _OPENING_STORY = (

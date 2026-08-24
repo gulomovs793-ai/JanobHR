@@ -311,6 +311,22 @@ Talablar:
    yuboriladi, u shaxsan tinglab baholaydi. Maqsad — tayyorlab, ChatGPT yordamida
    yozib olingan javoblarni emas, jonli va tabiiy javobni olish.
 
+TARTIB (JUDA MUHIM — javoblar RO'YXATDAGI TARTIBDA nomzodga bittalab beriladi):
+9. "hard_filter" savoli RO'YXATNING ENG BOSHIDA (1-savol) bo'lishi SHART. Sabab: agar
+   nomzod salbiy javob bersa, suhbat SHU YERDA to'xtaydi va rad etiladi — filtrni
+   oxiriga qoldirish nomzodning ham, ishga oluvchining ham vaqtini behuda sarflaydi.
+10. Undan keyin ODDIY, TEZ javob beriladigan faktik/vosita savollari (masalan qaysi
+    dastur/platformadan foydalanadi) kelsin — bular nomzodni "isitib", suhbatga
+    kirishishini osonlashtiradi.
+11. Keyin chuqurroq scorecard/behavioral savollar (yutuq, xato-dars, vaziyatli
+    savollar) — OSONDAN QIYINGA qarab, bittalab chuqurlashib borsin.
+12. Oylik maosh haqidagi savol (agar bo'lsa) RO'YXATNING ENG OXIRIDA bo'lsin — bu
+    standart intervyu odati.
+13. HAR BIR savol FAQAT BITTA narsa so'rasin. Ikkita savolni "va"/"?...?" bilan
+    bittaga qo'shib yuborish QAT'IY TAQIQLANADI (masalan "X qanday qilasiz? Va
+    oxirgi marta Y qachon bo'lgan?" — bu IKKITA savol, IKKITA alohida qatorga
+    bo'linishi kerak, count sonini shunga mos hisobla).
+
 FAQAT quyidagi JSON massiv formatida javob ber, boshqa hech qanday matn yozma:
 [{{"key": "...", "text": "...", "hard_filter": true}}, {{"key": "...", "text": "...", "ai_score": true}}, \
 {{"key": "...", "text": "...", "voice": true}}, ...]
@@ -364,10 +380,26 @@ async def generate_questions(job_title: str, description: str, count: int = 9) -
                 q["ai_score"] = True
             questions.append(q)
 
-        return questions or None
+        return _reorder_questions(questions) or None
     except Exception:
         logger.exception("AI savol generatsiyasi javobini o'qib bo'lmadi: %s", content)
         return None
+
+
+_SALARY_KEYWORDS = ("maosh", "oylik", "ish haqi")
+
+
+def _reorder_questions(questions: list[dict]) -> list[dict]:
+    """AI tartib qoidasiga (filtr birinchi, maosh oxirida) to'liq rioya qilmasa
+    ham, kod darajasida kafolatlaydi — prompt yo'riqnomasiga ishonib qolmaslik
+    kerakligi bu loyihada bir necha marta tasdiqlangan."""
+    filters = [q for q in questions if q.get("hard_filter")]
+    salary = [
+        q for q in questions
+        if not q.get("hard_filter") and any(kw in q["text"].lower() for kw in _SALARY_KEYWORDS)
+    ]
+    middle = [q for q in questions if q not in filters and q not in salary]
+    return filters + middle + salary
 
 
 _RESUME_EXTRACTION_PROMPT = """Sen rezyume (CV) tahlilchisan. Senga nomzodning rezyume matni va \

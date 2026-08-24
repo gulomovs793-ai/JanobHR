@@ -342,8 +342,8 @@ sotuv AGENTISAN — konsultant, auditor yoki reklama e'lonchisi EMASSAN. Mijoz s
 MUAMMO, (2) hozirgi holatda nomzodlarni QANDAY saralaydi (HOZIRGI JARAYON),
 (3) qaysi natijaga erishsa mamnun bo'lardi (XOHLAGAN NATIJA).
 
-VAZIFANG: 3 ta javobni birlashtirib, ANIQ 3 TA QISQA PARAGRAFDAN iborat BITTA
-tabiiy xabar yoz — bu DIAGNOSTIK XULOSA + INDIVIDUAL YECHIM, reklama EMAS:
+VAZIFANG: 3 ta javobni birlashtirib, ANIQ 2 TA QISQA PARAGRAFDAN iborat BITTA
+tabiiy xabar yoz — bu DIAGNOSTIK XULOSA, reklama EMAS:
 
 1-PARAGRAF (1 gap): mijozning muammosini O'Z SO'ZI bilan emas, INSIGHT bilan
 qayta ayt — ya'ni uning aytganlarini BIRLASHTIRIB, yangi xulosa chiqar (shunchaki
@@ -353,9 +353,9 @@ YUMSHOQ taxmin sifatida ayt.
 2-PARAGRAF (2 gap): hozirgi jarayonini bir gapda qayta tuting, so'ng Janob HR
 buni ANIQ QANDAY to'ldirishini bitta gapda bog'lang (pastdagi TAQIQLANGAN
 IBORALARSIZ).
-3-PARAGRAF (1 gap): YUMSHOQ CTA — "xohlasangiz sinab ko'ring" ohangida, 5 ta
-bepul ariza bilan. Bu yumshoq taklif, BOSIM EMAS. Telefon raqami yoki
-ro'yxatdan o'tishni BU YERDA SO'RAMA — bu keyingi, ALOHIDA bosqich.
+
+CTA/TAKLIF QISMINI YOZMA — bu QATTIQ BELGILANGAN, kod tomonidan alohida
+qo'shiladi, sen faqat 1-2 PARAGRAFNI yoz.
 
 QAT'IY TAQIQLANGAN IBORALAR (haddan tashqari va'da/kafolat beradi):
 "inson omilisiz", "kafolatlaydi", "100% mos", "aniq topadi", "eng yaxshi
@@ -365,7 +365,7 @@ tashlaydi", "topib beradi". BULARNING O'RNIGA: "tahlil qiladi", "saralaydi",
 qilishda yordam beradi" kabi EHTIYOTKOR fe'llardan foydalan — Janob HR
 odamni ALMASHTIRMAYDI, HRga yordam beradi.
 
-HAJM: JAMI 50-80 SO'Z, ANIQ 3 TA PARAGRAF (paragraflar orasida bo'sh qator).
+HAJM: JAMI 35-55 SO'Z, ANIQ 2 TA PARAGRAF (orasida bo'sh qator).
 
 USLUB (QAT'IY):
 - KUNDALIK SO'ZLASHUV tili, RASMIY-YOZMA EMAS.
@@ -378,10 +378,15 @@ USLUB (QAT'IY):
   qismini ayt.
 - FAQAT o'zbek tilida, emoji ishlatma.
 
-Bu SENING YAGONA xabaring. Undan keyin AVTOMATIK "Aynan shu — Janob HR..." yoki
-"5 ta ariza bepul" degan qo'shimcha xabar YUBORILMAYDI — mijozning javobini
-KUTAMIZ, shuning uchun BARCHA taklifni shu YAGONA xabarga sig'dirishing SHART.
+Bu xabardan keyin kod BELGILANGAN CTA matnini avtomatik qo'shadi — sen unga
+tegishli hech narsa yozma, faqat 2 ta tahlil paragrafini yoz.
 """
+
+_SYNTHESIS_CTA = (
+    "🎁 Buni o'zingiz ko'rish uchun — birinchi 5 ta ariza SIZGA BUTUNLAY BEPUL. "
+    "Hech qanday to'lov qilmasdan, o'z haqiqiy vakansiyangiz bilan sinab ko'rasiz.\n\n"
+    "Davom etish uchun \"Ha\" deb yozing."
+)
 
 _SYNTHESIS_BANNED_ANYWHERE = [
     "Demak", "Shunday ekan", "Aniqlik kiritay", "Aynan shu — Janob HR",
@@ -389,31 +394,34 @@ _SYNTHESIS_BANNED_ANYWHERE = [
     "eng yaxshi nomzodni topadi", "sizga mos xodimni topadi",
     "noto'g'ri nomzodni chiqarib tashlaydi", "topib beradi",
 ]
-_SYNTHESIS_MIN_WORDS = 35
-_SYNTHESIS_MAX_WORDS = 100
+_SYNTHESIS_MIN_WORDS = 25
+_SYNTHESIS_MAX_WORDS = 65
 
 
 def _validate_synthesis(text: str) -> list[str]:
     issues = []
     word_count = len(text.split())
     if word_count > _SYNTHESIS_MAX_WORDS:
-        issues.append(f"{word_count} ta so'z ({_SYNTHESIS_MAX_WORDS} tadan oshmasligi kerak, ideal 50-80)")
+        issues.append(f"{word_count} ta so'z ({_SYNTHESIS_MAX_WORDS} tadan oshmasligi kerak, ideal 35-55)")
     elif word_count < _SYNTHESIS_MIN_WORDS:
-        issues.append(f"{word_count} ta so'z (juda qisqa, kamida {_SYNTHESIS_MIN_WORDS} ta, ideal 50-80)")
+        issues.append(f"{word_count} ta so'z (juda qisqa, kamida {_SYNTHESIS_MIN_WORDS} ta, ideal 35-55)")
     for phrase in _SYNTHESIS_BANNED_ANYWHERE:
         if phrase.lower() in text.lower():
             issues.append(f"taqiqlangan ibora ishlatilgan: '{phrase}'")
-    if text.count("\n\n") < 2:
-        issues.append("aniq 3 ta paragraf (orasida bo'sh qator bilan) bo'lishi kerak, hozirgi javobda yetarli emas")
+    if "\n\n" not in text:
+        issues.append("aniq 2 ta paragraf (orasida bo'sh qator bilan) bo'lishi kerak, hozirgi javobda yo'q")
+    if "5 ta ariza" in text.lower() or "bepul" in text.lower():
+        issues.append("CTA/taklif qismini o'zing yozibsan — buni yozma, kod alohida qo'shadi")
     return issues
 
 
 async def generate_synthesis_pitch(history: list[dict]) -> str | None:
     """3 ta shablon savol-javobdan keyin chaqiriladi. MUAMMO -> HOZIRGI
-    JARAYON -> XOHLAGAN NATIJA javoblarini birlashtirib, 3 paragrafli
-    (1-INSIGHT, 2-jarayon+yechim, 3-yumshoq CTA) DIAGNOSTIK xabar yaratadi
-    (bu joyda AI FAQAT BITTA marta, bitta yakuniy xabar uchun chaqiriladi —
-    ko'p bosqichli AI-suhbat ARXITEKTURASI endi ishlatilmaydi)."""
+    JARAYON -> XOHLAGAN NATIJA javoblarini birlashtirib, 2 paragrafli
+    (1-INSIGHT, 2-jarayon+yechim) DIAGNOSTIK xabar yaratadi, so'ng KOD
+    tomonidan QATTIQ BELGILANGAN CTA (_SYNTHESIS_CTA) qo'shiladi (bu joyda AI
+    FAQAT BITTA marta, bitta yakuniy xabar uchun chaqiriladi — ko'p bosqichli
+    AI-suhbat ARXITEKTURASI endi ishlatilmaydi)."""
 
     async def _try_once(note: str = "") -> str | None:
         prompt = _SYNTHESIS_PROMPT
@@ -436,7 +444,7 @@ async def generate_synthesis_pitch(history: list[dict]) -> str | None:
         if retry:
             reply = retry
 
-    return reply
+    return reply.rstrip() + "\n\n" + _SYNTHESIS_CTA
 
 
 async def get_next_message(history: list[dict], current_step: int, clarify: bool = False) -> str | None:

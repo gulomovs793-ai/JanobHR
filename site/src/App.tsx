@@ -256,13 +256,13 @@ function Home() {
           <div className="mx-auto grid min-h-[690px] max-w-[1240px] items-center gap-12 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-[1.02fr_.98fr] lg:gap-16 lg:px-10 lg:py-28">
             <div className="relative z-10 max-w-[650px]">
               <div className="reveal inline-flex items-center gap-2 rounded-full border border-primary/15 bg-card/80 px-3.5 py-2 font-mono text-[10px] font-bold uppercase tracking-[.12em] text-primary">
-                <Sparkles size={13} className="text-accent" /> Ishga qabul qilishning yangi usuli
+                <Sparkles size={13} className="text-accent" /> Telegram’da ishlaydigan HR bot
               </div>
               <h1 className="reveal reveal-delay-1 mt-7 max-w-[720px] font-display text-[clamp(3rem,5.3vw,5.2rem)] font-extrabold leading-[.96] tracking-[-.075em] text-foreground">
-                To‘g‘ri xodimni toping.<br /><span className="text-primary">Kunlab saralashni</span> AI’ga topshiring.
+                Nomzodni <span className="text-primary">AI saralaydi.</span><br />Qarorni siz qabul qilasiz.
               </h1>
               <p className="reveal reveal-delay-2 mt-7 max-w-[530px] text-[17px] leading-7 text-muted-foreground sm:text-lg">
-                JanobHR — Telegram ichida nomzodlarni saralaydigan, baholaydigan va reytinglaydigan AI yordamchi. Siz esa muhim qarorlar uchun ko‘proq vaqtga ega bo‘lasiz.
+                Vakansiya yaratasiz — nomzodlar Telegram botga o‘zi ariza topshiradi, AI javoblarini baholaydi, siz esa faqat mos kelganlar bilan suhbatlashasiz. Birinchi 5 ta ariza — bepul.
               </p>
               <div className="reveal reveal-delay-3 mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <a
@@ -300,9 +300,9 @@ function Home() {
           <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">
             <p className="max-w-[285px] text-sm font-semibold leading-5 text-foreground/75">Rekrutmentdagi takroriy ishlarni jim va puxta bajaradigan yordamchi.</p>
             <div className="flex flex-wrap gap-x-7 gap-y-3 font-mono text-[10px] font-bold uppercase tracking-[.13em] text-primary/65">
-              <span className="inline-flex items-center gap-2"><Check size={13} /> Telegram ichida</span>
-              <span className="inline-flex items-center gap-2"><Check size={13} /> O‘zbek biznesi uchun</span>
-              <span className="inline-flex items-center gap-2"><Check size={13} /> Inson qarori markazda</span>
+              <span className="inline-flex items-center gap-2"><Check size={13} /> 2 ta bot — nomzod uchun va siz uchun</span>
+              <span className="inline-flex items-center gap-2"><Check size={13} /> Birinchi 5 ta ariza bepul</span>
+              <span className="inline-flex items-center gap-2"><Check size={13} /> Yakuniy qaror doim sizda</span>
             </div>
           </div>
         </section>
@@ -312,17 +312,17 @@ function Home() {
             <div>
               <SectionLabel>Muammo</SectionLabel>
               <h2 className="max-w-[520px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-6xl">
-                Yaxshi nomzodni topish emas. <span className="text-primary">Vaqtida ajratib olish.</span>
+                Nomzod yetishmayapti emas. <span className="text-primary">Saralashga vaqt yetmayapti.</span>
               </h2>
               <p className="mt-6 max-w-[420px] text-base leading-7 text-muted-foreground">
-                Siz mos kelmaydigan nomzodlarni saralayotgan paytda, kuchli nomzod boshqa kompaniyani tanlashi mumkin.
+                Ariza ko'p keladi, lekin har birini o'qib, savol berib, javobini tekshirish — kuniga bir necha soat.
               </p>
             </div>
             <div className="divide-y divide-border border-y border-border">
               {[
-                ['01', 'Juda ko‘p nomzod', 'Yuzlab rezyume, Telegram xabarlari va arizalar. Ammo ularning oz qismi lavozimga haqiqatan mos keladi.'],
-                ['02', 'Juda ko‘p qo‘lda ish', 'Rezyumeni o‘qish, savollar berish va javoblarni tekshirish HR vaqtining katta qismini oladi.'],
-                ['03', 'Noto‘g‘ri tanlov xavfi', 'Noto‘g‘ri xodim — yo‘qotilgan vaqt, pasaygan natija va qayta yollash xarajati.'],
+                ['01', 'Har bir arizani qo‘lda o‘qish', 'Kim mos, kim mos emas — buni bilish uchun har birini boshidan oxirigacha o‘qish kerak bo‘ladi.'],
+                ['02', 'Ishga olib, keyin pushaymon bo‘lish', 'Suhbatda yaxshi taassurot qoldirgan odam ishda boshqacha chiqishi — tez-tez uchraydigan holat.'],
+                ['03', 'Noto‘g‘ri tanlovning narxi', 'Xato tanlov — yana bir oy e’lon, yana bir oy suhbat, yana bir oy sinov muddati.'],
               ].map(([number, title, text]) => (
                 <div className="flex gap-5 py-6 sm:py-7" key={number}>
                   <span className="font-mono text-sm font-bold text-primary">{number}</span>
@@ -342,24 +342,24 @@ function Home() {
               <div>
                 <SectionLabel>Jarayon</SectionLabel>
                 <h2 className="max-w-[440px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-5xl">
-                  Bir xil ishni qayta-qayta bajarish shart emas.
+                  3 ta qadam. Boshqa hech narsa qilish shart emas.
                 </h2>
                 <p className="mt-6 max-w-[360px] text-base leading-7 text-muted-foreground">
-                  JanobHR sizning rekrutment jarayoningizga moslashadi. Nomzodlar qayerdan kelishidan qat’i nazar, hammasi bitta aniq oqimda.
+                  Nomzod qayerdan kelishidan qat’i nazar (e’lon, QR-kod yoki havola orqali) — hammasi shu 3 qadamdan o‘tadi.
                 </p>
-                <a href="#boglanish" className="focus-ring mt-8 inline-flex items-center gap-2 text-sm font-bold text-primary" data-testid="link-process-contact">
-                  Jarayonni muhokama qilamiz <ArrowUpRight size={16} />
+                <a href="https://t.me/janobHR_bot" target="_blank" rel="noreferrer" className="focus-ring mt-8 inline-flex items-center gap-2 text-sm font-bold text-primary" data-testid="link-process-contact">
+                  Botni sinab ko‘ring <ArrowUpRight size={16} />
                 </a>
               </div>
               <div className="grid gap-x-8 gap-y-12 sm:grid-cols-3">
-                <WorkflowStep number="01" icon={Clipboard} title="Yuborasiz">
-                  Vakansiyani va nomzodlar ma’lumotini Telegram orqali yuborasiz.
+                <WorkflowStep number="01" icon={Clipboard} title="Vakansiya yaratasiz">
+                  Lavozim nomini yozasiz — AI mos savollarni (filtr, ovozli, tahlil) o‘zi tuzadi.
                 </WorkflowStep>
-                <WorkflowStep number="02" icon={Search} title="Saralaydi">
-                  JanobHR tajriba, ko‘nikma va siz belgilagan mezonlarni tahlil qiladi.
+                <WorkflowStep number="02" icon={Search} title="Nomzod o‘zi topshiradi">
+                  Havola yoki QR-kod orqali botga kirib, savollarga javob beradi.
                 </WorkflowStep>
-                <WorkflowStep number="03" icon={FileCheck2} title="Tayyorlaydi">
-                  Sizga tushunarli reyting va keyingi suhbat uchun tayyor xulosa qaytadi.
+                <WorkflowStep number="03" icon={FileCheck2} title="Siz qaror qilasiz">
+                  AI saralab bergan ro‘yxatdan kimni suhbatga chaqirishni bosasiz.
                 </WorkflowStep>
               </div>
             </div>
@@ -370,13 +370,13 @@ function Home() {
           <div className="mx-auto max-w-[1240px]">
             <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
               <div>
-                <SectionLabel>JanobHR nimalarni bajaradi</SectionLabel>
+                <SectionLabel>Botda nima bor</SectionLabel>
                 <h2 className="max-w-[630px] font-display text-4xl font-extrabold leading-[1.02] tracking-[-.06em] sm:text-6xl">
-                  Ishning shovqinini kamaytiradi. <span className="text-primary">Muhim signalni qoldiradi.</span>
+                  8 ta funksiya. <span className="text-primary">Bittasi ham ortiqcha emas.</span>
                 </h2>
               </div>
               <p className="max-w-[290px] text-sm leading-6 text-muted-foreground lg:pb-1">
-                Har bir imkoniyat bitta maqsadga xizmat qiladi: sizning vaqtingizni nomzodning insoniy tomoniga qaytarish.
+                Har biri real muammoni yechish uchun qo‘shilgan — "chiroyli bo‘lsin" deb emas.
               </p>
             </div>
             <div className="mt-14 grid gap-4 lg:grid-cols-12">
@@ -423,14 +423,14 @@ function Home() {
               <div>
                 <SectionLabel>Kimlar uchun</SectionLabel>
                 <h2 className="max-w-[430px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-5xl">
-                  Odam yollaydigan har bir jamoa uchun.
+                  Xodim aylanmasi tez bo‘lgan bizneslar uchun.
                 </h2>
               </div>
               <div className="divide-y divide-border border-y border-border">
                 {[
-                  ['HR mutaxassislari', 'Vaqtni rezyume ko‘rishga emas, odamni tushunishga sarflang.'],
-                  ['Kichik va o‘rta biznes', 'Katta HR bo‘limi bo‘lmasa ham, puxta rekrutment jarayonini yo‘lga qo‘ying.'],
-                  ['Tez o‘sayotgan jamoalar', 'Ko‘p nomzodlar orasida tartibni saqlang va yaxshi nomzodni o‘tkazib yubormang.'],
+                  ['Ko‘p filialli chakana savdo', 'Har oy bir necha filialga sotuvchi kerak bo‘lsa, har birini qo‘lda intervyu qilishga vaqt yetmaydi.'],
+                  ['Yetkazib berish xizmatlari', 'Kuryer va haydovchilar tez-tez almashadi — bot doim ishlab, siz uchun saralab turadi.'],
+                  ['Call-markaz va restoran tarmoqlari', 'Doimiy ochiq vakansiya bor joyda, arizalarni qo‘lda ko‘rib chiqish HRni charchatadi.'],
                 ].map(([title, text], index) => (
                   <div className="group flex items-start justify-between gap-6 py-6 sm:py-7" key={title}>
                     <div className="flex gap-5">
@@ -455,12 +455,12 @@ function Home() {
             <div>
               <SectionLabel>Yondashuv</SectionLabel>
               <h2 className="max-w-[560px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-6xl">
-                AI yordamchi.<br /><span className="text-primary">Insoniy tanlov.</span>
+                AI qaror bermaydi.<br /><span className="text-primary">Siz qaror qilasiz.</span>
               </h2>
             </div>
             <div className="max-w-[470px]">
               <p className="text-lg leading-8 text-foreground/75">
-                JanobHR odam o‘rniga qaror bermaydi. U sizning vaqtingizni qaytaradi, ma’lumotlarni tartiblaydi va suhbatga loyiq nomzodlarni ko‘rish uchun aniqroq manzara yaratadi.
+                Bot hech kimni ishga olmaydi va hech kimni butunlay rad etmaydi (faqat aniq talabga javob bermaganlarni). U faqat saralaydi — "Suhbatga chaqirish" yoki "Rad etish" tugmasini bosish sizning qo‘lingizda.
               </p>
               <div className="mt-8 flex items-center gap-3 border-t border-primary/15 pt-6">
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground"><Bot size={17} /></span>

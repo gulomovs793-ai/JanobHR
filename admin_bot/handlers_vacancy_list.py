@@ -158,11 +158,6 @@ async def toggle_vacancy(callback: CallbackQuery, tenant_id: int):
 
 @router.callback_query(F.data.startswith("vacqr:"))
 async def send_qr_code(callback: CallbackQuery, tenant_id: int):
-    import io
-
-    import qrcode
-    from aiogram.types import BufferedInputFile
-
     key = callback.data.split(":", 1)[1]
     vacancy = await database.get_vacancy(tenant_id, key)
     tenant = await database.get_tenant(tenant_id)
@@ -171,18 +166,29 @@ async def send_qr_code(callback: CallbackQuery, tenant_id: int):
         await callback.answer("Havola topilmadi.", show_alert=True)
         return
 
-    link = f"https://t.me/{bot_username}?start=vac_{key}"
-    img = qrcode.make(link, box_size=10, border=2)
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
+    await callback.answer("QR-kod tayyorlanmoqda...")
+    try:
+        import io
 
-    await callback.message.answer_photo(
-        BufferedInputFile(buffer.read(), filename=f"{key}_qr.png"),
-        caption=f"📱 <b>{vacancy['title']}</b>\n\nBu QR-kodni e'lon/plakat/vitrinaga bosib chiqaring — "
-        "skanerlagan kishi to'g'ridan-to'g'ri shu vakansiyaga ariza topshirishni boshlaydi.",
-    )
-    await callback.answer()
+        import qrcode
+        from aiogram.types import BufferedInputFile
+
+        link = f"https://t.me/{bot_username}?start=vac_{key}"
+        img = qrcode.make(link, box_size=10, border=2)
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        await callback.message.answer_photo(
+            BufferedInputFile(buffer.read(), filename=f"{key}_qr.png"),
+            caption=f"📱 <b>{vacancy['title']}</b>\n\nBu QR-kodni e'lon/plakat/vitrinaga bosib chiqaring — "
+            "skanerlagan kishi to'g'ridan-to'g'ri shu vakansiyaga ariza topshirishni boshlaydi.",
+        )
+    except Exception:
+        logger.exception("QR-kod yaratib/yuborib bo'lmadi (tenant_id=%s, key=%s).", tenant_id, key)
+        await callback.message.answer(
+            "⚠️ QR-kod yaratishda texnik xato yuz berdi. Iltimos, biroz keyin qayta urinib ko'ring."
+        )
 
 
 @router.callback_query(F.data.startswith("vacdel:"))

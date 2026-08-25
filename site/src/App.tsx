@@ -451,10 +451,6 @@ function Home() {
               <p className="text-lg leading-8 text-foreground/75">
                 Bot hech kimni ishga olmaydi va hech kimni butunlay rad etmaydi (faqat aniq talabga javob bermaganlarni). U faqat saralaydi — "Suhbatga chaqirish" yoki "Rad etish" tugmasini bosish sizning qo‘lingizda.
               </p>
-              <div className="mt-8 flex items-center gap-3 border-t border-primary/15 pt-6">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground"><Bot size={17} /></span>
-                <span className="text-sm font-bold text-primary">Texnologiya orqada. Qaror sizda.</span>
-              </div>
             </div>
           </div>
         </section>

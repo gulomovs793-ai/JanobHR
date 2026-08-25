@@ -210,8 +210,12 @@ function TelegramPreview() {
 
 function SectionLabel({ children, light = false }: { children: string; light?: boolean }) {
   return (
-    <div className={`mb-6 flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[.18em] ${light ? 'text-secondary' : 'text-primary'}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${light ? 'bg-secondary' : 'bg-accent'}`} />
+    <div
+      className={`mb-7 inline-flex items-center gap-2.5 rounded-full px-4 py-2 font-mono text-xs font-bold uppercase tracking-[.16em] ${
+        light ? 'bg-primary-foreground/12 text-secondary' : 'bg-primary/10 text-primary'
+      }`}
+    >
+      <span className={`h-2 w-2 rounded-full ${light ? 'bg-secondary' : 'bg-accent'}`} />
       {children}
     </div>
   );
@@ -238,8 +242,8 @@ function FeatureCard({ icon: Icon, eyebrow, title, children, className = '' }: {
       <span className="mb-12 flex h-11 w-11 items-center justify-center rounded-[14px] bg-secondary/45 text-primary transition-colors group-hover:bg-accent/55">
         <Icon size={20} strokeWidth={1.7} />
       </span>
-      <p className="font-mono text-[9px] font-bold uppercase tracking-[.16em] text-primary/70">{eyebrow}</p>
-      <h3 className="mt-3 font-display text-xl font-extrabold tracking-[-.035em]">{title}</h3>
+      <p className="inline-block rounded-full bg-primary/10 px-3 py-1 font-mono text-xs font-bold uppercase tracking-[.14em] text-primary">{eyebrow}</p>
+      <h3 className="mt-4 font-display text-xl font-extrabold tracking-[-.035em]">{title}</h3>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">{children}</p>
     </article>
   );
@@ -254,8 +258,8 @@ function Home() {
         <section id="bosh-sahifa" className="site-grid relative scroll-mt-20 border-b border-border pt-[76px]">
           <div className="mx-auto grid min-h-[690px] max-w-[1240px] items-center gap-12 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-[1.02fr_.98fr] lg:gap-16 lg:px-10 lg:py-28">
             <div className="relative z-10 max-w-[650px]">
-              <div className="reveal inline-flex items-center gap-2 rounded-full border border-primary/15 bg-card/80 px-3.5 py-2 font-mono text-[10px] font-bold uppercase tracking-[.12em] text-primary">
-                <Sparkles size={13} className="text-accent" /> Telegram’da ishlaydigan HR bot
+              <div className="reveal inline-flex items-center gap-2.5 rounded-full bg-primary/10 px-4 py-2 font-mono text-xs font-bold uppercase tracking-[.14em] text-primary">
+                <Sparkles size={14} className="text-accent" /> Telegram’da ishlaydigan HR bot
               </div>
               <h1 className="reveal reveal-delay-1 mt-7 max-w-[720px] font-display text-[clamp(3rem,5.3vw,5.2rem)] font-extrabold leading-[.96] tracking-[-.075em] text-foreground">
                 Nomzodni <span className="text-primary">AI saralaydi.</span><br />Siz esa tanlaysiz.
@@ -377,7 +381,7 @@ function Home() {
               <div className="relative overflow-hidden rounded-[22px] bg-primary p-7 text-primary-foreground lg:col-span-7">
                 <div className="absolute -right-8 -top-12 h-44 w-44 rounded-full border-[22px] border-secondary/25" />
                 <div className="absolute -bottom-16 right-20 h-48 w-48 rounded-full border border-secondary/20" />
-                <p className="relative font-mono text-[9px] font-bold uppercase tracking-[.16em] text-secondary">04 / E’lon qilish</p>
+                <p className="relative inline-block rounded-full bg-primary-foreground/12 px-3 py-1 font-mono text-xs font-bold uppercase tracking-[.14em] text-secondary">04 / E’lon qilish</p>
                 <h3 className="relative mt-10 max-w-[510px] font-display text-2xl font-extrabold leading-tight tracking-[-.04em] sm:text-3xl">
                   Har bir vakansiya uchun tayyor havola va QR-kod. HH.uz, Instagram yoki bosma e’lonlarga muammosiz joylay olasiz.
                 </h3>
@@ -485,7 +489,7 @@ function Home() {
                       {plan.badge}
                     </span>
                   )}
-                  <p className={`font-mono text-[10px] font-bold uppercase tracking-[.16em] ${plan.badge ? 'text-secondary' : 'text-primary/70'}`}>{plan.name}</p>
+                  <p className={`inline-block rounded-full px-3 py-1 font-mono text-xs font-bold uppercase tracking-[.14em] ${plan.badge ? 'bg-primary-foreground/12 text-secondary' : 'bg-primary/10 text-primary'}`}>{plan.name}</p>
                   <p className="mt-4 font-display text-3xl font-extrabold tracking-[-.03em]">
                     {plan.price} <span className="text-base font-semibold opacity-60">so‘m</span>
                   </p>

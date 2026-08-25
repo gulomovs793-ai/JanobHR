@@ -178,11 +178,12 @@ async def show_tip_detail(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "menu:stats")
-async def show_stats(callback: CallbackQuery, tenant_id: int):
+async def show_stats(callback: CallbackQuery, tenant_id: int, tenant: dict = None):
+    from services.plans import tenant_has_feature
+
+    has_advanced = tenant_has_feature(tenant, "advanced_stats")
     overall = await database.get_overall_stats(tenant_id)
     per_vacancy = await database.get_vacancy_stats(tenant_id)
-    time_stats = await database.get_time_based_stats(tenant_id)
-    ai_stats = await database.get_ai_verdict_stats(tenant_id)
 
     lines = [
         "📊 <b>Umumiy statistika</b>",
@@ -192,9 +193,17 @@ async def show_stats(callback: CallbackQuery, tenant_id: int):
         f"📥 Ariza topshirganlar: <b>{overall['total']}</b>"
         + (f" ({overall['conversion_percent']}% konversiya)" if overall['conversion_percent'] is not None else ""),
         "",
-        f"🗓 Bugun: <b>{time_stats['today']}</b> ta ariza | "
-        f"Bu hafta: <b>{time_stats['week']}</b> | Bu oy: <b>{time_stats['month']}</b>",
-        "",
+    ]
+
+    if has_advanced:
+        time_stats = await database.get_time_based_stats(tenant_id)
+        lines.append(
+            f"🗓 Bugun: <b>{time_stats['today']}</b> ta ariza | "
+            f"Bu hafta: <b>{time_stats['week']}</b> | Bu oy: <b>{time_stats['month']}</b>"
+        )
+        lines.append("")
+
+    lines += [
         f"⏳ Kutilmoqda: {overall['pending']}",
         f"✅ Qabul qilingan: {overall['accepted']}",
         f"❌ Rad etilgan (jami): {overall['rejected_total']}",
@@ -204,19 +213,26 @@ async def show_stats(callback: CallbackQuery, tenant_id: int):
         f"   • AI orqali yozilgan deb topildi: {overall['rejected_ai_generated']}",
     ]
 
-    if ai_stats["scored_total"]:
-        vc = ai_stats["verdict_counts"]
+    if has_advanced:
+        ai_stats = await database.get_ai_verdict_stats(tenant_id)
+        if ai_stats["scored_total"]:
+            vc = ai_stats["verdict_counts"]
+            lines.append("")
+            lines.append(
+                f"🎯 <b>Nomzodlar sifati</b> (AI baholagan {ai_stats['scored_total']} ta, "
+                f"o'rtacha ball: {ai_stats['avg_score']}/100)"
+            )
+            lines.append(f"   🟢 Kuchli: {vc['yashil']} | 🟡 O'rtacha: {vc['sariq']} | 🔴 Zaif: {vc['qizil']}")
+
+        if per_vacancy:
+            top = per_vacancy[0]
+            lines.append("")
+            lines.append(f"🔥 Eng faol vakansiya: <b>{top['vacancy_title']}</b> ({top['total']} ta ariza)")
+    else:
         lines.append("")
-        lines.append(
-            f"🎯 <b>Nomzodlar sifati</b> (AI baholagan {ai_stats['scored_total']} ta, "
-            f"o'rtacha ball: {ai_stats['avg_score']}/100)"
-        )
-        lines.append(f"   🟢 Kuchli: {vc['yashil']} | 🟡 O'rtacha: {vc['sariq']} | 🔴 Zaif: {vc['qizil']}")
+        lines.append("💡 Trend, nomzodlar sifati va eng faol vakansiya — BUSINESS/PRO tarifida.")
 
     if per_vacancy:
-        top = per_vacancy[0]
-        lines.append("")
-        lines.append(f"🔥 Eng faol vakansiya: <b>{top['vacancy_title']}</b> ({top['total']} ta ariza)")
         lines.append("")
         lines.append("<b>Vakansiyalar bo'yicha:</b>")
         for v in per_vacancy:

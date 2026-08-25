@@ -162,4 +162,6 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     )
+    from services.error_alerts import TelegramErrorHandler
+    logging.getLogger().addHandler(TelegramErrorHandler())
     asyncio.run(main())

@@ -78,7 +78,15 @@ async def _show_settings_menu(message: Message, tenant_id: int):
 
 
 @router.callback_query(F.data == "menu:interview")
-async def open_interview_menu(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+async def open_interview_menu(callback: CallbackQuery, state: FSMContext, tenant_id: int, tenant: dict = None):
+    from services.plans import tenant_has_feature
+
+    if not tenant_has_feature(tenant, "interview_scheduling"):
+        await callback.answer(
+            "Bu funksiya BUSINESS yoki PRO tarifida ochiladi.", show_alert=True
+        )
+        return
+
     await callback.message.delete()
     await _show_menu(callback.message, state, tenant_id)
     await callback.answer()

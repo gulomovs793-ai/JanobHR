@@ -1013,13 +1013,6 @@ async def record_bot_start(tenant_id: int, user_id: int) -> None:
         await db.commit()
 
 
-async def count_tenant_applications(tenant_id: int) -> int:
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        cursor = await db.execute("SELECT COUNT(*) FROM applications WHERE tenant_id = ?", (tenant_id,))
-        row = await cursor.fetchone()
-    return row[0] if row else 0
-
-
 async def set_tenant_plan(tenant_id: int, plan_key: str) -> None:
     """To'lov tasdiqlangach chaqiriladi — tarifni faollashtiradi, davrni
     (ariza/vakansiya limiti, muddat) HOZIRDAN boshlab hisoblaydi."""

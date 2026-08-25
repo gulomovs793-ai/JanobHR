@@ -4,6 +4,14 @@ Sinov paytida (`tenant.status == "trial"`) BARCHA funksiya ochiq — tarif
 cheklovi qo'llanilmaydi. Sinov tugagach, mijoz shu 3 tarifdan birini tanlaydi.
 """
 
+# Har bir tarifda REAL, kodda tekshiriladigan funksiyalar (tenant_has_feature
+# orqali). "start" hech qaysi qo'shimcha funksiyaga ega emas — bo'sh to'plam.
+_FEATURES_BY_PLAN = {
+    "start": set(),
+    "business": {"voice", "interview_scheduling", "advanced_stats", "resume_autofill"},
+    "pro": {"voice", "interview_scheduling", "advanced_stats", "resume_autofill"},
+}
+
 PLANS = {
     "start": {
         "key": "start",
@@ -43,13 +51,23 @@ PLANS = {
         "days": 90,
         "features": [
             "BUSINESS'dagi barchasi, plyus:",
-            "👥 Bir nechta admin (jamoa a'zolari)",
             "⚡ Ustuvor qo'llab-quvvatlash",
         ],
     },
 }
 
 PLAN_ORDER = ["start", "business", "pro"]
+
+
+def tenant_has_feature(tenant: dict | None, feature: str) -> bool:
+    """Sinov paytida HAMMASI ochiq. Sinovdan keyin — faqat tanlagan tarifida
+    bor funksiyalar. Real (kodda ta'sir qiladigan) funksiyalar: "voice",
+    "interview_scheduling", "advanced_stats", "resume_autofill"."""
+    if not tenant:
+        return False
+    if tenant.get("status") == "trial":
+        return True
+    return feature in _FEATURES_BY_PLAN.get(tenant.get("plan"), set())
 
 
 def format_plan_line(plan: dict) -> str:

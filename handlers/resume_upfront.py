@@ -55,7 +55,9 @@ async def skip_resume(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(ApplyForm.waiting_resume_upfront, F.document)
-async def handle_resume_pdf(message: Message, state: FSMContext):
+async def handle_resume_pdf(message: Message, state: FSMContext, tenant: dict = None):
+    from services.plans import tenant_has_feature
+
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
 
@@ -92,8 +94,12 @@ async def handle_resume_pdf(message: Message, state: FSMContext):
 
     questions = data["vacancy_questions"]
     # Faqat ODDIY FAKTIK savollar (ai_score va hard_filter BELGILANMAGAN)
-    # rezyumedan to'ldirilishi mumkin.
-    eligible = [q for q in questions if not q.get("ai_score") and not q.get("hard_filter")]
+    # rezyumedan to'ldirilishi mumkin — VA faqat shu funksiya tarifda bo'lsa
+    # (resume_autofill — BUSINESS/PRO).
+    if tenant_has_feature(tenant, "resume_autofill"):
+        eligible = [q for q in questions if not q.get("ai_score") and not q.get("hard_filter")]
+    else:
+        eligible = []
 
     extracted = await extract_resume_data(pdf_text, eligible) if eligible else None
 

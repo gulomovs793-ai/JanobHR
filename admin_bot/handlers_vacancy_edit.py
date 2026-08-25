@@ -97,6 +97,27 @@ async def receive_description(message: Message, state: FSMContext):
     await _generate_and_show(message, state)
 
 
+def _apply_plan_limits(questions: list[dict], tenant: dict = None) -> tuple[list[dict], bool]:
+    """Tarifda "voice" funksiyasi bo'lmasa, majburiy ovozli savolni oddiy
+    savolga aylantiradi. (voice_removed, True/False) qaytaradi — xabarda
+    mijozga ogohlantirish qo'shish uchun."""
+    from services.plans import tenant_has_feature
+
+    if tenant_has_feature(tenant, "voice"):
+        return questions, False
+
+    removed = False
+    cleaned = []
+    for q in questions:
+        if q.get("voice"):
+            q = dict(q)
+            q.pop("voice", None)
+            q["ai_score"] = True
+            removed = True
+        cleaned.append(q)
+    return cleaned, removed
+
+
 async def _generate_and_show(message: Message, state: FSMContext):
     data = await state.get_data()
     wait_msg = await message.answer("🤖 AI savollarni tuzmoqda, bir necha soniya kuting...")
@@ -183,11 +204,11 @@ async def switch_to_manual(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(AdminForm.reviewing_ai_questions, F.data == "aiq:save")
-async def accept_ai_questions(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+async def accept_ai_questions(callback: CallbackQuery, state: FSMContext, tenant_id: int, tenant: dict = None):
     data = await state.get_data()
     await state.update_data(final_questions=data.get("pending_questions", []))
     await callback.answer("Saqlanmoqda...")
-    await _finalize_vacancy(callback.message, state, tenant_id)
+    await _finalize_vacancy(callback.message, state, tenant_id, tenant)
 
 
 @router.callback_query(AdminForm.reviewing_ai_questions, F.data == "aiq:editlist")
@@ -268,22 +289,23 @@ async def receive_pending_question_edit(message: Message, state: FSMContext):
 # ============================= 4) QO'LDA KIRITISH =============================
 
 @router.message(AdminForm.entering_manual_questions, F.text)
-async def receive_manual_questions(message: Message, state: FSMContext, tenant_id: int):
+async def receive_manual_questions(message: Message, state: FSMContext, tenant_id: int, tenant: dict = None):
     questions = parse_manual_questions(message.text)
     if not questions:
         await message.answer("Hech bo'lmasa bitta savol kiriting. Qaytadan urinib ko'ring.")
         return
 
     await state.update_data(final_questions=questions)
-    await _finalize_vacancy(message, state, tenant_id)
+    await _finalize_vacancy(message, state, tenant_id, tenant)
 
 
 # ============================= 5) YAKUNLASH (saqlash) =============================
 
-async def _finalize_vacancy(message: Message, state: FSMContext, tenant_id: int):
+async def _finalize_vacancy(message: Message, state: FSMContext, tenant_id: int, tenant: dict = None):
     data = await state.get_data()
     title = data["vacancy_title"]
     questions = data.get("final_questions", [])
+    questions, voice_removed = _apply_plan_limits(questions, tenant)
     editing_key = data.get("editing_vacancy_key")
 
     if editing_key:
@@ -307,6 +329,11 @@ async def _finalize_vacancy(message: Message, state: FSMContext, tenant_id: int)
         result_text = (
             f"✅ Yangi vakansiya yaratildi: <b>{title}</b> ({len(questions)} ta savol).\n\n"
             "Nomzodlar botiga /start yuborib, darhol ko'rishlari mumkin."
+        )
+    if voice_removed:
+        result_text += (
+            "\n\n⚠️ Ovozli (majburiy) savol joriy tarifingizda mavjud emas — oddiy savolga "
+            "aylantirildi. BUSINESS yoki PRO tarifida ochiladi."
         )
 
     await state.clear()
@@ -389,7 +416,7 @@ async def start_edit_single_question(callback: CallbackQuery, state: FSMContext,
 
 
 @router.message(AdminForm.editing_single_question, F.text)
-async def receive_single_question_edit(message: Message, state: FSMContext, tenant_id: int):
+async def receive_single_question_edit(message: Message, state: FSMContext, tenant_id: int, tenant: dict = None):
     data = await state.get_data()
     key = data["editing_vacancy_key"]
     idx = data["editing_question_index"]
@@ -409,10 +436,17 @@ async def receive_single_question_edit(message: Message, state: FSMContext, tena
     new_question["key"] = vacancy["questions"][idx].get("key", new_question["key"])
     updated_questions = list(vacancy["questions"])
     updated_questions[idx] = new_question
+    updated_questions, voice_removed = _apply_plan_limits(updated_questions, tenant)
 
     await database.update_vacancy(tenant_id, key, questions=updated_questions)
     await state.clear()
 
     builder = InlineKeyboardBuilder()
     builder.button(text="⬅️ Vakansiyaga qaytish", callback_data=f"vacedit:{key}")
-    await message.answer(f"✅ {idx + 1}-savol yangilandi.", reply_markup=builder.as_markup())
+    result_text = f"✅ {idx + 1}-savol yangilandi."
+    if voice_removed:
+        result_text += (
+            "\n\n⚠️ Ovozli (majburiy) savol joriy tarifingizda mavjud emas — oddiy savolga "
+            "aylantirildi. BUSINESS yoki PRO tarifida ochiladi."
+        )
+    await message.answer(result_text, reply_markup=builder.as_markup())

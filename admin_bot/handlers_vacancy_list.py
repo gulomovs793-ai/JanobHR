@@ -1,4 +1,6 @@
 """Admin bot — vakansiyalar ro'yxati, tafsilotlari, faollashtirish/o'chirish."""
+import logging
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -7,7 +9,36 @@ from admin_bot.parsing import format_questions_preview
 from services import database
 from services.ai_scoring import aggregate_scores
 
+logger = logging.getLogger("janob_hr_bot")
+
 router = Router(name="admin_vacancy_list")
+
+
+async def _get_bot_username(tenant: dict | None, tenant_id: int) -> str | None:
+    """`tenant.bot_username`ni qaytaradi. Ba'zi tenantlar (masalan
+    asoschining o'zi, `_ensure_founder_tenant` orqali yaratilgan) oddiy
+    faollashtirish oqimidan chetlab o'tgani uchun bu maydon bo'sh qolishi
+    mumkin — shunday holatda jonli olib, keyingi safar uchun saqlab qo'yamiz
+    (o'z-o'zini tuzatuvchi)."""
+    if not tenant:
+        return None
+    bot_username = tenant.get("bot_username")
+    if bot_username or not tenant.get("bot_token"):
+        return bot_username
+
+    try:
+        from aiogram import Bot
+
+        temp_bot = Bot(token=tenant["bot_token"])
+        try:
+            me = await temp_bot.get_me()
+            await database.update_tenant_status(tenant_id, tenant["status"], bot_username=me.username)
+            return me.username
+        finally:
+            await temp_bot.session.close()
+    except Exception:
+        logger.exception("Bot username'ini jonli olib bo'lmadi (tenant_id=%s).", tenant_id)
+        return None
 
 
 @router.callback_query(F.data == "menu:vacancies")
@@ -37,7 +68,7 @@ async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str
         return
 
     tenant = await database.get_tenant(tenant_id)
-    bot_username = tenant.get("bot_username") if tenant else None
+    bot_username = await _get_bot_username(tenant, tenant_id)
 
     stats_list = await database.get_vacancy_stats(tenant_id)
     stats = next((s for s in stats_list if s["vacancy_key"] == key), None)
@@ -135,7 +166,7 @@ async def send_qr_code(callback: CallbackQuery, tenant_id: int):
     key = callback.data.split(":", 1)[1]
     vacancy = await database.get_vacancy(tenant_id, key)
     tenant = await database.get_tenant(tenant_id)
-    bot_username = tenant.get("bot_username") if tenant else None
+    bot_username = await _get_bot_username(tenant, tenant_id)
     if not vacancy or not bot_username:
         await callback.answer("Havola topilmadi.", show_alert=True)
         return

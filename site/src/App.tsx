@@ -347,7 +347,7 @@ function Home() {
                 <WorkflowStep number="02" icon={Search} title="Nomzod o‘zi topshiradi">
                   Havola yoki QR-kod orqali botga kirib, savollarga javob beradi.
                 </WorkflowStep>
-                <WorkflowStep number="03" icon={FileCheck2} title="Siz qaror qilasiz">
+                <WorkflowStep number="03" icon={FileCheck2} title="Siz esa tanlaysiz">
                   AI saralab bergan ro‘yxatdan kimni suhbatga chaqirishni bosasiz.
                 </WorkflowStep>
               </div>

@@ -69,6 +69,8 @@ async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str
     # submenyusiga ko'chirildi (_show_edit_menu) — bu yerda ortiqcha tugma yo'q.
     builder.button(text="🏆 Eng yaxshi nomzodlar", callback_data=f"vacranking:{key}")
     builder.button(text="📥 Excel yuklab olish", callback_data=f"vacexport:{key}")
+    if bot_username and vacancy["active"]:
+        builder.button(text="📱 QR-kod olish", callback_data=f"vacqr:{key}")
     builder.button(text="✏️ Tahrirlash", callback_data=f"vacedit:{key}")
     builder.button(text=toggle_text, callback_data=f"vactoggle:{key}")
     builder.button(text="⬅️ Ro'yxatga qaytish", callback_data="menu:vacancies")
@@ -121,6 +123,35 @@ async def toggle_vacancy(callback: CallbackQuery, tenant_id: int):
         return
     await database.update_vacancy(tenant_id, key, active=not vacancy["active"])
     await _show_vacancy_detail(callback, tenant_id, key)
+
+
+@router.callback_query(F.data.startswith("vacqr:"))
+async def send_qr_code(callback: CallbackQuery, tenant_id: int):
+    import io
+
+    import qrcode
+    from aiogram.types import BufferedInputFile
+
+    key = callback.data.split(":", 1)[1]
+    vacancy = await database.get_vacancy(tenant_id, key)
+    tenant = await database.get_tenant(tenant_id)
+    bot_username = tenant.get("bot_username") if tenant else None
+    if not vacancy or not bot_username:
+        await callback.answer("Havola topilmadi.", show_alert=True)
+        return
+
+    link = f"https://t.me/{bot_username}?start=vac_{key}"
+    img = qrcode.make(link, box_size=10, border=2)
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    await callback.message.answer_photo(
+        BufferedInputFile(buffer.read(), filename=f"{key}_qr.png"),
+        caption=f"📱 <b>{vacancy['title']}</b>\n\nBu QR-kodni e'lon/plakat/vitrinaga bosib chiqaring — "
+        "skanerlagan kishi to'g'ridan-to'g'ri shu vakansiyaga ariza topshirishni boshlaydi.",
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("vacdel:"))

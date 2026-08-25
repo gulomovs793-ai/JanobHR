@@ -372,7 +372,7 @@ function Home() {
               <FeatureCard icon={Mic} eyebrow="02 / Ovozli javob" title="Sizni endi alday olishmaydi" className="lg:col-span-4 lg:min-h-[330px]">
                 Muhim savolga nomzod OVOZLI xabar bilan javob beradi. Tayyorlab, sun’iy intellekt bilan yozib olingan javob emas — jonli, tabiiy javob.
               </FeatureCard>
-              <FeatureCard icon={ShieldCheck} eyebrow="03 / Filtr" title="Mos kelmasa — avtomatik rad" className="lg:col-span-3 lg:min-h-[330px]">
+              <FeatureCard icon={ShieldCheck} eyebrow="03 / Filtr" title="To‘g‘ri kelmagan nomzod vaqtingizni olmaydi" className="lg:col-span-3 lg:min-h-[330px]">
                 Talabga javob bermagan nomzod suhbatgacha yetib bormaydi. Vaqtingiz faqat haqiqiy nomzodlarga sarflanadi.
               </FeatureCard>
               <div className="relative overflow-hidden rounded-[22px] bg-primary p-7 text-primary-foreground lg:col-span-7">

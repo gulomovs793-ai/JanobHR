@@ -104,6 +104,17 @@ CREATE TABLE IF NOT EXISTS interview_settings (
 # To'lov buyurtmalari — har biriga noyob summa beriladi (asosiy narx +
 # tasodifiy 1-200 so'm), shu orqali bank bildirishnomasi qaysi mijozga
 # tegishli ekani aniqlanadi.
+_CREATE_ADMIN_INVITES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS admin_invites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    used INTEGER NOT NULL DEFAULT 0,
+    used_by INTEGER,
+    created_at TEXT NOT NULL
+);
+"""
+
 _CREATE_SALES_LEADS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS sales_leads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -377,6 +388,7 @@ async def init_db():
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
         await db.execute(_CREATE_SALES_LEADS_TABLE_SQL)
+        await db.execute(_CREATE_ADMIN_INVITES_TABLE_SQL)
 
         cursor = await db.execute("PRAGMA table_info(tenants)")
         tenant_columns = {row[1] for row in await cursor.fetchall()}
@@ -405,6 +417,19 @@ async def init_db():
             )
         if "applications_used_in_period" not in tenant_columns:
             await db.execute("ALTER TABLE tenants ADD COLUMN applications_used_in_period INTEGER NOT NULL DEFAULT 0")
+
+        cursor = await db.execute("PRAGMA table_info(applications)")
+        app_columns = {row[1] for row in await cursor.fetchall()}
+        if "accepted_at" not in app_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN accepted_at TEXT")
+        if "followup_30_sent" not in app_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN followup_30_sent INTEGER NOT NULL DEFAULT 0")
+        if "followup_90_sent" not in app_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN followup_90_sent INTEGER NOT NULL DEFAULT 0")
+        if "outcome_30" not in app_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN outcome_30 TEXT")
+        if "outcome_90" not in app_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN outcome_90 TEXT")
 
         cursor = await db.execute("PRAGMA table_info(payment_orders)")
         payment_columns = {row[1] for row in await cursor.fetchall()}
@@ -477,6 +502,53 @@ async def list_leads(limit: int = 10, offset: int = 0) -> list[dict]:
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+async def create_admin_invite(tenant_id: int) -> str:
+    import secrets
+
+    token = secrets.token_urlsafe(8).replace("-", "").replace("_", "")[:12]
+    created_at = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "INSERT INTO admin_invites (tenant_id, token, used, created_at) VALUES (?, ?, 0, ?)",
+            (tenant_id, token, created_at),
+        )
+        await db.commit()
+    return token
+
+
+async def consume_admin_invite(token: str, used_by: int) -> Optional[int]:
+    """Token yaroqli (mavjud, ishlatilmagan) bo'lsa, uni "ishlatilgan" deb
+    belgilab, tegishli tenant_id'ni qaytaradi. Aks holda None."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM admin_invites WHERE token = ? AND used = 0", (token,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        await db.execute(
+            "UPDATE admin_invites SET used = 1, used_by = ? WHERE id = ?", (used_by, row["id"])
+        )
+        await db.commit()
+        return row["tenant_id"]
+
+
+async def add_admin_user(tenant_id: int, user_id: int) -> None:
+    tenant = await get_tenant(tenant_id)
+    if not tenant:
+        return
+    admin_ids = tenant["admin_user_ids"]
+    if user_id not in admin_ids:
+        admin_ids.append(user_id)
+        async with aiosqlite.connect(SQLITE_PATH) as db:
+            await db.execute(
+                "UPDATE tenants SET admin_user_ids = ? WHERE id = ?",
+                (json.dumps(admin_ids), tenant_id),
+            )
+            await db.commit()
 
 
 async def create_tenant(
@@ -678,10 +750,19 @@ async def add_admin_message(tenant_id: int, app_id: int, chat_id: int, message_i
 
 async def update_status(tenant_id: int, app_id: int, status: str):
     async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute(
-            "UPDATE applications SET status = ? WHERE id = ? AND tenant_id = ?",
-            (status, app_id, tenant_id),
-        )
+        if status == "accepted":
+            # accepted_at faqat BIRINCHI marta qabul qilinganda yoziladi —
+            # 30/90 kunlik natija so'rovi hisobi shu sanadan boshlanadi.
+            await db.execute(
+                "UPDATE applications SET status = ?, accepted_at = COALESCE(accepted_at, ?) "
+                "WHERE id = ? AND tenant_id = ?",
+                (status, datetime.now(timezone.utc).isoformat(), app_id, tenant_id),
+            )
+        else:
+            await db.execute(
+                "UPDATE applications SET status = ? WHERE id = ? AND tenant_id = ?",
+                (status, app_id, tenant_id),
+            )
         await db.commit()
 
 
@@ -1087,6 +1168,64 @@ async def get_ai_verdict_stats(tenant_id: int) -> dict:
 
     avg_score = round(sum(scores) / len(scores)) if scores else None
     return {"verdict_counts": verdict_counts, "avg_score": avg_score, "scored_total": len(scores)}
+
+
+async def get_applications_due_for_followup(checkpoints: list[int]) -> list[dict]:
+    """Qabul qilingandan `checkpoints` (masalan [30, 90]) kun o'tgan, lekin
+    hali natija so'ralmagan arizalarni topadi. Har biriga `_due_days` maydonini
+    qo'shib qaytaradi."""
+    results = []
+    now = datetime.now(timezone.utc)
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        for days in checkpoints:
+            sent_col = f"followup_{days}_sent"
+            cutoff = (now - timedelta(days=days)).isoformat()
+            cursor = await db.execute(
+                f"SELECT * FROM applications WHERE status = 'accepted' AND accepted_at IS NOT NULL "
+                f"AND accepted_at <= ? AND {sent_col} = 0",
+                (cutoff,),
+            )
+            rows = await cursor.fetchall()
+            for row in rows:
+                app = dict(row)
+                app["_due_days"] = days
+                results.append(app)
+    return results
+
+
+async def mark_followup_sent(app_id: int, days: int) -> None:
+    col = f"followup_{days}_sent"
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(f"UPDATE applications SET {col} = 1 WHERE id = ?", (app_id,))
+        await db.commit()
+
+
+async def save_outcome_response(app_id: int, days: int, outcome: str) -> None:
+    col = f"outcome_{days}"
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(f"UPDATE applications SET {col} = ? WHERE id = ?", (outcome, app_id))
+        await db.commit()
+
+
+async def get_retention_stats(tenant_id: int) -> dict:
+    """30/90 kunlik natija so'roviga berilgan javoblarni yig'adi — nechta
+    xodim hali ishlayapti, nechtasi ketgan."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT outcome_30, outcome_90 FROM applications WHERE tenant_id = ? "
+            "AND (outcome_30 IS NOT NULL OR outcome_90 IS NOT NULL)",
+            (tenant_id,),
+        )
+        rows = await cursor.fetchall()
+
+    stats = {"30": {"good": 0, "ok": 0, "left": 0}, "90": {"good": 0, "ok": 0, "left": 0}}
+    for outcome_30, outcome_90 in rows:
+        if outcome_30 in stats["30"]:
+            stats["30"][outcome_30] += 1
+        if outcome_90 in stats["90"]:
+            stats["90"][outcome_90] += 1
+    return stats
 
 
 async def get_overall_stats(tenant_id: int) -> dict:

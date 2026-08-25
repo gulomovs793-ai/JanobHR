@@ -9,7 +9,7 @@ cheklovi qo'llanilmaydi. Sinov tugagach, mijoz shu 3 tarifdan birini tanlaydi.
 _FEATURES_BY_PLAN = {
     "start": set(),
     "business": {"voice", "interview_scheduling", "advanced_stats", "resume_autofill"},
-    "pro": {"voice", "interview_scheduling", "advanced_stats", "resume_autofill"},
+    "pro": {"voice", "interview_scheduling", "advanced_stats", "resume_autofill", "multi_admin"},
 }
 
 PLANS = {
@@ -51,6 +51,7 @@ PLANS = {
         "days": 90,
         "features": [
             "BUSINESS'dagi barchasi, plyus:",
+            "👥 Bir nechta admin (jamoa a'zolari)",
             "⚡ Ustuvor qo'llab-quvvatlash",
         ],
     },

@@ -20,6 +20,23 @@ logger = logging.getLogger("janob_hr_bot")
 router = Router(name="admin_decisions")
 
 
+@router.callback_query(F.data.startswith("outcome:"))
+async def handle_outcome_response(callback: CallbackQuery, tenant_id: int):
+    _, app_id_str, days_str, outcome = callback.data.split(":")
+    app_id = int(app_id_str)
+    days = int(days_str)
+
+    await database.save_outcome_response(app_id, days, outcome)
+
+    labels = {"good": "✅ Yaxshi ishlayapti", "ok": "🟡 O'rtacha ishlayapti", "left": "❌ Ishlamayapti/ketgan"}
+    await callback.answer("Rahmat, javobingiz saqlandi!")
+    try:
+        base_text = callback.message.text or ""
+        await callback.message.edit_text(f"{base_text}\n\n{labels.get(outcome, outcome)}")
+    except Exception:
+        logger.exception("Natija xabarini yangilab bo'lmadi (app_id=%s).", app_id)
+
+
 @router.callback_query(F.data.startswith("decision:"))
 async def handle_decision(callback: CallbackQuery, tenant_id: int, tenant: dict):
     _, action, app_id_str = callback.data.split(":")

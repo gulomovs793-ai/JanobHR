@@ -24,6 +24,7 @@ def _main_menu_keyboard(is_founder: bool = False):
     builder.button(text="📅 Suhbat vaqtlari", callback_data="menu:interview")
     builder.button(text="📊 Statistika", callback_data="menu:stats")
     builder.button(text="💡 Maslahatlar", callback_data="menu:tips")
+    builder.button(text="👥 Adminlar", callback_data="menu:admins")
     if is_founder:
         builder.button(text="🎯 Lidlar", callback_data="menu:leads")
     builder.adjust(1)
@@ -177,6 +178,64 @@ async def show_tip_detail(callback: CallbackQuery):
     await callback.answer()
 
 
+@router.callback_query(F.data == "menu:admins")
+async def show_admins_menu(callback: CallbackQuery, tenant_id: int, tenant: dict = None):
+    from services.plans import tenant_has_feature
+
+    if not tenant_has_feature(tenant, "multi_admin"):
+        await callback.answer("Bu funksiya PRO tarifida ochiladi.", show_alert=True)
+        return
+
+    admin_count = len(tenant["admin_user_ids"]) if tenant else 0
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Yangi admin taklif qilish", callback_data="admins:invite")
+    builder.button(text="⬅️ Bosh menyu", callback_data="menu:main")
+    builder.adjust(1)
+    await callback.message.edit_text(
+        f"👥 <b>Adminlar</b>\n\nHozir {admin_count} ta admin bor.\n\n"
+        "Jamoa a'zosini qo'shish uchun taklifnoma havolasi yarating — u shu havolani "
+        "bosib, Admin panel-botga /start bersa, avtomatik admin bo'ladi.",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admins:invite")
+async def create_invite(callback: CallbackQuery, tenant_id: int, tenant: dict = None):
+    from services.plans import tenant_has_feature
+
+    if not tenant_has_feature(tenant, "multi_admin"):
+        await callback.answer("Bu funksiya PRO tarifida ochiladi.", show_alert=True)
+        return
+
+    admin_bot_username = None
+    if tenant and tenant.get("admin_bot_token"):
+        from aiogram import Bot as _Bot
+
+        temp_bot = _Bot(token=tenant["admin_bot_token"])
+        try:
+            me = await temp_bot.get_me()
+            admin_bot_username = me.username
+        finally:
+            await temp_bot.session.close()
+
+    if not admin_bot_username:
+        await callback.answer("Havola yaratib bo'lmadi.", show_alert=True)
+        return
+
+    token = await database.create_admin_invite(tenant_id)
+    link = f"https://t.me/{admin_bot_username}?start=admin_{token}"
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ Orqaga", callback_data="menu:admins")
+    await callback.message.edit_text(
+        f"🔗 <b>Taklifnoma havolasi</b> (bir martalik, faqat 1 kishi uchun ishlaydi):\n\n{link}\n\n"
+        "Buni jamoa a'zosiga yuboring — u bosib /start bersa, avtomatik admin bo'ladi.",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data == "menu:stats")
 async def show_stats(callback: CallbackQuery, tenant_id: int, tenant: dict = None):
     from services.plans import tenant_has_feature
@@ -228,6 +287,20 @@ async def show_stats(callback: CallbackQuery, tenant_id: int, tenant: dict = Non
             top = per_vacancy[0]
             lines.append("")
             lines.append(f"🔥 Eng faol vakansiya: <b>{top['vacancy_title']}</b> ({top['total']} ta ariza)")
+
+        retention = await database.get_retention_stats(tenant_id)
+        r30, r90 = retention["30"], retention["90"]
+        if sum(r30.values()) or sum(r90.values()):
+            lines.append("")
+            lines.append("📈 <b>Xodim natijasi</b> (qabul qilingandan keyin):")
+            if sum(r30.values()):
+                lines.append(
+                    f"   30 kun: ✅ {r30['good']} | 🟡 {r30['ok']} | ❌ {r30['left']}"
+                )
+            if sum(r90.values()):
+                lines.append(
+                    f"   90 kun: ✅ {r90['good']} | 🟡 {r90['ok']} | ❌ {r90['left']}"
+                )
     else:
         lines.append("")
         lines.append("💡 Trend, nomzodlar sifati va eng faol vakansiya — BUSINESS/PRO tarifida.")

@@ -46,10 +46,17 @@ def _build_dispatcher(fsm_storage: SQLiteStorage) -> Dispatcher:
     from admin_bot import (
         handlers_menu, handlers_vacancy_list, handlers_vacancy_edit,
         handlers_decisions, handlers_interview, handlers_export, handlers_billing,
+        handlers_invite,
     )
 
     dp = Dispatcher(storage=fsm_storage)
     dp.update.outer_middleware(TenantMiddleware())
+
+    # E'TIBOR: handlers_invite.router HECH QANDAY filtrsiz (IsAdminBot HAM
+    # EMAS) — chunki taklifnoma orqali kirayotgan kishi hali admin emas.
+    # Bu SkipHandler orqali o'ziga tegishli bo'lmagan hollarda pastdagi
+    # candidate_root/admin_root'ga yo'l beradi.
+    dp.include_router(handlers_invite.router)
 
     candidate_root = Router(name="candidate_root")
     candidate_root.message.filter(IsCandidateBot())
@@ -139,6 +146,11 @@ async def main():
     await fsm_storage.init()
 
     tasks = [_run_all_tenants(fsm_storage)]
+
+    from services.outcome_followup import run_outcome_followups
+
+    tasks.append(run_outcome_followups())
+    logger.info("Natija (retention) so'rovi fon vazifasi ishga tushirildi.")
 
     try:
         from userbot import is_userbot_configured, start_userbot

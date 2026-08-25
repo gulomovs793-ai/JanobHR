@@ -23,6 +23,7 @@ def _main_menu_keyboard(is_founder: bool = False):
     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
     builder.button(text="📅 Suhbat vaqtlari", callback_data="menu:interview")
     builder.button(text="📊 Statistika", callback_data="menu:stats")
+    builder.button(text="💡 Maslahatlar", callback_data="menu:tips")
     if is_founder:
         builder.button(text="🎯 Lidlar", callback_data="menu:leads")
     builder.adjust(1)
@@ -108,6 +109,70 @@ async def show_leads(callback: CallbackQuery, tenant: dict = None):
     if len(text) > 4000:
         text = text[:3990] + "\n\n…(qisqartirildi)"
 
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:tips")
+async def show_tips_menu(callback: CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Vakansiya yaratish", callback_data="tips:vacancy")
+    builder.button(text="❓ Savol turlari (filtr/AI/ovoz)", callback_data="tips:questions")
+    builder.button(text="📅 Suhbat rejasi", callback_data="tips:interview")
+    builder.button(text="📊 Statistika", callback_data="tips:stats")
+    builder.button(text="⬅️ Bosh menyu", callback_data="menu:main")
+    builder.adjust(1)
+    await callback.message.edit_text("💡 <b>Maslahatlar</b>\n\nQaysi mavzu qiziqtiradi?", reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+_TIPS = {
+    "vacancy": (
+        "➕ <b>Vakansiya yaratish</b>\n\n"
+        "1. Bosh menyu → \"➕ Yangi vakansiya\"\n"
+        "2. Lavozim nomini yozing (masalan: \"Sotuv menejeri\")\n"
+        "3. Talablarni 1-2 gapda yozing (yoki o'tkazib yuboring)\n"
+        "4. AI avtomatik savollar tuzadi — ko'rib chiqib saqlaysiz yoki o'zgartirasiz\n\n"
+        "Har bir vakansiyani keyinchalik \"✏️ Tahrirlash\" orqali o'zgartirish, "
+        "vaqtincha o'chirish yoki butunlay o'chirish mumkin."
+    ),
+    "questions": (
+        "❓ <b>Savol turlari</b>\n\n"
+        "🔒 <b>Filtr</b> — Ha/Yo'q savol. Salbiy javobda nomzod avtomatik rad etiladi.\n\n"
+        "🤖 <b>AI tahlil</b> — javob chuqur tekshiriladi (fikr, reja, tajriba kabi savollar).\n\n"
+        "🎙 <b>Ovozli (majburiy)</b> — nomzod OVOZ orqali javob beradi, audio to'g'ridan-to'g'ri "
+        "sizga yuboriladi, o'zingiz tinglab baholaysiz. Ko'pi bilan 1-2 ta savolga qo'llang.\n\n"
+        "⬜️ <b>Oddiy (belgisiz)</b> — faktik savol. Nomzod rezyume yuklasa, javob "
+        "AVTOMATIK topilishi mumkin, qayta so'ralmaydi."
+    ),
+    "interview": (
+        "📅 <b>Suhbat rejasi</b>\n\n"
+        "\"📅 Suhbat vaqtlari\" bo'limida:\n"
+        "• Bo'sh vaqt oralig'ini qo'shasiz\n"
+        "• Qabul qilingan nomzod shu vaqtlardan birini tanlaydi\n\n"
+        "\"⚙️ Sozlamalar\"da manzil, kim bilan suhbat bo'lishi va eslatma matnini "
+        "bir marta kiritib qo'ysangiz, har safar avtomatik yuboriladi."
+    ),
+    "stats": (
+        "📊 <b>Statistika</b>\n\n"
+        "• Bugun/hafta/oy — necha ariza kelayotganini ko'rasiz\n"
+        "• Nomzodlar sifati — AI qancha kuchli/o'rtacha/zaif deb topganini ko'rsatadi\n"
+        "• Eng faol vakansiya — qaysi e'lon ko'proq ariza olayotganini ko'rsatadi\n\n"
+        "Har bir vakansiyaning o'z sahifasida \"🏆 Eng yaxshi nomzodlar\" va "
+        "\"📥 Excel yuklab olish\" ham bor."
+    ),
+}
+
+
+@router.callback_query(F.data.startswith("tips:"))
+async def show_tip_detail(callback: CallbackQuery):
+    key = callback.data.split(":", 1)[1]
+    text = _TIPS.get(key)
+    if not text:
+        await callback.answer()
+        return
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ Orqaga", callback_data="menu:tips")
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()
 

@@ -11,27 +11,14 @@ from vacancies import build_questions
 router = Router(name="vacancy")
 
 
-@router.callback_query(ApplyForm.choosing_vacancy, F.data.startswith("vacancy:"))
-async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: int):
-    key = callback.data.split(":", 1)[1]
-    data = await state.get_data()
-    lang = data.get("lang", DEFAULT_LANG)
-
-    # Rus tili tanlangan bo'lsa, savollar birinchi marta AI orqali tarjima
-    # qilinadi va keyingi safarlar uchun bazada saqlanadi.
+async def prepare_vacancy_state(state: FSMContext, tenant_id: int, key: str, lang: str) -> dict | None:
+    """Vakansiyani FSM holatiga tayyorlaydi (savollar, rad etish xabari va h.k.).
+    Topilmasa/nofaol bo'lsa None qaytaradi. Ham oddiy ro'yxatdan tanlash, ham
+    to'g'ridan-to'g'ri havola (deep-link) orqali kirishda ishlatiladi."""
     vacancy = await database.get_vacancy_localized(tenant_id, key, lang)
     if not vacancy or not vacancy["active"]:
-        await callback.answer(t("vacancy_gone", lang), show_alert=True)
-        return
+        return None
 
-    # Vakansiyaning to'liq "suratini" (savollar, rad etish xabari va h.k.) shu
-    # yerda FSM holatiga saqlab qo'yamiz — shunda keyingi har bir savolda
-    # qayta-qayta bazaga murojaat qilishning hojati yo'q, va agar admin shu
-    # oraliqda vakansiyani tahrirlasa ham, nomzod boshlagan versiyasi bilan
-    # izchil davom etadi. `tenant_id`ni ham shu yerga yozamiz — keyingi
-    # bosqichlardagi yordamchi funksiyalar buni middleware'dan emas,
-    # to'g'ridan-to'g'ri FSM ma'lumotidan o'qiydi (chuqur chaqiruv
-    # zanjirlarida parametrni har joyga qo'shib chiqmaslik uchun).
     await state.update_data(
         tenant_id=tenant_id,
         vacancy_key=key,
@@ -46,6 +33,20 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: 
         followup_asked_indices=[],
         awaiting_followup_for=None,
     )
+    return vacancy
+
+
+@router.callback_query(ApplyForm.choosing_vacancy, F.data.startswith("vacancy:"))
+async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+    key = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+
+    vacancy = await prepare_vacancy_state(state, tenant_id, key, lang)
+    if not vacancy:
+        await callback.answer(t("vacancy_gone", lang), show_alert=True)
+        return
+
     await callback.message.edit_text(t("vacancy_selected", lang, title=vacancy["title"]))
 
     from handlers.resume_upfront import ask_resume_upfront

@@ -5,7 +5,7 @@ admin ro'yxatida bo'lsa — Admin menyu, aks holda — nomzod oqimi ko'rsatiladi
 (bitta bot, ikkala rol).
 """
 from aiogram import F, Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -46,13 +46,21 @@ async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str, ten
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
+async def cmd_start(message: Message, state: FSMContext, tenant_id: int, command: CommandObject = None):
     await state.clear()
 
     try:
         await database.record_bot_start(tenant_id, message.from_user.id)
     except Exception:
         pass  # Statistika yozib bolmasa ham, botning ishlashiga xalaqit bermasin.
+
+    # Aniq vakansiyaga havola orqali kirilgan bo'lsa (t.me/bot?start=vac_KEY) —
+    # til tanlangach, ro'yxatni ko'rsatmasdan to'g'ridan-to'g'ri O'SHA
+    # vakansiyaga o'tkazamiz (choose_language'da ishlatiladi).
+    deep_link_vacancy_key = None
+    if command and command.args and command.args.startswith("vac_"):
+        deep_link_vacancy_key = command.args[len("vac_"):]
+    await state.update_data(deep_link_vacancy_key=deep_link_vacancy_key)
 
     builder = InlineKeyboardBuilder()
     for code, label in LANGUAGES.items():
@@ -81,6 +89,21 @@ async def choose_language(callback: CallbackQuery, state: FSMContext, tenant_id:
         )
         await callback.answer()
         return
+
+    data = await state.get_data()
+    deep_link_vacancy_key = data.get("deep_link_vacancy_key")
+    if deep_link_vacancy_key:
+        from handlers.vacancy import prepare_vacancy_state
+
+        vacancy = await prepare_vacancy_state(state, tenant_id, deep_link_vacancy_key, lang)
+        if vacancy:
+            await callback.message.answer(t("vacancy_selected", lang, title=vacancy["title"]))
+            from handlers.resume_upfront import ask_resume_upfront
+
+            await ask_resume_upfront(callback.message, state)
+            await callback.answer()
+            return
+        # Vakansiya topilmasa/nofaol bo'lib qolgan bo'lsa — oddiy ro'yxatga tushamiz.
 
     await _show_vacancy_menu(callback.message, state, lang, tenant_id)
     await callback.answer()

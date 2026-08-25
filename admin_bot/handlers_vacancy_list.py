@@ -36,6 +36,9 @@ async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str
         await callback.answer("Bu vakansiya topilmadi (o'chirilgan bo'lishi mumkin).", show_alert=True)
         return
 
+    tenant = await database.get_tenant(tenant_id)
+    bot_username = tenant.get("bot_username") if tenant else None
+
     stats_list = await database.get_vacancy_stats(tenant_id)
     stats = next((s for s in stats_list if s["vacancy_key"] == key), None)
 
@@ -55,6 +58,9 @@ async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str
             f"📊 Jami: {stats['total']} | Kutilmoqda: {stats['pending']} | "
             f"Qabul: {stats['accepted']} | Rad: {stats['rejected']}"
         )
+    if bot_username and vacancy["active"]:
+        lines.append("")
+        lines.append(f"🔗 <b>Ariza havolasi</b> (e'lonlarga qo'ying):\nhttps://t.me/{bot_username}?start=vac_{key}")
 
     builder = InlineKeyboardBuilder()
     toggle_text = "🔴 Faolsizlantirish" if vacancy["active"] else "🟢 Faollashtirish"

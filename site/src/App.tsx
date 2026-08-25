@@ -164,11 +164,8 @@ function TelegramPreview() {
             <span className="font-mono text-[9px] text-primary-foreground/60">09:41</span>
           </div>
           <div className="space-y-3 p-3 sm:p-4">
-            <div className="ml-auto max-w-[78%] rounded-[15px] rounded-tr-[4px] bg-secondary/80 px-3 py-2.5 text-[11px] leading-relaxed text-foreground">
-              Marketing menejeri lavozimiga nomzodlarni yubordim.
-            </div>
             <div className="max-w-[86%] rounded-[15px] rounded-tl-[4px] bg-[#f5f9fe] px-3 py-3 text-[11px] leading-relaxed text-foreground shadow-sm">
-              Qabul qildim. Nomzodlarni tahlil qilishni boshlayman.
+              🆕 Yangi ariza — Marketing menejeri
               <div className="mt-3 rounded-xl border border-primary/10 bg-primary/[.055] p-2.5">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-display text-[10px] font-bold">Marketing menejeri</span>
@@ -187,9 +184,12 @@ function TelegramPreview() {
                 </div>
               </div>
             </div>
+            <div className="ml-auto max-w-[78%] rounded-[15px] rounded-tr-[4px] bg-secondary/80 px-3 py-2.5 text-[11px] leading-relaxed text-foreground">
+              ✅ Madina bilan suhbatga chaqiraman
+            </div>
             <div className="flex items-center gap-1.5 pl-1 text-[9px] text-muted-foreground">
               <span className="pulse-soft h-1.5 w-1.5 rounded-full bg-primary" />
-              JanobHR javob yozmoqda
+              Suhbat vaqti nomzodga yuborilmoqda
             </div>
           </div>
           <div className="border-t border-[#c9dbf2] bg-[#eaf1fb] px-3 py-2.5">
@@ -284,7 +284,7 @@ function Home() {
                   <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-secondary font-mono text-[9px] text-foreground">UZ</span>
                   <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-accent font-mono text-[9px] text-foreground">AI</span>
                 </span>
-                Odamlar qaror qiladi. JanobHR esa tayyorlaydi.
+                Odamlar qaror qiladi. AI esa saralab beradi.
               </div>
             </div>
             <div className="reveal reveal-delay-2 relative z-10 lg:pt-4">

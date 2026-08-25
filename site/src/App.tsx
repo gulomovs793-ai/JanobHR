@@ -366,7 +366,7 @@ function Home() {
               </div>
             </div>
             <div className="mt-14 grid gap-4 lg:grid-cols-12">
-              <FeatureCard icon={Search} eyebrow="01 / Saralash" title="AI savollarni o‘zi tuzadi" className="lg:col-span-5 lg:min-h-[330px]">
+              <FeatureCard icon={Search} eyebrow="01 / Saralash" title="AI savollarni o‘zi tuzib beradi" className="lg:col-span-5 lg:min-h-[330px]">
                 Lavozim nomini yozasiz — JanobHR filtr, chuqur tahlil va ovozli savollarni avtomatik tuzadi. Xohlasangiz, o‘zingiz ham qo‘lda yozishingiz mumkin.
               </FeatureCard>
               <FeatureCard icon={Mic} eyebrow="02 / Ovozli javob" title="ChatGPT bilan yozib bo‘lmaydi" className="lg:col-span-4 lg:min-h-[330px]">

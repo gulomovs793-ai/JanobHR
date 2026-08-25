@@ -18,7 +18,6 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
-  TrendingUp,
   X,
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -361,7 +360,7 @@ function Home() {
               <div>
                 <SectionLabel>Botda nima bor</SectionLabel>
                 <h2 className="max-w-[630px] font-display text-4xl font-extrabold leading-[1.02] tracking-[-.06em] sm:text-6xl">
-                  8 ta funksiya. <span className="text-primary">Bittasi ham ortiqcha emas.</span>
+                  7 ta funksiya. <span className="text-primary">Bittasi ham ortiqcha emas.</span>
                 </h2>
               </div>
             </div>
@@ -390,13 +389,10 @@ function Home() {
               <FeatureCard icon={CalendarClock} eyebrow="05 / Suhbat" title="Moslashuvchan vaqt" className="lg:col-span-5">
                 Qabul qilingan nomzod bo‘sh suhbat vaqtlaridan birini o‘zi tanlaydi. Manzil va eslatma avtomatik yuboriladi.
               </FeatureCard>
-              <FeatureCard icon={FileCheck2} eyebrow="06 / Rezyume" title="CV’dan avtomatik to‘ldiradi" className="lg:col-span-4">
+              <FeatureCard icon={FileCheck2} eyebrow="06 / Rezyume" title="CV’dan avtomatik to‘ldiradi" className="lg:col-span-6">
                 Nomzod rezyume yuklasa, oddiy faktik savollarga javob avtomatik topiladi — qayta so‘ralmaydi.
               </FeatureCard>
-              <FeatureCard icon={TrendingUp} eyebrow="07 / Natija" title="Xodim ishda qanday natija ko‘rsatayotganini kuzatadi" className="lg:col-span-8">
-                Qabul qilingandan 30 va 90 kun o‘tgach, o‘zingizdan so‘raladi: xodim hali ishlayaptimi? Vaqt o‘tishi bilan qaysi javoblar chindan yaxshi xodimni bashorat qilishini ko‘rasiz.
-              </FeatureCard>
-              <FeatureCard icon={Clock3} eyebrow="08 / Vaqt" title="HR vaqtini asraydi" className="lg:col-span-4">
+              <FeatureCard icon={Clock3} eyebrow="07 / Vaqt" title="HR vaqtini asraydi" className="lg:col-span-6">
                 Takroriy screeningga ketadigan energiya kamayadi. Jamoangiz esa suhbat va tanlovning o‘ziga e’tibor beradi.
               </FeatureCard>
             </div>

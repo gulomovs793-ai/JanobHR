@@ -14,7 +14,6 @@ import {
   Menu,
   MessageCircle,
   Mic,
-  Phone,
   QrCode,
   Search,
   ShieldCheck,
@@ -46,11 +45,11 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
       data-testid="link-brand"
       aria-label="JanobHR bosh sahifasi"
     >
-      <span className="relative flex h-10 w-10 items-center justify-center rounded-[13px] bg-primary text-primary-foreground shadow-[0_8px_20px_hsl(var(--primary)/.18)] transition-transform duration-300 group-hover:-rotate-6">
-        <span className="absolute h-[17px] w-[17px] rounded-full border-[3px] border-secondary" />
-        <span className="absolute left-[12px] top-[10px] h-[7px] w-[7px] rounded-full bg-accent" />
-        <span className="absolute bottom-[8px] right-[7px] h-[5px] w-[5px] rounded-full bg-secondary" />
-      </span>
+      <img
+        src="/logo.png"
+        alt="JanobHR"
+        className="h-10 w-10 rounded-[13px] object-cover shadow-[0_8px_20px_hsl(var(--primary)/.22)] transition-transform duration-300 group-hover:-rotate-6"
+      />
       <span className={`font-display font-extrabold tracking-[-.04em] text-foreground ${compact ? 'text-lg' : 'text-xl'}`}>
         Janob<span className="text-primary">HR</span>
       </span>
@@ -62,7 +61,7 @@ function TelegramGlyph({ size = 18 }: { size?: number }) {
   return <MessageCircle size={size} strokeWidth={1.8} aria-hidden="true" />;
 }
 
-function Nav({ onContact }: { onContact: () => void }) {
+function Nav() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -91,17 +90,18 @@ function Nav({ onContact }: { onContact: () => void }) {
           ))}
         </nav>
         <div className="hidden items-center gap-4 lg:flex">
-          <a href="tel:+998938572223" className="focus-ring text-[13px] font-semibold text-muted-foreground hover:text-primary" data-testid="link-nav-phone">
-            +998 93 857 22 23
+          <a href="https://t.me/janobHR_bot" target="_blank" rel="noreferrer" className="focus-ring text-[13px] font-semibold text-muted-foreground hover:text-primary" data-testid="link-nav-telegram">
+            @janobHR_bot
           </a>
-          <button
-            type="button"
-            onClick={onContact}
+          <a
+            href="https://t.me/janobHR_bot"
+            target="_blank"
+            rel="noreferrer"
             className="focus-ring inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-[13px] font-bold text-primary-foreground transition-[transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-[hsl(var(--primary)/.88)]"
             data-testid="button-nav-contact"
           >
-            Bog‘lanish <ArrowUpRight size={16} aria-hidden="true" />
-          </button>
+            Botni sinab ko‘rish <ArrowUpRight size={16} aria-hidden="true" />
+          </a>
         </div>
         <button
           type="button"
@@ -129,17 +129,16 @@ function Nav({ onContact }: { onContact: () => void }) {
               </a>
             ))}
           </nav>
-          <button
-            type="button"
-            onClick={() => {
-              closeMenu();
-              onContact();
-            }}
+          <a
+            href="https://t.me/janobHR_bot"
+            target="_blank"
+            rel="noreferrer"
+            onClick={closeMenu}
             className="focus-ring mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-4 font-bold text-primary-foreground"
             data-testid="button-mobile-contact"
           >
             Telegram orqali bog‘lanish <TelegramGlyph size={18} />
-          </button>
+          </a>
         </div>
       )}
     </header>
@@ -151,8 +150,8 @@ function TelegramPreview() {
     <div className="relative mx-auto w-full max-w-[470px]">
       <div className="absolute -right-8 top-10 h-44 w-44 rounded-full bg-secondary/45 blur-3xl" />
       <div className="absolute -bottom-8 left-2 h-36 w-36 rounded-full bg-accent/30 blur-3xl" />
-      <div className="relative rounded-[28px] border border-primary/15 bg-[#f3f1e9] p-3 shadow-[0_28px_70px_hsl(var(--primary)/.14)] sm:p-4">
-        <div className="overflow-hidden rounded-[20px] border border-[#d8d4c9] bg-[#e9e7df]">
+      <div className="relative rounded-[28px] border border-primary/15 bg-[#eaf1fb] p-3 shadow-[0_28px_70px_hsl(var(--primary)/.14)] sm:p-4">
+        <div className="overflow-hidden rounded-[20px] border border-[#c9dbf2] bg-[#dfebfa]">
           <div className="flex items-center justify-between bg-primary px-4 py-3 text-primary-foreground">
             <div className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-primary">
@@ -169,7 +168,7 @@ function TelegramPreview() {
             <div className="ml-auto max-w-[78%] rounded-[15px] rounded-tr-[4px] bg-secondary/80 px-3 py-2.5 text-[11px] leading-relaxed text-foreground">
               Marketing menejeri lavozimiga nomzodlarni yubordim.
             </div>
-            <div className="max-w-[86%] rounded-[15px] rounded-tl-[4px] bg-[#f8f7f2] px-3 py-3 text-[11px] leading-relaxed text-foreground shadow-sm">
+            <div className="max-w-[86%] rounded-[15px] rounded-tl-[4px] bg-[#f5f9fe] px-3 py-3 text-[11px] leading-relaxed text-foreground shadow-sm">
               Qabul qildim. Nomzodlarni tahlil qilishni boshlayman.
               <div className="mt-3 rounded-xl border border-primary/10 bg-primary/[.055] p-2.5">
                 <div className="mb-2 flex items-center justify-between">
@@ -194,8 +193,8 @@ function TelegramPreview() {
               JanobHR javob yozmoqda
             </div>
           </div>
-          <div className="border-t border-[#d8d4c9] bg-[#f3f1e9] px-3 py-2.5">
-            <div className="rounded-full border border-[#d8d4c9] bg-[#f8f7f2] px-3 py-2 text-[9px] text-muted-foreground">
+          <div className="border-t border-[#c9dbf2] bg-[#eaf1fb] px-3 py-2.5">
+            <div className="rounded-full border border-[#c9dbf2] bg-[#f5f9fe] px-3 py-2 text-[9px] text-muted-foreground">
               Xabar yozing...
             </div>
           </div>
@@ -249,22 +248,9 @@ function FeatureCard({ icon: Icon, eyebrow, title, children, className = '' }: {
 }
 
 function Home() {
-  const [contactOpen, setContactOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const copyPhone = async () => {
-    try {
-      await navigator.clipboard.writeText('+998 93 857 22 23');
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2200);
-    } catch {
-      setCopied(false);
-    }
-  };
-
   return (
     <div className="grain min-h-[100dvh] overflow-hidden bg-background">
-      <Nav onContact={() => setContactOpen(true)} />
+      <Nav />
 
       <main>
         <section id="bosh-sahifa" className="site-grid relative scroll-mt-20 border-b border-border pt-[76px]">
@@ -280,14 +266,15 @@ function Home() {
                 JanobHR — Telegram ichida nomzodlarni saralaydigan, baholaydigan va reytinglaydigan AI yordamchi. Siz esa muhim qarorlar uchun ko‘proq vaqtga ega bo‘lasiz.
               </p>
               <div className="reveal reveal-delay-3 mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <button
-                  type="button"
-                  onClick={() => setContactOpen(true)}
+                <a
+                  href="https://t.me/janobHR_bot"
+                  target="_blank"
+                  rel="noreferrer"
                   className="focus-ring inline-flex items-center justify-center gap-3 rounded-full bg-primary px-6 py-4 text-sm font-bold text-primary-foreground shadow-[0_12px_24px_hsl(var(--primary)/.16)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-[hsl(var(--primary)/.88)]"
                   data-testid="button-hero-contact"
                 >
-                  JanobHR bilan gaplashish <ArrowUpRight size={17} />
-                </button>
+                  JanobHR bilan boshlash <ArrowUpRight size={17} />
+                </a>
                 <a href="#qanday-ishlaydi" className="focus-ring inline-flex items-center justify-center gap-2 rounded-full px-5 py-4 text-sm font-bold text-primary transition-colors hover:bg-secondary/30" data-testid="link-hero-how">
                   Qanday ishlaydi <ArrowDown size={16} />
                 </a>
@@ -310,7 +297,7 @@ function Home() {
           </div>
         </section>
 
-        <section className="border-b border-border bg-[#eeeade]">
+        <section className="border-b border-border bg-[#e8f0fb]">
           <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">
             <p className="max-w-[285px] text-sm font-semibold leading-5 text-foreground/75">Rekrutmentdagi takroriy ishlarni jim va puxta bajaradigan yordamchi.</p>
             <div className="flex flex-wrap gap-x-7 gap-y-3 font-mono text-[10px] font-bold uppercase tracking-[.13em] text-primary/65">
@@ -380,7 +367,7 @@ function Home() {
           </div>
         </section>
 
-        <section id="imkoniyatlar" className="scroll-mt-20 border-y border-border bg-[#e6ebe4] px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+        <section id="imkoniyatlar" className="scroll-mt-20 border-y border-border bg-[#e3edfa] px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
           <div className="mx-auto max-w-[1240px]">
             <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
               <div>
@@ -462,7 +449,7 @@ function Home() {
           </div>
         </section>
 
-        <section className="relative overflow-hidden bg-[#d8e3d7] px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+        <section className="relative overflow-hidden bg-[#cfe1f7] px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
           <div className="absolute -right-16 top-[-100px] h-[440px] w-[440px] rounded-full border border-primary/10" />
           <div className="absolute -right-4 top-[-42px] h-[325px] w-[325px] rounded-full border border-primary/10" />
           <div className="relative mx-auto grid max-w-[1240px] gap-12 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-24">
@@ -575,31 +562,21 @@ function Home() {
                 Yaxshi nomzodlar kutib turmaydi.
               </h2>
               <p className="mt-7 max-w-[500px] text-base leading-7 text-primary-foreground/70 sm:text-lg">
-                JanobHR jamoangizga qanday yordam berishi mumkinligini birga ko‘rib chiqamiz. Bizga yozing — javob beramiz.
+                Bepul sinov uchun botga /start yozing — birinchi 5 ta ariza sizga BUTUNLAY BEPUL.
               </p>
             </div>
             <div className="rounded-[23px] border border-primary-foreground/15 bg-primary-foreground/[.07] p-6 sm:p-8">
-              <p className="font-mono text-[9px] uppercase tracking-[.17em] text-secondary">Bog‘lanish</p>
-              <a href="https://t.me/F45746" target="_blank" rel="noreferrer" className="focus-ring mt-5 flex items-center justify-between border-b border-primary-foreground/15 pb-5" data-testid="link-contact-telegram">
-                <span className="flex items-center gap-3"><TelegramGlyph size={19} /><span><span className="block text-xs text-primary-foreground/55">Telegram</span><span className="mt-0.5 block text-lg font-bold">@F45746</span></span></span>
+              <p className="font-mono text-[9px] uppercase tracking-[.17em] text-secondary">Telegram’da boshlang</p>
+              <a href="https://t.me/janobHR_bot" target="_blank" rel="noreferrer" className="focus-ring mt-5 flex items-center justify-between" data-testid="link-contact-telegram">
+                <span className="flex items-center gap-3"><TelegramGlyph size={19} /><span><span className="block text-xs text-primary-foreground/55">Telegram bot</span><span className="mt-0.5 block text-lg font-bold">@janobHR_bot</span></span></span>
                 <ArrowUpRight size={19} />
               </a>
-              <div className="flex items-center justify-between gap-4 pt-5">
-                <a href="tel:+998938572223" className="focus-ring flex items-center gap-3" data-testid="link-contact-phone">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary/20"><Phone size={16} /></span>
-                  <span><span className="block text-xs text-primary-foreground/55">Telefon</span><span className="mt-0.5 block text-base font-bold">+998 93 857 22 23</span></span>
-                </a>
-                <button type="button" onClick={copyPhone} className="focus-ring rounded-full border border-primary-foreground/20 p-2.5 text-primary-foreground/65 transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground" aria-label="Telefon raqamini nusxalash" data-testid="button-copy-phone">
-                  {copied ? <Check size={16} /> : <CopyIcon />}
-                </button>
-              </div>
-              {copied && <p className="mt-4 text-xs font-semibold text-secondary" data-testid="status-phone-copied">Telefon raqami nusxalandi</p>}
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="bg-[#123d3a] px-5 py-8 text-primary-foreground/75 sm:px-8 lg:px-10">
+      <footer className="bg-[#0d1e30] px-5 py-8 text-primary-foreground/75 sm:px-8 lg:px-10">
         <div className="mx-auto flex max-w-[1240px] flex-col gap-7 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <BrandMark compact />
@@ -608,38 +585,13 @@ function Home() {
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs font-semibold">
             <a href="#bosh-sahifa" className="focus-ring hover:text-secondary" data-testid="link-footer-home">Bosh sahifa</a>
             <a href="#qanday-ishlaydi" className="focus-ring hover:text-secondary" data-testid="link-footer-process">Qanday ishlaydi</a>
-            <a href="https://t.me/F45746" target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 hover:text-secondary" data-testid="link-footer-telegram"><TelegramGlyph size={15} /> @F45746</a>
+            <a href="https://t.me/janobHR_bot" target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 hover:text-secondary" data-testid="link-footer-telegram"><TelegramGlyph size={15} /> @janobHR_bot</a>
           </div>
           <span className="font-mono text-[9px] uppercase tracking-[.15em] text-primary-foreground/35">© 2024 JanobHR</span>
         </div>
       </footer>
-
-      {contactOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/35 p-4 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="contact-dialog-title">
-          <div className="w-full max-w-[470px] rounded-[25px] border border-border bg-background p-6 shadow-[0_24px_80px_hsl(var(--foreground)/.2)] sm:p-8">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-mono text-[9px] font-bold uppercase tracking-[.17em] text-primary">JanobHR</p>
-                <h2 id="contact-dialog-title" className="mt-3 font-display text-3xl font-extrabold tracking-[-.05em]">Gaplashamizmi?</h2>
-              </div>
-              <button type="button" onClick={() => setContactOpen(false)} className="focus-ring flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-primary" aria-label="Muloqot oynasini yopish" data-testid="button-close-contact"><X size={17} /></button>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">Savolingiz yoki rekrutment jarayoningiz haqida yozing. Sizga Telegram’da javob beramiz.</p>
-            <a href="https://t.me/F45746" target="_blank" rel="noreferrer" onClick={() => setContactOpen(false)} className="focus-ring mt-7 flex items-center justify-between rounded-2xl bg-primary px-5 py-4 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5" data-testid="link-dialog-telegram">
-              Telegram’da yozish <ArrowUpRight size={17} />
-            </a>
-            <a href="tel:+998938572223" onClick={() => setContactOpen(false)} className="focus-ring mt-2 flex items-center gap-3 rounded-2xl border border-border px-5 py-4 text-sm font-bold text-primary hover:bg-secondary/20" data-testid="link-dialog-phone">
-              <Phone size={17} /> +998 93 857 22 23
-            </a>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-function CopyIcon() {
-  return <Clipboard size={16} />;
 }
 
 function Router() {

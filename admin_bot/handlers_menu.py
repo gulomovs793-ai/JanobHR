@@ -25,6 +25,7 @@ def _main_menu_keyboard(is_founder: bool = False):
     builder.button(text="📊 Statistika", callback_data="menu:stats")
     builder.button(text="💡 Maslahatlar", callback_data="menu:tips")
     builder.button(text="👥 Adminlar", callback_data="menu:admins")
+    builder.button(text="💳 Tarifni yangilash", callback_data="menu:renew")
     if is_founder:
         builder.button(text="🎯 Lidlar", callback_data="menu:leads")
     builder.adjust(1)
@@ -175,6 +176,33 @@ async def show_tip_detail(callback: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.button(text="⬅️ Orqaga", callback_data="menu:tips")
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:renew")
+async def show_renew_menu(callback: CallbackQuery, tenant_id: int, tenant: dict = None):
+    from services.plans import PLANS
+
+    lines = ["💳 <b>Tarifni yangilash</b>", ""]
+    if tenant and tenant.get("status") == "trial":
+        lines.append("Siz hozir BEPUL SINOV rejimidasiz.")
+    elif tenant and tenant.get("plan") and PLANS.get(tenant["plan"]):
+        plan = PLANS[tenant["plan"]]
+        used = tenant.get("applications_used_in_period", 0)
+        limit = tenant.get("plan_applications_limit")
+        expires = (tenant.get("plan_expires_at") or "")[:10]
+        lines.append(f"Joriy tarif: <b>{plan['name']}</b>")
+        lines.append(f"Ishlatilgan: {used}/{limit} ariza | Tugash sanasi: {expires}")
+    lines.append("")
+    lines.append(
+        "Xohlagan vaqtingizda yangi tarif tanlashingiz mumkin — muddati "
+        "tugashini kutish shart emas. Yangi tarif to'lov tasdiqlangan zahoti "
+        "faollashadi (yangi davr HOZIRDAN boshlanadi):"
+    )
+
+    from handlers.questions import _tariff_choice_keyboard
+
+    await callback.message.edit_text("\n".join(lines), reply_markup=_tariff_choice_keyboard())
     await callback.answer()
 
 

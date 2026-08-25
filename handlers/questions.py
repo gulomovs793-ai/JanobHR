@@ -84,14 +84,15 @@ _SHORT_ANSWER_SKIP_CHARS = 20
 # AI ba'zan to'g'ri javoblarni ham noto'g'ri "aloqasiz" deb belgilashi mumkin —
 # shuning uchun bitta xato tufayli butun arizani yo'qotmaslik uchun, nomzodga
 # SHU SAVOLNI qayta javob berishga necha marta imkoniyat berilishi (ketma-ket
-# necha marta "aloqasiz" chiqsa, arizani chindan rad etamiz).
-_MAX_IRRELEVANT_RETRIES = 2
+# necha marta "aloqasiz" chiqsa, arizani chindan rad etamiz). Yumshatilgan —
+# oldin 2 edi, haqiqiy nomzodlar tasodifan bir marta chalkashib qolishi mumkin.
+_MAX_IRRELEVANT_RETRIES = 3
 
 # Javob "ai_yozgan" (ChatGPT orqali yozilgan bo'lishi mumkin) deb belgilansa,
 # nomzodga o'z so'zi bilan qayta yozish uchun cheklangan imkoniyat beriladi —
-# bu ham 100% ishonchli aniqlash emas, shuning uchun darhol rad etmaymiz,
-# lekin ketma-ket ikkinchi marta ham shubhali chiqsa, ariza rad etiladi.
-_MAX_AI_SUSPECT_RETRIES = 1
+# bu ham 100% ishonchli aniqlash emas, shuning uchun darhol rad etmaymiz.
+# Yumshatilgan — oldin 1 edi (juda qattiq), endi 2 marta imkoniyat beriladi.
+_MAX_AI_SUSPECT_RETRIES = 2
 
 # Javob mavzuga oid, lekin sifati past yoki abstrakt bo'lsa (aniq raqam/misolsiz),
 # bot BITTA marta (har bir savol uchun ko'pi bilan bir marta) aniqlashtiruvchi

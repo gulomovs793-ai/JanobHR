@@ -48,7 +48,7 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
         alt="JanobHR"
         className="h-10 w-10 rounded-[13px] object-cover shadow-[0_8px_20px_hsl(var(--primary)/.22)] transition-transform duration-300 group-hover:-rotate-6"
       />
-      <span className={`font-display font-extrabold tracking-[-.04em] text-foreground ${compact ? 'text-lg' : 'text-xl'}`}>
+      <span className={`font-display font-extrabold tracking-[-.04em] ${compact ? 'text-primary-foreground' : 'text-foreground'} ${compact ? 'text-lg' : 'text-xl'}`}>
         Janob<span className="text-primary">HR</span>
       </span>
     </a>
@@ -557,18 +557,22 @@ function Home() {
         </section>
       </main>
 
-      <footer className="bg-[#0d1e30] px-5 py-8 text-primary-foreground/75 sm:px-8 lg:px-10">
-        <div className="mx-auto flex max-w-[1240px] flex-col gap-7 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <BrandMark compact />
-            <p className="mt-3 text-xs text-primary-foreground/45">Odamlar uchun yaxshi jamoalar.</p>
+      <footer className="bg-[#0d1e30] px-5 py-10 text-primary-foreground/75 sm:px-8 lg:px-10">
+        <div className="mx-auto max-w-[1240px]">
+          <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-[280px]">
+              <BrandMark compact />
+              <p className="mt-3 text-sm text-primary-foreground/50">Telegram orqali ishlaydigan HR bot.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-7 gap-y-3 text-sm font-semibold">
+              <a href="#bosh-sahifa" className="focus-ring hover:text-secondary" data-testid="link-footer-home">Bosh sahifa</a>
+              <a href="#qanday-ishlaydi" className="focus-ring hover:text-secondary" data-testid="link-footer-process">Qanday ishlaydi</a>
+              <a href="https://t.me/janobHR_bot" target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 hover:text-secondary" data-testid="link-footer-telegram"><TelegramGlyph size={15} /> @janobHR_bot</a>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs font-semibold">
-            <a href="#bosh-sahifa" className="focus-ring hover:text-secondary" data-testid="link-footer-home">Bosh sahifa</a>
-            <a href="#qanday-ishlaydi" className="focus-ring hover:text-secondary" data-testid="link-footer-process">Qanday ishlaydi</a>
-            <a href="https://t.me/janobHR_bot" target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 hover:text-secondary" data-testid="link-footer-telegram"><TelegramGlyph size={15} /> @janobHR_bot</a>
+          <div className="mt-9 border-t border-primary-foreground/10 pt-6">
+            <span className="font-mono text-[10px] uppercase tracking-[.15em] text-primary-foreground/40">© 2026 JanobHR</span>
           </div>
-          <span className="font-mono text-[9px] uppercase tracking-[.15em] text-primary-foreground/35">© 2024 JanobHR</span>
         </div>
       </footer>
     </div>

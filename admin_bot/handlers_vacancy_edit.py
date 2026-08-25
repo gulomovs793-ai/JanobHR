@@ -403,16 +403,66 @@ async def start_edit_single_question(callback: CallbackQuery, state: FSMContext,
 
     current = vacancy["questions"][idx]
     await state.update_data(editing_vacancy_key=key, editing_question_index=idx)
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🗑 Bu savolni o'chirish", callback_data=f"vacdelq:{key}:{idx}")
+    builder.button(text="⬅️ Orqaga", callback_data=f"vaceditlist:{key}")
+    builder.adjust(1)
+
     await callback.message.edit_text(
         f"✏️ <b>{idx + 1}-savol</b>\n\nJoriy matn:\n<i>{current['text']}</i>\n\n"
         "Yangi matnni yozing. Ixtiyoriy ravishda oxiriga belgi qo'shishingiz mumkin:\n"
         "  <code>| filter</code> — majburiy filtr savoli\n"
         "  <code>| voice</code> — ovozli xabar orqali javob va AI tahlil\n"
         "  <code>| score</code> — AI chuqur tahlil qiladi\n\n"
-        "Hech qanday belgi qo'shmasangiz, oddiy savol bo'lib qoladi."
+        "Hech qanday belgi qo'shmasangiz, oddiy savol bo'lib qoladi.\n\n"
+        "Yoki pastdagi tugma orqali bu savolni butunlay o'chiring:",
+        reply_markup=builder.as_markup(),
     )
     await state.set_state(AdminForm.editing_single_question)
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("vacdelq:"))
+async def confirm_delete_question(callback: CallbackQuery, tenant_id: int):
+    _, key, idx_str = callback.data.split(":")
+    idx = int(idx_str)
+    vacancy = await database.get_vacancy(tenant_id, key)
+    if not vacancy or idx >= len(vacancy["questions"]):
+        await callback.answer("Bu savol topilmadi.", show_alert=True)
+        return
+
+    q_text = vacancy["questions"][idx]["text"]
+    short = q_text if len(q_text) <= 80 else q_text[:80] + "…"
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⚠️ Ha, o'chirish", callback_data=f"vacdelqconfirm:{key}:{idx}")
+    builder.button(text="Bekor qilish", callback_data=f"vaceditq:{key}:{idx}")
+    builder.adjust(1)
+
+    await callback.message.edit_text(
+        f"<b>{idx + 1}-savolni</b> o'chirmoqchimisiz?\n\n<i>{short}</i>",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("vacdelqconfirm:"))
+async def delete_question(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+    _, key, idx_str = callback.data.split(":")
+    idx = int(idx_str)
+    vacancy = await database.get_vacancy(tenant_id, key)
+    if not vacancy or idx >= len(vacancy["questions"]):
+        await callback.answer("Bu savol topilmadi.", show_alert=True)
+        return
+
+    updated_questions = list(vacancy["questions"])
+    updated_questions.pop(idx)
+    await database.update_vacancy(tenant_id, key, questions=updated_questions)
+    await state.clear()
+
+    await callback.answer("Savol o'chirildi.", show_alert=True)
+    await show_question_picker(callback, tenant_id)
 
 
 @router.message(AdminForm.editing_single_question, F.text)

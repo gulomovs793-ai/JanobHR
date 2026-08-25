@@ -331,7 +331,7 @@ function Home() {
               <div>
                 <SectionLabel>Jarayon</SectionLabel>
                 <h2 className="max-w-[440px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-5xl">
-                  3 ta qadam. Boshqa hech narsa qilish shart emas.
+                  Arzimagan 3 ta qadam. Ortiqcha muammolarsiz.
                 </h2>
                 <p className="mt-6 max-w-[360px] text-base leading-7 text-muted-foreground">
                   Nomzod qayerdan kelishidan qat’i nazar (e’lon, QR-kod yoki havola orqali) — hammasi shu 3 qadamdan o‘tadi.

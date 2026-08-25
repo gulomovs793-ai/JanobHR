@@ -119,12 +119,26 @@ async def _format_application_text(app: dict) -> str:
 
 
 async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
-    """Anketani shu MIJOZNING o'z boti orqali, uning har bir adminiga
-    shaxsiy xabar sifatida yuboradi."""
+    """Anketani mijozning har bir adminiga shaxsiy xabar sifatida yuboradi.
+
+    MUHIM: rezyume/video/ovozli javob FAYLLARI (`bot` — chaqiruvchi uzatgan
+    NOMZOD-BOT instansiyasi) orqali yuboriladi, chunki ularning file_id'lari
+    aynan O'SHA botga bog'liq (boshqa bot tokeni bilan ishlamaydi). LEKIN
+    qaror tugmalari ("✅ Suhbatga chaqirish"/"❌ Rad etish") bo'lgan asosiy
+    xabar albatta ADMIN PANEL-BOT orqali yuborilishi SHART — aks holda admin
+    tugmani bossa ham, callback botlar orasidagi yo'nalish (IsAdminBot/
+    IsCandidateBot filtri, bot TOKENIga qarab aniqlanadi) mos kelmagani uchun
+    HECH QAYERGA yetib bormaydi (o'lik tugma)."""
     tenant = await database.get_tenant(tenant_id)
     if not tenant or not tenant["admin_user_ids"]:
         logger.warning(
             "Mijoz (id=%s) uchun admin ID topilmadi — anketa hech kimga yuborilmadi (app_id=%s).",
+            tenant_id, app_id,
+        )
+        return
+    if not tenant.get("admin_bot_token"):
+        logger.warning(
+            "Mijoz (id=%s) uchun admin-bot tokeni yo'q — anketa yuborilmadi (app_id=%s).",
             tenant_id, app_id,
         )
         return
@@ -146,44 +160,52 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
         if vacancy:
             voice_key_to_text = {q["key"]: q["text"] for q in build_questions(vacancy)}
 
-    for admin_id in tenant["admin_user_ids"]:
-        try:
-            if app.get("resume_file_id"):
-                await bot.send_document(
-                    chat_id=admin_id, document=app["resume_file_id"],
-                    caption=f"📄 {app['full_name']} — {app['vacancy_title']}",
-                )
-            elif app.get("video_file_id"):
-                await bot.send_video(
-                    chat_id=admin_id, video=app["video_file_id"],
-                    caption=f"🎥 {app['full_name']} — {app['vacancy_title']}",
-                )
-
-            for key, file_id in voice_answers.items():
-                q_text = voice_key_to_text.get(key, key)
-                short_q = q_text if len(q_text) <= 250 else q_text[:250] + "…"
-                try:
-                    await bot.send_voice(
-                        chat_id=admin_id, voice=file_id,
-                        caption=f"🎙 {app['full_name']} — {short_q}",
+    admin_bot = Bot(token=tenant["admin_bot_token"])
+    try:
+        for admin_id in tenant["admin_user_ids"]:
+            try:
+                # Fayllar — NOMZOD-BOT orqali (file_id shu botga bog'liq).
+                if app.get("resume_file_id"):
+                    await bot.send_document(
+                        chat_id=admin_id, document=app["resume_file_id"],
+                        caption=f"📄 {app['full_name']} — {app['vacancy_title']}",
                     )
-                except Exception:
-                    logger.exception(
-                        "Ovozli javobni adminga yuborib bo'lmadi (app_id=%s, key=%s).", app_id, key,
+                elif app.get("video_file_id"):
+                    await bot.send_video(
+                        chat_id=admin_id, video=app["video_file_id"],
+                        caption=f"🎥 {app['full_name']} — {app['vacancy_title']}",
                     )
 
-            sent = await bot.send_message(chat_id=admin_id, text=text, reply_markup=builder.as_markup())
-            await database.add_admin_message(tenant_id, app_id, admin_id, sent.message_id)
-        except Exception:
-            logger.exception(
-                "Admin (id=%s) ga anketa yuborib bo'lmadi (app_id=%s, tenant=%s).",
-                admin_id, app_id, tenant_id,
-            )
+                for key, file_id in voice_answers.items():
+                    q_text = voice_key_to_text.get(key, key)
+                    short_q = q_text if len(q_text) <= 250 else q_text[:250] + "…"
+                    try:
+                        await bot.send_voice(
+                            chat_id=admin_id, voice=file_id,
+                            caption=f"🎙 {app['full_name']} — {short_q}",
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Ovozli javobni adminga yuborib bo'lmadi (app_id=%s, key=%s).", app_id, key,
+                        )
+
+                # Qaror tugmali ASOSIY xabar — ADMIN PANEL-BOT orqali (SHART).
+                sent = await admin_bot.send_message(
+                    chat_id=admin_id, text=text, reply_markup=builder.as_markup()
+                )
+                await database.add_admin_message(tenant_id, app_id, admin_id, sent.message_id)
+            except Exception:
+                logger.exception(
+                    "Admin (id=%s) ga anketa yuborib bo'lmadi (app_id=%s, tenant=%s).",
+                    admin_id, app_id, tenant_id,
+                )
+    finally:
+        await admin_bot.session.close()
 
 
 async def notify_admin_slot_selected(tenant_id: int, app_id: int, slot: str, bot: Bot):
     tenant = await database.get_tenant(tenant_id)
-    if not tenant or not tenant["admin_user_ids"]:
+    if not tenant or not tenant["admin_user_ids"] or not tenant.get("admin_bot_token"):
         return
 
     app = await database.get_application(tenant_id, app_id)
@@ -194,8 +216,12 @@ async def notify_admin_slot_selected(tenant_id: int, app_id: int, slot: str, bot
         f"📅 <b>{app['full_name']}</b> (@{app['username'] or '—'}) suhbat uchun "
         f"vaqtni tanladi: <b>{slot}</b>"
     )
-    for admin_id in tenant["admin_user_ids"]:
-        try:
-            await bot.send_message(chat_id=admin_id, text=text)
-        except Exception:
-            logger.exception("Admin (id=%s) ga vaqt tanlovi haqida xabar berib bo'lmadi.", admin_id)
+    admin_bot = Bot(token=tenant["admin_bot_token"])
+    try:
+        for admin_id in tenant["admin_user_ids"]:
+            try:
+                await admin_bot.send_message(chat_id=admin_id, text=text)
+            except Exception:
+                logger.exception("Admin (id=%s) ga vaqt tanlovi haqida xabar berib bo'lmadi.", admin_id)
+    finally:
+        await admin_bot.session.close()

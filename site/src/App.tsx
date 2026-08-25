@@ -360,7 +360,7 @@ function Home() {
               <div>
                 <SectionLabel>Botda nima bor</SectionLabel>
                 <h2 className="max-w-[630px] font-display text-4xl font-extrabold leading-[1.02] tracking-[-.06em] sm:text-6xl">
-                  7 ta funksiya. <span className="text-primary">Bittasi ham ortiqcha emas.</span>
+                  Ishga olishni osonlashtiradigan <span className="text-primary">7 ta funksiya.</span>
                 </h2>
               </div>
             </div>

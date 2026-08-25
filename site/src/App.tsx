@@ -259,7 +259,7 @@ function Home() {
                 <Sparkles size={13} className="text-accent" /> Telegram’da ishlaydigan HR bot
               </div>
               <h1 className="reveal reveal-delay-1 mt-7 max-w-[720px] font-display text-[clamp(3rem,5.3vw,5.2rem)] font-extrabold leading-[.96] tracking-[-.075em] text-foreground">
-                Nomzodni <span className="text-primary">AI saralaydi.</span><br />Qarorni siz qabul qilasiz.
+                Nomzodni <span className="text-primary">AI saralaydi.</span><br />Siz esa tanlaysiz.
               </h1>
               <p className="reveal reveal-delay-2 mt-7 max-w-[530px] text-[17px] leading-7 text-muted-foreground sm:text-lg">
                 Vakansiya yaratasiz — nomzodlar Telegram botga o‘zi ariza topshiradi, AI javoblarini baholaydi, siz esa faqat mos kelganlar bilan suhbatlashasiz. Birinchi 5 ta ariza — bepul.

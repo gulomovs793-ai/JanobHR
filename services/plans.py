@@ -45,7 +45,7 @@ PLANS = {
     "pro": {
         "key": "pro",
         "name": "🟣 PRO",
-        "price": 999_000,
+        "price": 1_000,
         "applications": 300,
         "vacancies": 10,
         "days": 90,

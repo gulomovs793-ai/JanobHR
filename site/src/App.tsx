@@ -364,9 +364,6 @@ function Home() {
                   8 ta funksiya. <span className="text-primary">Bittasi ham ortiqcha emas.</span>
                 </h2>
               </div>
-              <p className="max-w-[290px] text-sm leading-6 text-muted-foreground lg:pb-1">
-                Har biri real muammoni yechish uchun qo‘shilgan — "chiroyli bo‘lsin" deb emas.
-              </p>
             </div>
             <div className="mt-14 grid gap-4 lg:grid-cols-12">
               <FeatureCard icon={Search} eyebrow="01 / Saralash" title="AI savollarni o‘zi tuzadi" className="lg:col-span-5 lg:min-h-[330px]">

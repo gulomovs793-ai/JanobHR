@@ -369,7 +369,7 @@ function Home() {
               <FeatureCard icon={Search} eyebrow="01 / Saralash" title="AI savollarni o‘zi tuzib beradi" className="lg:col-span-5 lg:min-h-[330px]">
                 Lavozim nomini yozasiz — JanobHR filtr, chuqur tahlil va ovozli savollarni avtomatik tuzadi. Xohlasangiz, o‘zingiz ham qo‘lda yozishingiz mumkin.
               </FeatureCard>
-              <FeatureCard icon={Mic} eyebrow="02 / Ovozli javob" title="ChatGPT bilan yozib bo‘lmaydi" className="lg:col-span-4 lg:min-h-[330px]">
+              <FeatureCard icon={Mic} eyebrow="02 / Ovozli javob" title="Sizni endi alday olishmaydi" className="lg:col-span-4 lg:min-h-[330px]">
                 Muhim savolga nomzod OVOZLI xabar bilan javob beradi. Tayyorlab, sun’iy intellekt bilan yozib olingan javob emas — jonli, tabiiy javob.
               </FeatureCard>
               <FeatureCard icon={ShieldCheck} eyebrow="03 / Filtr" title="Mos kelmasa — avtomatik rad" className="lg:col-span-3 lg:min-h-[330px]">

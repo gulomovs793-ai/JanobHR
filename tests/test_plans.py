@@ -26,6 +26,11 @@ def test_no_tenant_or_no_plan_denies():
     assert tenant_has_feature({"status": "active", "plan": None}, "voice") is False
 
 
+def test_plan_prices_increase_with_tier():
+    prices = [PLANS[key]["price"] for key in PLAN_ORDER]
+    assert prices == sorted(prices)
+
+
 def test_plan_limits_increase_with_tier():
     for key in ("applications", "vacancies", "days"):
         values = [PLANS[p][key] for p in PLAN_ORDER]

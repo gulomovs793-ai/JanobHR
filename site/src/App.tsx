@@ -387,7 +387,7 @@ function Home() {
                   Skanerlagan kishi to‘g‘ridan-to‘g‘ri shu vakansiyaga ariza topshiradi
                 </div>
               </div>
-              <FeatureCard icon={CalendarClock} eyebrow="05 / Suhbat" title="Vaqtni o‘zi rejalashtiradi" className="lg:col-span-5">
+              <FeatureCard icon={CalendarClock} eyebrow="05 / Suhbat" title="Moslashuvchan vaqt" className="lg:col-span-5">
                 Qabul qilingan nomzod bo‘sh suhbat vaqtlaridan birini o‘zi tanlaydi. Manzil va eslatma avtomatik yuboriladi.
               </FeatureCard>
               <FeatureCard icon={FileCheck2} eyebrow="06 / Rezyume" title="CV’dan avtomatik to‘ldiradi" className="lg:col-span-4">

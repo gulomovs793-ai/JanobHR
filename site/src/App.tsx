@@ -1,0 +1,674 @@
+import { type ReactNode, useEffect, useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  ArrowDown,
+  ArrowUpRight,
+  Bot,
+  CalendarClock,
+  Check,
+  ChevronDown,
+  CircleCheck,
+  Clipboard,
+  Clock3,
+  FileCheck2,
+  Menu,
+  MessageCircle,
+  Mic,
+  Phone,
+  QrCode,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  X,
+} from 'lucide-react';
+import { ErrorBoundary } from '@/components/error-boundary';
+import { Toaster } from '@/components/ui/toaster';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import NotFound from '@/pages/not-found';
+import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
+
+const queryClient = new QueryClient();
+
+const navItems = [
+  { label: 'Muammo', href: '#muammo' },
+  { label: 'Qanday ishlaydi', href: '#qanday-ishlaydi' },
+  { label: 'Imkoniyatlar', href: '#imkoniyatlar' },
+  { label: 'Tariflar', href: '#tariflar' },
+  { label: 'FAQ', href: '#faq' },
+];
+
+function BrandMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <a
+      href="#bosh-sahifa"
+      className="focus-ring group inline-flex items-center gap-3"
+      data-testid="link-brand"
+      aria-label="JanobHR bosh sahifasi"
+    >
+      <span className="relative flex h-10 w-10 items-center justify-center rounded-[13px] bg-primary text-primary-foreground shadow-[0_8px_20px_hsl(var(--primary)/.18)] transition-transform duration-300 group-hover:-rotate-6">
+        <span className="absolute h-[17px] w-[17px] rounded-full border-[3px] border-secondary" />
+        <span className="absolute left-[12px] top-[10px] h-[7px] w-[7px] rounded-full bg-accent" />
+        <span className="absolute bottom-[8px] right-[7px] h-[5px] w-[5px] rounded-full bg-secondary" />
+      </span>
+      <span className={`font-display font-extrabold tracking-[-.04em] text-foreground ${compact ? 'text-lg' : 'text-xl'}`}>
+        Janob<span className="text-primary">HR</span>
+      </span>
+    </a>
+  );
+}
+
+function TelegramGlyph({ size = 18 }: { size?: number }) {
+  return <MessageCircle size={size} strokeWidth={1.8} aria-hidden="true" />;
+}
+
+function Nav({ onContact }: { onContact: () => void }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [open]);
+
+  const closeMenu = () => setOpen(false);
+
+  return (
+    <header className="fixed inset-x-0 top-0 z-40 border-b border-foreground/[0.07] bg-background/90 backdrop-blur-xl">
+      <div className="mx-auto flex h-[76px] max-w-[1240px] items-center justify-between px-5 sm:px-8 lg:px-10">
+        <BrandMark />
+        <nav className="hidden items-center gap-8 lg:flex" aria-label="Asosiy navigatsiya">
+          {navItems.map((item) => (
+            <a
+              href={item.href}
+              className="focus-ring text-[13px] font-semibold text-muted-foreground transition-colors hover:text-primary"
+              key={item.href}
+              data-testid={`link-nav-${item.label.toLowerCase().replaceAll(' ', '-')}`}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+        <div className="hidden items-center gap-4 lg:flex">
+          <a href="tel:+998938572223" className="focus-ring text-[13px] font-semibold text-muted-foreground hover:text-primary" data-testid="link-nav-phone">
+            +998 93 857 22 23
+          </a>
+          <button
+            type="button"
+            onClick={onContact}
+            className="focus-ring inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-[13px] font-bold text-primary-foreground transition-[transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-[hsl(var(--primary)/.88)]"
+            data-testid="button-nav-contact"
+          >
+            Bog‘lanish <ArrowUpRight size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="focus-ring inline-flex h-11 w-11 items-center justify-center rounded-full border border-border text-primary lg:hidden"
+          aria-expanded={open}
+          aria-label={open ? 'Menyuni yopish' : 'Menyuni ochish'}
+          data-testid="button-mobile-menu"
+        >
+          {open ? <X size={21} /> : <Menu size={21} />}
+        </button>
+      </div>
+      {open && (
+        <div className="border-t border-border bg-background px-5 pb-7 pt-5 lg:hidden">
+          <nav className="flex flex-col gap-1" aria-label="Mobil navigatsiya">
+            {navItems.map((item, index) => (
+              <a
+                href={item.href}
+                onClick={closeMenu}
+                className="focus-ring flex items-center justify-between border-b border-border py-4 text-lg font-semibold"
+                key={item.href}
+                data-testid={`link-mobile-nav-${index}`}
+              >
+                {item.label} <ArrowUpRight size={18} />
+              </a>
+            ))}
+          </nav>
+          <button
+            type="button"
+            onClick={() => {
+              closeMenu();
+              onContact();
+            }}
+            className="focus-ring mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-4 font-bold text-primary-foreground"
+            data-testid="button-mobile-contact"
+          >
+            Telegram orqali bog‘lanish <TelegramGlyph size={18} />
+          </button>
+        </div>
+      )}
+    </header>
+  );
+}
+
+function TelegramPreview() {
+  return (
+    <div className="relative mx-auto w-full max-w-[470px]">
+      <div className="absolute -right-8 top-10 h-44 w-44 rounded-full bg-secondary/45 blur-3xl" />
+      <div className="absolute -bottom-8 left-2 h-36 w-36 rounded-full bg-accent/30 blur-3xl" />
+      <div className="relative rounded-[28px] border border-primary/15 bg-[#f3f1e9] p-3 shadow-[0_28px_70px_hsl(var(--primary)/.14)] sm:p-4">
+        <div className="overflow-hidden rounded-[20px] border border-[#d8d4c9] bg-[#e9e7df]">
+          <div className="flex items-center justify-between bg-primary px-4 py-3 text-primary-foreground">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-primary">
+                <Bot size={17} />
+              </div>
+              <div>
+                <p className="font-display text-[12px] font-bold">JanobHR Bot</p>
+                <p className="font-mono text-[8px] uppercase tracking-[.12em] text-primary-foreground/60">online</p>
+              </div>
+            </div>
+            <span className="font-mono text-[9px] text-primary-foreground/60">09:41</span>
+          </div>
+          <div className="space-y-3 p-3 sm:p-4">
+            <div className="ml-auto max-w-[78%] rounded-[15px] rounded-tr-[4px] bg-secondary/80 px-3 py-2.5 text-[11px] leading-relaxed text-foreground">
+              Marketing menejeri lavozimiga nomzodlarni yubordim.
+            </div>
+            <div className="max-w-[86%] rounded-[15px] rounded-tl-[4px] bg-[#f8f7f2] px-3 py-3 text-[11px] leading-relaxed text-foreground shadow-sm">
+              Qabul qildim. Nomzodlarni tahlil qilishni boshlayman.
+              <div className="mt-3 rounded-xl border border-primary/10 bg-primary/[.055] p-2.5">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-display text-[10px] font-bold">Marketing menejeri</span>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[8px] text-primary">12 nomzod</span>
+                </div>
+                <div className="space-y-2">
+                  {['Madina Karimova', 'Sardor Abduqodirov', 'Nilufar Tursunova'].map((name, index) => (
+                    <div className="flex items-center gap-2" key={name}>
+                      <span className="font-mono text-[9px] text-muted-foreground">0{index + 1}</span>
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                        <span className="block h-full rounded-full bg-primary" style={{ width: `${92 - index * 11}%` }} />
+                      </span>
+                      <span className="w-[92px] truncate text-[9px] font-semibold">{name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 pl-1 text-[9px] text-muted-foreground">
+              <span className="pulse-soft h-1.5 w-1.5 rounded-full bg-primary" />
+              JanobHR javob yozmoqda
+            </div>
+          </div>
+          <div className="border-t border-[#d8d4c9] bg-[#f3f1e9] px-3 py-2.5">
+            <div className="rounded-full border border-[#d8d4c9] bg-[#f8f7f2] px-3 py-2 text-[9px] text-muted-foreground">
+              Xabar yozing...
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="drift absolute -left-8 bottom-10 hidden rounded-2xl border border-primary/10 bg-card p-3 shadow-[0_15px_30px_hsl(var(--primary)/.1)] sm:block">
+        <div className="flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#d9eadc] text-primary"><CircleCheck size={15} /></span>
+          <div><p className="font-mono text-[8px] uppercase tracking-wider text-muted-foreground">baholash</p><p className="font-display text-[11px] font-bold">Tahlil tayyor</p></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({ children, light = false }: { children: string; light?: boolean }) {
+  return (
+    <div className={`mb-6 flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[.18em] ${light ? 'text-secondary' : 'text-primary'}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${light ? 'bg-secondary' : 'bg-accent'}`} />
+      {children}
+    </div>
+  );
+}
+
+function WorkflowStep({ number, icon: Icon, title, children }: { number: string; icon: typeof Search; title: string; children: string }) {
+  return (
+    <article className="group relative border-t border-border pt-5">
+      <div className="mb-9 flex items-center justify-between">
+        <span className="font-mono text-[11px] font-bold text-primary">{number}</span>
+        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-primary transition-colors group-hover:border-accent group-hover:bg-secondary/30">
+          <Icon size={18} strokeWidth={1.7} />
+        </span>
+      </div>
+      <h3 className="font-display text-xl font-extrabold tracking-[-.03em]">{title}</h3>
+      <p className="mt-3 max-w-[270px] text-sm leading-6 text-muted-foreground">{children}</p>
+    </article>
+  );
+}
+
+function FeatureCard({ icon: Icon, eyebrow, title, children, className = '' }: { icon: typeof Search; eyebrow: string; title: string; children: string; className?: string }) {
+  return (
+    <article className={`group rounded-[22px] border border-border bg-card p-6 transition-[transform,box-shadow,border-color] duration-300 hover:-translate-y-1 hover:border-primary/25 hover:shadow-[0_16px_34px_hsl(var(--primary)/.09)] sm:p-7 ${className}`}>
+      <span className="mb-12 flex h-11 w-11 items-center justify-center rounded-[14px] bg-secondary/45 text-primary transition-colors group-hover:bg-accent/55">
+        <Icon size={20} strokeWidth={1.7} />
+      </span>
+      <p className="font-mono text-[9px] font-bold uppercase tracking-[.16em] text-primary/70">{eyebrow}</p>
+      <h3 className="mt-3 font-display text-xl font-extrabold tracking-[-.035em]">{title}</h3>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">{children}</p>
+    </article>
+  );
+}
+
+function Home() {
+  const [contactOpen, setContactOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyPhone = async () => {
+    try {
+      await navigator.clipboard.writeText('+998 93 857 22 23');
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="grain min-h-[100dvh] overflow-hidden bg-background">
+      <Nav onContact={() => setContactOpen(true)} />
+
+      <main>
+        <section id="bosh-sahifa" className="site-grid relative scroll-mt-20 border-b border-border pt-[76px]">
+          <div className="mx-auto grid min-h-[690px] max-w-[1240px] items-center gap-12 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-[1.02fr_.98fr] lg:gap-16 lg:px-10 lg:py-28">
+            <div className="relative z-10 max-w-[650px]">
+              <div className="reveal inline-flex items-center gap-2 rounded-full border border-primary/15 bg-card/80 px-3.5 py-2 font-mono text-[10px] font-bold uppercase tracking-[.12em] text-primary">
+                <Sparkles size={13} className="text-accent" /> Ishga qabul qilishning yangi usuli
+              </div>
+              <h1 className="reveal reveal-delay-1 mt-7 max-w-[720px] font-display text-[clamp(3rem,5.3vw,5.2rem)] font-extrabold leading-[.96] tracking-[-.075em] text-foreground">
+                To‘g‘ri xodimni toping.<br /><span className="text-primary">Kunlab saralashni</span> AI’ga topshiring.
+              </h1>
+              <p className="reveal reveal-delay-2 mt-7 max-w-[530px] text-[17px] leading-7 text-muted-foreground sm:text-lg">
+                JanobHR — Telegram ichida nomzodlarni saralaydigan, baholaydigan va reytinglaydigan AI yordamchi. Siz esa muhim qarorlar uchun ko‘proq vaqtga ega bo‘lasiz.
+              </p>
+              <div className="reveal reveal-delay-3 mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={() => setContactOpen(true)}
+                  className="focus-ring inline-flex items-center justify-center gap-3 rounded-full bg-primary px-6 py-4 text-sm font-bold text-primary-foreground shadow-[0_12px_24px_hsl(var(--primary)/.16)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-[hsl(var(--primary)/.88)]"
+                  data-testid="button-hero-contact"
+                >
+                  JanobHR bilan gaplashish <ArrowUpRight size={17} />
+                </button>
+                <a href="#qanday-ishlaydi" className="focus-ring inline-flex items-center justify-center gap-2 rounded-full px-5 py-4 text-sm font-bold text-primary transition-colors hover:bg-secondary/30" data-testid="link-hero-how">
+                  Qanday ishlaydi <ArrowDown size={16} />
+                </a>
+              </div>
+              <div className="reveal reveal-delay-4 mt-12 flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex -space-x-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-primary font-mono text-[9px] text-primary-foreground">HR</span>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-secondary font-mono text-[9px] text-foreground">UZ</span>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-accent font-mono text-[9px] text-foreground">AI</span>
+                </span>
+                Odamlar qaror qiladi. JanobHR esa tayyorlaydi.
+              </div>
+            </div>
+            <div className="reveal reveal-delay-2 relative z-10 lg:pt-4">
+              <TelegramPreview />
+            </div>
+          </div>
+          <div className="absolute bottom-8 right-8 hidden items-center gap-3 font-mono text-[9px] uppercase tracking-[.2em] text-muted-foreground/70 lg:flex">
+            <span className="h-px w-12 bg-border" /> pastga aylantiring
+          </div>
+        </section>
+
+        <section className="border-b border-border bg-[#eeeade]">
+          <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">
+            <p className="max-w-[285px] text-sm font-semibold leading-5 text-foreground/75">Rekrutmentdagi takroriy ishlarni jim va puxta bajaradigan yordamchi.</p>
+            <div className="flex flex-wrap gap-x-7 gap-y-3 font-mono text-[10px] font-bold uppercase tracking-[.13em] text-primary/65">
+              <span className="inline-flex items-center gap-2"><Check size={13} /> Telegram ichida</span>
+              <span className="inline-flex items-center gap-2"><Check size={13} /> O‘zbek biznesi uchun</span>
+              <span className="inline-flex items-center gap-2"><Check size={13} /> Inson qarori markazda</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="muammo" className="scroll-mt-20 bg-background px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+          <div className="mx-auto grid max-w-[1240px] gap-14 lg:grid-cols-[.88fr_1.12fr] lg:gap-24">
+            <div>
+              <SectionLabel>Muammo</SectionLabel>
+              <h2 className="max-w-[520px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-6xl">
+                Yaxshi nomzodni topish emas. <span className="text-primary">Vaqtida ajratib olish.</span>
+              </h2>
+              <p className="mt-6 max-w-[420px] text-base leading-7 text-muted-foreground">
+                Siz mos kelmaydigan nomzodlarni saralayotgan paytda, kuchli nomzod boshqa kompaniyani tanlashi mumkin.
+              </p>
+            </div>
+            <div className="divide-y divide-border border-y border-border">
+              {[
+                ['01', 'Juda ko‘p nomzod', 'Yuzlab rezyume, Telegram xabarlari va arizalar. Ammo ularning oz qismi lavozimga haqiqatan mos keladi.'],
+                ['02', 'Juda ko‘p qo‘lda ish', 'Rezyumeni o‘qish, savollar berish va javoblarni tekshirish HR vaqtining katta qismini oladi.'],
+                ['03', 'Noto‘g‘ri tanlov xavfi', 'Noto‘g‘ri xodim — yo‘qotilgan vaqt, pasaygan natija va qayta yollash xarajati.'],
+              ].map(([number, title, text]) => (
+                <div className="flex gap-5 py-6 sm:py-7" key={number}>
+                  <span className="font-mono text-sm font-bold text-primary">{number}</span>
+                  <div>
+                    <h3 className="font-display text-xl font-extrabold tracking-[-.03em]">{title}</h3>
+                    <p className="mt-2 max-w-[500px] text-sm leading-6 text-muted-foreground">{text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="qanday-ishlaydi" className="scroll-mt-20 bg-background px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+          <div className="mx-auto max-w-[1240px]">
+            <div className="grid gap-12 lg:grid-cols-[.72fr_1.28fr] lg:gap-24">
+              <div>
+                <SectionLabel>Jarayon</SectionLabel>
+                <h2 className="max-w-[440px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-5xl">
+                  Bir xil ishni qayta-qayta bajarish shart emas.
+                </h2>
+                <p className="mt-6 max-w-[360px] text-base leading-7 text-muted-foreground">
+                  JanobHR sizning rekrutment jarayoningizga moslashadi. Nomzodlar qayerdan kelishidan qat’i nazar, hammasi bitta aniq oqimda.
+                </p>
+                <a href="#boglanish" className="focus-ring mt-8 inline-flex items-center gap-2 text-sm font-bold text-primary" data-testid="link-process-contact">
+                  Jarayonni muhokama qilamiz <ArrowUpRight size={16} />
+                </a>
+              </div>
+              <div className="grid gap-x-8 gap-y-12 sm:grid-cols-3">
+                <WorkflowStep number="01" icon={Clipboard} title="Yuborasiz">
+                  Vakansiyani va nomzodlar ma’lumotini Telegram orqali yuborasiz.
+                </WorkflowStep>
+                <WorkflowStep number="02" icon={Search} title="Saralaydi">
+                  JanobHR tajriba, ko‘nikma va siz belgilagan mezonlarni tahlil qiladi.
+                </WorkflowStep>
+                <WorkflowStep number="03" icon={FileCheck2} title="Tayyorlaydi">
+                  Sizga tushunarli reyting va keyingi suhbat uchun tayyor xulosa qaytadi.
+                </WorkflowStep>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="imkoniyatlar" className="scroll-mt-20 border-y border-border bg-[#e6ebe4] px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+          <div className="mx-auto max-w-[1240px]">
+            <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
+              <div>
+                <SectionLabel>JanobHR nimalarni bajaradi</SectionLabel>
+                <h2 className="max-w-[630px] font-display text-4xl font-extrabold leading-[1.02] tracking-[-.06em] sm:text-6xl">
+                  Ishning shovqinini kamaytiradi. <span className="text-primary">Muhim signalni qoldiradi.</span>
+                </h2>
+              </div>
+              <p className="max-w-[290px] text-sm leading-6 text-muted-foreground lg:pb-1">
+                Har bir imkoniyat bitta maqsadga xizmat qiladi: sizning vaqtingizni nomzodning insoniy tomoniga qaytarish.
+              </p>
+            </div>
+            <div className="mt-14 grid gap-4 lg:grid-cols-12">
+              <FeatureCard icon={Search} eyebrow="01 / Saralash" title="AI savollarni o‘zi tuzadi" className="lg:col-span-5 lg:min-h-[330px]">
+                Lavozim nomini yozasiz — JanobHR filtr, chuqur tahlil va ovozli savollarni avtomatik tuzadi. Xohlasangiz, o‘zingiz ham qo‘lda yozishingiz mumkin.
+              </FeatureCard>
+              <FeatureCard icon={Mic} eyebrow="02 / Ovozli javob" title="ChatGPT bilan yozib bo‘lmaydi" className="lg:col-span-4 lg:min-h-[330px]">
+                Muhim savolga nomzod OVOZLI xabar bilan javob beradi. Tayyorlab, sun’iy intellekt bilan yozib olingan javob emas — jonli, tabiiy javob.
+              </FeatureCard>
+              <FeatureCard icon={ShieldCheck} eyebrow="03 / Filtr" title="Mos kelmasa — avtomatik rad" className="lg:col-span-3 lg:min-h-[330px]">
+                Talabga javob bermagan nomzod suhbatgacha yetib bormaydi. Vaqtingiz faqat haqiqiy nomzodlarga sarflanadi.
+              </FeatureCard>
+              <div className="relative overflow-hidden rounded-[22px] bg-primary p-7 text-primary-foreground lg:col-span-7">
+                <div className="absolute -right-8 -top-12 h-44 w-44 rounded-full border-[22px] border-secondary/25" />
+                <div className="absolute -bottom-16 right-20 h-48 w-48 rounded-full border border-secondary/20" />
+                <p className="relative font-mono text-[9px] font-bold uppercase tracking-[.16em] text-secondary">04 / E’lon qilish</p>
+                <h3 className="relative mt-10 max-w-[510px] font-display text-2xl font-extrabold leading-tight tracking-[-.04em] sm:text-3xl">
+                  Har bir vakansiya uchun tayyor havola va QR-kod. HH.uz, Instagram yoki bosma e’longa bevosita qo‘yasiz.
+                </h3>
+                <div className="relative mt-9 flex items-center gap-2 text-sm font-semibold text-primary-foreground/75">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary/25"><QrCode size={15} /></span>
+                  Skanerlagan kishi to‘g‘ridan-to‘g‘ri shu vakansiyaga ariza topshiradi
+                </div>
+              </div>
+              <FeatureCard icon={CalendarClock} eyebrow="05 / Suhbat" title="Vaqtni o‘zi rejalashtiradi" className="lg:col-span-5">
+                Qabul qilingan nomzod bo‘sh suhbat vaqtlaridan birini o‘zi tanlaydi. Manzil va eslatma avtomatik yuboriladi.
+              </FeatureCard>
+              <FeatureCard icon={FileCheck2} eyebrow="06 / Rezyume" title="CV’dan avtomatik to‘ldiradi" className="lg:col-span-4">
+                Nomzod rezyume yuklasa, oddiy faktik savollarga javob avtomatik topiladi — qayta so‘ralmaydi.
+              </FeatureCard>
+              <FeatureCard icon={TrendingUp} eyebrow="07 / Natija" title="Xodim ishda qanday natija ko‘rsatayotganini kuzatadi" className="lg:col-span-8">
+                Qabul qilingandan 30 va 90 kun o‘tgach, o‘zingizdan so‘raladi: xodim hali ishlayaptimi? Vaqt o‘tishi bilan qaysi javoblar chindan yaxshi xodimni bashorat qilishini ko‘rasiz.
+              </FeatureCard>
+              <FeatureCard icon={Clock3} eyebrow="08 / Vaqt" title="HR vaqtini asraydi" className="lg:col-span-4">
+                Takroriy screeningga ketadigan energiya kamayadi. Jamoangiz esa suhbat va tanlovning o‘ziga e’tibor beradi.
+              </FeatureCard>
+            </div>
+          </div>
+        </section>
+
+        <section id="kimlar-uchun" className="scroll-mt-20 bg-background px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+          <div className="mx-auto max-w-[1240px]">
+            <div className="grid gap-14 lg:grid-cols-[.8fr_1.2fr] lg:gap-24">
+              <div>
+                <SectionLabel>Kimlar uchun</SectionLabel>
+                <h2 className="max-w-[430px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-5xl">
+                  Odam yollaydigan har bir jamoa uchun.
+                </h2>
+              </div>
+              <div className="divide-y divide-border border-y border-border">
+                {[
+                  ['HR mutaxassislari', 'Vaqtni rezyume ko‘rishga emas, odamni tushunishga sarflang.'],
+                  ['Kichik va o‘rta biznes', 'Katta HR bo‘limi bo‘lmasa ham, puxta rekrutment jarayonini yo‘lga qo‘ying.'],
+                  ['Tez o‘sayotgan jamoalar', 'Ko‘p nomzodlar orasida tartibni saqlang va yaxshi nomzodni o‘tkazib yubormang.'],
+                ].map(([title, text], index) => (
+                  <div className="group flex items-start justify-between gap-6 py-6 sm:py-7" key={title}>
+                    <div className="flex gap-5">
+                      <span className="font-mono text-[10px] font-bold text-accent">0{index + 1}</span>
+                      <div>
+                        <h3 className="font-display text-xl font-extrabold tracking-[-.03em]">{title}</h3>
+                        <p className="mt-2 max-w-[430px] text-sm leading-6 text-muted-foreground">{text}</p>
+                      </div>
+                    </div>
+                    <ArrowUpRight size={19} className="mt-1 shrink-0 text-primary opacity-35 transition-[transform,opacity] group-hover:-translate-y-1 group-hover:translate-x-1 group-hover:opacity-100" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="relative overflow-hidden bg-[#d8e3d7] px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+          <div className="absolute -right-16 top-[-100px] h-[440px] w-[440px] rounded-full border border-primary/10" />
+          <div className="absolute -right-4 top-[-42px] h-[325px] w-[325px] rounded-full border border-primary/10" />
+          <div className="relative mx-auto grid max-w-[1240px] gap-12 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-24">
+            <div>
+              <SectionLabel>Yondashuv</SectionLabel>
+              <h2 className="max-w-[560px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-6xl">
+                AI yordamchi.<br /><span className="text-primary">Insoniy tanlov.</span>
+              </h2>
+            </div>
+            <div className="max-w-[470px]">
+              <p className="text-lg leading-8 text-foreground/75">
+                JanobHR odam o‘rniga qaror bermaydi. U sizning vaqtingizni qaytaradi, ma’lumotlarni tartiblaydi va suhbatga loyiq nomzodlarni ko‘rish uchun aniqroq manzara yaratadi.
+              </p>
+              <div className="mt-8 flex items-center gap-3 border-t border-primary/15 pt-6">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground"><Bot size={17} /></span>
+                <span className="text-sm font-bold text-primary">Texnologiya orqada. Qaror sizda.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tariflar" className="scroll-mt-20 bg-background px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+          <div className="mx-auto max-w-[1240px]">
+            <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
+              <div>
+                <SectionLabel>Tariflar</SectionLabel>
+                <h2 className="max-w-[560px] font-display text-4xl font-extrabold leading-[1.02] tracking-[-.06em] sm:text-6xl">
+                  Avval sinab ko‘ring. <span className="text-primary">Keyin tanlang.</span>
+                </h2>
+              </div>
+              <p className="max-w-[320px] text-sm leading-6 text-muted-foreground lg:pb-1">
+                Bot yaratganingizda birinchi 5 ta ariza butunlay bepul — barcha funksiya ochiq holda sinab ko‘rasiz.
+              </p>
+            </div>
+            <div className="mt-14 grid gap-5 lg:grid-cols-3">
+              {[
+                {
+                  name: 'START', price: '199 000', badge: null,
+                  items: ['30 ta nomzod', '1 ta vakansiya', '30 kun amal qiladi', 'AI baholash, filtr, Excel eksport'],
+                },
+                {
+                  name: 'BUSINESS', price: '449 000', badge: 'Eng ko‘p tanlanadi',
+                  items: ['100 ta nomzod', '3 ta vakansiya', '60 kun amal qiladi', 'Majburiy ovozli savol', 'Suhbat rejasi', 'Rezyumedan avtomatik to‘ldirish', 'Kengaytirilgan statistika'],
+                },
+                {
+                  name: 'PRO', price: '999 000', badge: null,
+                  items: ['300 ta nomzod', '10 ta vakansiya', '90 kun amal qiladi', 'BUSINESS’dagi barchasi', 'Bir nechta admin (jamoa)', 'Ustuvor qo‘llab-quvvatlash'],
+                },
+              ].map((plan) => (
+                <div
+                  key={plan.name}
+                  className={`relative rounded-[22px] border p-7 sm:p-8 ${plan.badge ? 'border-primary bg-primary text-primary-foreground shadow-[0_20px_50px_hsl(var(--primary)/.22)] lg:-translate-y-3' : 'border-border bg-card'}`}
+                >
+                  {plan.badge && (
+                    <span className="absolute -top-3 left-7 rounded-full bg-accent px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-[.14em] text-accent-foreground">
+                      {plan.badge}
+                    </span>
+                  )}
+                  <p className={`font-mono text-[10px] font-bold uppercase tracking-[.16em] ${plan.badge ? 'text-secondary' : 'text-primary/70'}`}>{plan.name}</p>
+                  <p className="mt-4 font-display text-3xl font-extrabold tracking-[-.03em]">
+                    {plan.price} <span className="text-base font-semibold opacity-60">so‘m</span>
+                  </p>
+                  <ul className="mt-6 space-y-3 text-sm leading-6">
+                    {plan.items.map((item) => (
+                      <li key={item} className="flex items-start gap-2.5">
+                        <Check size={15} className={`mt-1 shrink-0 ${plan.badge ? 'text-secondary' : 'text-primary'}`} />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="faq" className="scroll-mt-20 bg-background px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
+          <div className="mx-auto grid max-w-[1240px] gap-12 lg:grid-cols-[.72fr_1.28fr] lg:gap-24">
+            <div>
+              <SectionLabel>FAQ</SectionLabel>
+              <h2 className="max-w-[420px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-5xl">
+                Ko‘p so‘raladigan savollar.
+              </h2>
+            </div>
+            <div className="divide-y divide-border border-y border-border">
+              {[
+                ['JanobHR qayerda ishlaydi?', 'JanobHR Telegram ichida ishlaydi. Har bir mijozga IKKITA bot beriladi: nomzodlar ariza topshiradigan bot va sizning o‘z Admin panelingiz.'],
+                ['AI yakuniy qarorni o‘zi qabul qiladimi?', 'Yo‘q. JanobHR nomzodlarni bir xil mezonlar asosida tahlil qiladi va saralaydi, yakuniy "Suhbatga chaqirish" yoki "Rad etish" qarorini esa siz Admin panelda bosasiz.'],
+                ['Ovozli javob nima uchun kerak?', 'Muhim savolga nomzod OVOZLI xabar bilan javob berishi shart bo‘lishi mumkin — audio to‘g‘ridan-to‘g‘ri sizga yuboriladi. Bu ChatGPT yordamida tayyorlab yozilgan javoblardan himoya qiladi.'],
+                ['Sinov qanday ishlaydi?', 'Bot yaratganingizda birinchi 5 ta ariza butunlay bepul — barcha funksiya (ovozli savol, suhbat rejasi, statistika) ochiq holda sinab ko‘rasiz. Keyin sizga mos tarifni tanlaysiz.'],
+                ['Har bir lavozim uchun alohida savol bo‘ladimi?', 'Ha. Lavozim nomini yozsangiz, JanobHR shu lavozimga mos savollarni (filtr, chuqur tahlil, ovozli) avtomatik tuzadi — yoki xohlasangiz o‘zingiz yozasiz.'],
+              ].map(([question, answer]) => (
+                <details className="group py-5" key={question}>
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-6 font-display text-lg font-extrabold tracking-[-.025em]">
+                    {question}
+                    <ChevronDown size={19} className="shrink-0 text-primary transition-transform group-open:rotate-180" />
+                  </summary>
+                  <p className="max-w-[650px] pt-3 text-sm leading-6 text-muted-foreground">{answer}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="boglanish" className="scroll-mt-20 bg-primary px-5 py-24 text-primary-foreground sm:px-8 lg:px-10 lg:py-32">
+          <div className="mx-auto grid max-w-[1240px] gap-14 lg:grid-cols-[1.05fr_.95fr] lg:items-end lg:gap-24">
+            <div>
+              <SectionLabel light>Boshlash vaqti</SectionLabel>
+              <h2 className="max-w-[700px] font-display text-5xl font-extrabold leading-[.98] tracking-[-.07em] sm:text-7xl">
+                Yaxshi nomzodlar kutib turmaydi.
+              </h2>
+              <p className="mt-7 max-w-[500px] text-base leading-7 text-primary-foreground/70 sm:text-lg">
+                JanobHR jamoangizga qanday yordam berishi mumkinligini birga ko‘rib chiqamiz. Bizga yozing — javob beramiz.
+              </p>
+            </div>
+            <div className="rounded-[23px] border border-primary-foreground/15 bg-primary-foreground/[.07] p-6 sm:p-8">
+              <p className="font-mono text-[9px] uppercase tracking-[.17em] text-secondary">Bog‘lanish</p>
+              <a href="https://t.me/F45746" target="_blank" rel="noreferrer" className="focus-ring mt-5 flex items-center justify-between border-b border-primary-foreground/15 pb-5" data-testid="link-contact-telegram">
+                <span className="flex items-center gap-3"><TelegramGlyph size={19} /><span><span className="block text-xs text-primary-foreground/55">Telegram</span><span className="mt-0.5 block text-lg font-bold">@F45746</span></span></span>
+                <ArrowUpRight size={19} />
+              </a>
+              <div className="flex items-center justify-between gap-4 pt-5">
+                <a href="tel:+998938572223" className="focus-ring flex items-center gap-3" data-testid="link-contact-phone">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary/20"><Phone size={16} /></span>
+                  <span><span className="block text-xs text-primary-foreground/55">Telefon</span><span className="mt-0.5 block text-base font-bold">+998 93 857 22 23</span></span>
+                </a>
+                <button type="button" onClick={copyPhone} className="focus-ring rounded-full border border-primary-foreground/20 p-2.5 text-primary-foreground/65 transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground" aria-label="Telefon raqamini nusxalash" data-testid="button-copy-phone">
+                  {copied ? <Check size={16} /> : <CopyIcon />}
+                </button>
+              </div>
+              {copied && <p className="mt-4 text-xs font-semibold text-secondary" data-testid="status-phone-copied">Telefon raqami nusxalandi</p>}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="bg-[#123d3a] px-5 py-8 text-primary-foreground/75 sm:px-8 lg:px-10">
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-7 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <BrandMark compact />
+            <p className="mt-3 text-xs text-primary-foreground/45">Odamlar uchun yaxshi jamoalar.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs font-semibold">
+            <a href="#bosh-sahifa" className="focus-ring hover:text-secondary" data-testid="link-footer-home">Bosh sahifa</a>
+            <a href="#qanday-ishlaydi" className="focus-ring hover:text-secondary" data-testid="link-footer-process">Qanday ishlaydi</a>
+            <a href="https://t.me/F45746" target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 hover:text-secondary" data-testid="link-footer-telegram"><TelegramGlyph size={15} /> @F45746</a>
+          </div>
+          <span className="font-mono text-[9px] uppercase tracking-[.15em] text-primary-foreground/35">© 2024 JanobHR</span>
+        </div>
+      </footer>
+
+      {contactOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/35 p-4 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="contact-dialog-title">
+          <div className="w-full max-w-[470px] rounded-[25px] border border-border bg-background p-6 shadow-[0_24px_80px_hsl(var(--foreground)/.2)] sm:p-8">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[.17em] text-primary">JanobHR</p>
+                <h2 id="contact-dialog-title" className="mt-3 font-display text-3xl font-extrabold tracking-[-.05em]">Gaplashamizmi?</h2>
+              </div>
+              <button type="button" onClick={() => setContactOpen(false)} className="focus-ring flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-primary" aria-label="Muloqot oynasini yopish" data-testid="button-close-contact"><X size={17} /></button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">Savolingiz yoki rekrutment jarayoningiz haqida yozing. Sizga Telegram’da javob beramiz.</p>
+            <a href="https://t.me/F45746" target="_blank" rel="noreferrer" onClick={() => setContactOpen(false)} className="focus-ring mt-7 flex items-center justify-between rounded-2xl bg-primary px-5 py-4 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5" data-testid="link-dialog-telegram">
+              Telegram’da yozish <ArrowUpRight size={17} />
+            </a>
+            <a href="tel:+998938572223" onClick={() => setContactOpen(false)} className="focus-ring mt-2 flex items-center gap-3 rounded-2xl border border-border px-5 py-4 text-sm font-bold text-primary hover:bg-secondary/20" data-testid="link-dialog-phone">
+              <Phone size={17} /> +998 93 857 22 23
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CopyIcon() {
+  return <Clipboard size={16} />;
+}
+
+function Router() {
+  return (
+    <RoutedErrorBoundary>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route component={NotFound} />
+      </Switch>
+    </RoutedErrorBoundary>
+  );
+}
+
+function RoutedErrorBoundary({ children }: { children: ReactNode }) {
+  const [location] = useLocation();
+  return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+          <Router />
+        </WouterRouter>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;

@@ -444,7 +444,7 @@ function Home() {
             <div>
               <SectionLabel>Yondashuv</SectionLabel>
               <h2 className="max-w-[560px] font-display text-4xl font-extrabold leading-[1.03] tracking-[-.06em] sm:text-6xl">
-                AI qaror bermaydi.<br /><span className="text-primary">Siz qaror qilasiz.</span>
+                AI tanlab bermaydi.<br /><span className="text-primary">Siz tanlaysiz.</span>
               </h2>
             </div>
             <div className="max-w-[470px]">

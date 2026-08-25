@@ -296,17 +296,6 @@ function Home() {
           </div>
         </section>
 
-        <section className="border-b border-border bg-[#e8f0fb]">
-          <div className="mx-auto flex max-w-[1240px] flex-col gap-5 px-5 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">
-            <p className="max-w-[285px] text-sm font-semibold leading-5 text-foreground/75">Rekrutmentdagi takroriy ishlarni jim va puxta bajaradigan yordamchi.</p>
-            <div className="flex flex-wrap gap-x-7 gap-y-3 font-mono text-[10px] font-bold uppercase tracking-[.13em] text-primary/65">
-              <span className="inline-flex items-center gap-2"><Check size={13} /> 2 ta bot — nomzod uchun va siz uchun</span>
-              <span className="inline-flex items-center gap-2"><Check size={13} /> Birinchi 5 ta ariza bepul</span>
-              <span className="inline-flex items-center gap-2"><Check size={13} /> Yakuniy qaror doim sizda</span>
-            </div>
-          </div>
-        </section>
-
         <section id="muammo" className="scroll-mt-20 bg-background px-5 py-24 sm:px-8 lg:px-10 lg:py-32">
           <div className="mx-auto grid max-w-[1240px] gap-14 lg:grid-cols-[.88fr_1.12fr] lg:gap-24">
             <div>

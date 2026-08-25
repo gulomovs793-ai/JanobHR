@@ -380,7 +380,7 @@ function Home() {
                 <div className="absolute -bottom-16 right-20 h-48 w-48 rounded-full border border-secondary/20" />
                 <p className="relative font-mono text-[9px] font-bold uppercase tracking-[.16em] text-secondary">04 / E’lon qilish</p>
                 <h3 className="relative mt-10 max-w-[510px] font-display text-2xl font-extrabold leading-tight tracking-[-.04em] sm:text-3xl">
-                  Har bir vakansiya uchun tayyor havola va QR-kod. HH.uz, Instagram yoki bosma e’longa bevosita qo‘yasiz.
+                  Har bir vakansiya uchun tayyor havola va QR-kod. HH.uz, Instagram yoki bosma e’lonlarga muammosiz joylay olasiz.
                 </h3>
                 <div className="relative mt-9 flex items-center gap-2 text-sm font-semibold text-primary-foreground/75">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary/25"><QrCode size={15} /></span>

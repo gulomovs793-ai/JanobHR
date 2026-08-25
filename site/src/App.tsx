@@ -392,7 +392,7 @@ function Home() {
               <FeatureCard icon={FileCheck2} eyebrow="06 / Rezyume" title="CV’dan avtomatik to‘ldiradi" className="lg:col-span-6">
                 Nomzod rezyume yuklasa, oddiy faktik savollarga javob avtomatik topiladi — qayta so‘ralmaydi.
               </FeatureCard>
-              <FeatureCard icon={Clock3} eyebrow="07 / Vaqt" title="HR vaqtini asraydi" className="lg:col-span-6">
+              <FeatureCard icon={Clock3} eyebrow="07 / Vaqt" title="HR vaqtini tejaydi" className="lg:col-span-6">
                 Takroriy screeningga ketadigan energiya kamayadi. Jamoangiz esa suhbat va tanlovning o‘ziga e’tibor beradi.
               </FeatureCard>
             </div>

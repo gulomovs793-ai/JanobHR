@@ -28,6 +28,13 @@ class TelegramErrorHandler(logging.Handler):
             text = self.format(record)
         except Exception:
             text = record.getMessage()
+
+        # "message is not modified" — zararsiz, harakatga chaqirmaydigan xato
+        # (kontent o'zgarmagan holda edit_text/edit_reply_markup chaqirilganda
+        # Telegram shunday rad etadi). Founderni bezovta qilishning hojati yo'q.
+        if "message is not modified" in text:
+            return
+
         alert = f"🚨 <b>Xato</b> ({record.name}):\n<code>{text[:1500]}</code>"
 
         try:

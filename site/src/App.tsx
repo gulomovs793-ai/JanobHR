@@ -210,13 +210,28 @@ function TelegramPreview() {
 
 function SectionLabel({ children, light = false }: { children: string; light?: boolean }) {
   return (
-    <div
-      className={`mb-7 inline-flex items-center gap-2.5 rounded-full px-4 py-2 font-mono text-xs font-bold uppercase tracking-[.16em] ${
-        light ? 'bg-primary-foreground/12 text-secondary' : 'bg-primary/10 text-primary'
-      }`}
-    >
-      <span className={`h-2 w-2 rounded-full ${light ? 'bg-secondary' : 'bg-accent'}`} />
-      {children}
+    <div className="relative mb-7 inline-block">
+      <span
+        className={`font-hand text-2xl font-bold tracking-wide sm:text-[1.7rem] ${
+          light ? 'text-secondary' : 'text-primary'
+        }`}
+      >
+        {children}
+      </span>
+      <svg
+        className="absolute -bottom-1 left-0 w-full"
+        viewBox="0 0 100 8"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M1 5.5C15 2 30 7 45 4C60 1 75 6.5 99 3"
+          fill="none"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          className={light ? 'stroke-secondary' : 'stroke-primary'}
+        />
+      </svg>
     </div>
   );
 }

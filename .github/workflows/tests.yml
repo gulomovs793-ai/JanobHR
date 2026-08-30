@@ -1,25 +1,20 @@
-name: Apply JanobHR redesign
+name: Tests
 
 on:
   push:
     branches: [multi-tenant]
-
-permissions:
-  contents: write
+  pull_request:
 
 jobs:
-  apply-redesign:
-    if: github.actor != 'github-actions[bot]'
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
-      - name: Apply redesign
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git apply --index janobhr-redesign.patch
-          git rm janobhr-redesign.patch
-          git commit -m "Redesign founder and candidate management flows"
-          git push
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: python -m compileall -q .
+      - run: python -m unittest discover -s tests -v

@@ -30,6 +30,7 @@ from handlers import contact, files, questions, resume_upfront, sell, start, vac
 from services import bot_registry
 from services.database import init_db
 from services.storage import SQLiteStorage
+from services.tenant_middleware import TenantMiddleware
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
@@ -71,6 +72,10 @@ def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher(storage=fsm_storage)
+    # Polling rejimida ham handlerlar `tenant_id`, `tenant` va `bot_role`
+    # qiymatlarini kutadi. Webhook dispatcherida bo'lgani kabi har bir update'ga
+    # ularni token orqali qo'shib beramiz.
+    dp.update.outer_middleware(TenantMiddleware())
 
     # Handlerlar tartibi muhim emas — har bir router o'z filtri (state/callback
     # prefiksi) bilan ishlaydi. Qaror (qabul/rad) tugmalari endi Admin botda
@@ -103,6 +108,7 @@ def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher(storage=fsm_storage)
+    dp.update.outer_middleware(TenantMiddleware())
     dp.update.outer_middleware(AdminOnlyMiddleware())
 
     dp.include_router(handlers_menu.router)

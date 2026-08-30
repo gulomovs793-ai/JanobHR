@@ -1,0 +1,422 @@
+From aec3e0700a06ebb4ad1ce756771f8b9516c994a2 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 30 Aug 2026 19:26:13 +0200
+Subject: [PATCH] Polish Telegram UX for candidates admins and founders
+
+---
+ admin_bot/handlers_candidates.py |   4 +-
+ admin_bot/handlers_menu.py       |  40 ++++----
+ founder_panel.py                 |  32 ++++--
+ handlers/create_bot.py           |   4 +-
+ handlers/start.py                | 164 ++++++++++++++++++++++++++++---
+ services/database.py             |  12 +++
+ setup_bot.py                     |   4 +-
+ 7 files changed, 221 insertions(+), 39 deletions(-)
+
+diff --git a/admin_bot/handlers_candidates.py b/admin_bot/handlers_candidates.py
+index e0fb13a..fdd6170 100644
+--- a/admin_bot/handlers_candidates.py
++++ b/admin_bot/handlers_candidates.py
+@@ -70,7 +70,9 @@ async def view_candidate(callback: CallbackQuery, tenant_id: int):
+         f"📌 {_STATUS.get(app['status'], app['status'])}",
+     ]
+     if score:
+-        lines.append(f"🧠 AI baho: <b>{score['avg_score']}/100</b> · {score['verdict']}")
++        lines.append(
++            f"🧠 AI baho: <b>{score['avg_score']}/100</b> · {score['verdict']}"
++        )
+     answers = list((app.get("answers") or {}).values())
+     if answers:
+         preview = "\n".join(f"• {str(answer)[:180]}" for answer in answers[:3])
+diff --git a/admin_bot/handlers_menu.py b/admin_bot/handlers_menu.py
+index fc7fcbc..31b2dba 100644
+--- a/admin_bot/handlers_menu.py
++++ b/admin_bot/handlers_menu.py
+@@ -11,46 +11,50 @@ from services import database
+ router = Router(name="admin_menu")
+ 
+ 
+-def _main_menu_keyboard():
++def _main_menu_keyboard(overall: dict):
+     builder = InlineKeyboardBuilder()
+-    builder.button(text="📥 Yangi arizalar", callback_data="apps:list:pending:0")
++    builder.button(
++        text=f"📥 Yangi arizalar · {overall['pending']}",
++        callback_data="apps:list:pending:0",
++    )
+     builder.button(text="👥 Barcha nomzodlar", callback_data="apps:list:all:0")
+     builder.button(text="💼 Vakansiyalar", callback_data="menu:vacancies")
+     builder.button(text="📅 Suhbatlar", callback_data="menu:interview")
+-    builder.button(text="📊 Natijalar", callback_data="menu:stats")
++    builder.button(text="📊 Hisobot", callback_data="menu:stats")
+     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
+     builder.adjust(1, 1, 2, 2)
+     return builder.as_markup()
+ 
+ 
+-async def show_main_menu(message: Message):
+-    await message.answer(
+-        "👔 <b>Janob HR</b>\n\n"
+-        "Nomzodlarni saralash, suhbatlarni rejalash va natijalarni boshqarish.\n\n"
+-        "Kerakli bo'limni tanlang:",
+-        reply_markup=_main_menu_keyboard(),
++async def show_main_menu(message: Message, tenant_id: int, *, edit: bool = False):
++    overall = await database.get_overall_stats(tenant_id)
++    text = (
++        "👔 <b>Janob HR · Ishga qabul</b>\n\n"
++        f"Yangi: <b>{overall['pending']}</b>   ·   "
++        f"Suhbatga: <b>{overall['accepted']}</b>   ·   "
++        f"Jami: <b>{overall['total']}</b>\n\n"
++        "Bugungi ishni qayerdan boshlaysiz?"
+     )
++    method = message.edit_text if edit else message.answer
++    await method(text, reply_markup=_main_menu_keyboard(overall))
+ 
+ 
+ @router.message(CommandStart())
+-async def cmd_start(message: Message, state: FSMContext):
++async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
+     await state.clear()
+-    await show_main_menu(message)
++    await show_main_menu(message, tenant_id)
+ 
+ 
+ @router.message(Command("cancel"))
+-async def cmd_cancel(message: Message, state: FSMContext):
++async def cmd_cancel(message: Message, state: FSMContext, tenant_id: int):
+     await state.clear()
+-    await show_main_menu(message)
++    await show_main_menu(message, tenant_id)
+ 
+ 
+ @router.callback_query(F.data == "menu:main")
+-async def back_to_main(callback: CallbackQuery, state: FSMContext):
++async def back_to_main(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+     await state.clear()
+-    await callback.message.edit_text(
+-        "👔 <b>Janob HR — Admin panel</b>\n\nQuyidagilardan birini tanlang:",
+-        reply_markup=_main_menu_keyboard(),
+-    )
++    await show_main_menu(callback.message, tenant_id, edit=True)
+     await callback.answer()
+ 
+ 
+diff --git a/founder_panel.py b/founder_panel.py
+index 564f2d5..9d7a34d 100644
+--- a/founder_panel.py
++++ b/founder_panel.py
+@@ -27,14 +27,23 @@ router = Router(name="founder_panel")
+ def _tenant_summary(t: dict) -> str:
+     username = t.get("contact_username")
+     telegram_contact = f"@{username}" if username else "—"
++    status_label = {
++        "pending": "🔥 Yangi lead",
++        "active": "🟢 Faol mijoz",
++        "inactive": "⏸ To'xtatilgan",
++    }.get(t["status"], t["status"])
++    candidate_bot = f"@{t['bot_username']}" if t.get("bot_username") else "sozlanmoqda"
++    admin_bot = (
++        f"@{t['admin_bot_username']}" if t.get("admin_bot_username") else "sozlanmoqda"
++    )
+     return (
+         f"🏢 <b>№{t['id']} — {t['company_name']}</b>\n\n"
+         f"👤 Mas'ul: {t.get('contact_name') or '—'}\n"
+         f"📱 Telefon: <code>{t.get('contact_phone') or '—'}</code>\n"
+         f"💬 Telegram: {telegram_contact}\n"
+-        f"📌 Holat: {t['status']}\n\n"
+-        f"Nomzod-bot: {t.get('bot_username') or t['bot_token'][:12] + '...'}\n"
+-        f"Admin-bot: {t.get('admin_bot_username') or (t.get('admin_bot_token') or '—')[:12] + '...'}\n"
++        f"📌 Holat: {status_label}\n\n"
++        f"Nomzod-bot: {candidate_bot}\n"
++        f"Admin-bot: {admin_bot}\n"
+         f"🗓 Ro'yxatdan o'tgan: {t['created_at'][:16].replace('T', ' ')}"
+     )
+ 
+@@ -50,9 +59,15 @@ async def show_main_menu(message: Message):
+     stats = await database.get_founder_stats()
+ 
+     builder = InlineKeyboardBuilder()
+-    builder.button(text=f"🔥 Yangi leadlar ({stats['pending']})", callback_data="fp:pending")
+-    builder.button(text=f"💼 Faol mijozlar ({stats['active']})", callback_data="fp:active")
+-    builder.button(text=f"⏸ To'xtatilgan ({stats['inactive']})", callback_data="fp:inactive")
++    builder.button(
++        text=f"🔥 Yangi leadlar ({stats['pending']})", callback_data="fp:pending"
++    )
++    builder.button(
++        text=f"💼 Faol mijozlar ({stats['active']})", callback_data="fp:active"
++    )
++    builder.button(
++        text=f"⏸ To'xtatilgan ({stats['inactive']})", callback_data="fp:inactive"
++    )
+     builder.button(text="📊 Biznes ko'rsatkichlari", callback_data="fp:stats")
+     builder.adjust(2, 1, 1)
+ 
+@@ -172,6 +187,11 @@ async def view_tenant(callback: CallbackQuery):
+         return
+ 
+     builder = InlineKeyboardBuilder()
++    if tenant.get("contact_username"):
++        builder.button(
++            text="💬 Telegram'da yozish",
++            url=f"https://t.me/{tenant['contact_username']}",
++        )
+     if tenant["status"] == "pending":
+         builder.button(
+             text="✅ Faollashtirish", callback_data=f"fp:activate:{tenant_id}"
+diff --git a/handlers/create_bot.py b/handlers/create_bot.py
+index 3df9f09..8fe9331 100644
+--- a/handlers/create_bot.py
++++ b/handlers/create_bot.py
+@@ -72,7 +72,9 @@ async def receive_company_name(message: Message, state: FSMContext):
+ 
+     await state.update_data(company_name=name)
+     keyboard = ReplyKeyboardMarkup(
+-        keyboard=[[KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]],
++        keyboard=[
++            [KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]
++        ],
+         resize_keyboard=True,
+         one_time_keyboard=True,
+     )
+diff --git a/handlers/start.py b/handlers/start.py
+index aa4d027..9a63f5d 100644
+--- a/handlers/start.py
++++ b/handlers/start.py
+@@ -17,6 +17,80 @@ from states import ApplyForm
+ 
+ router = Router(name="start")
+ 
++_COPY = {
++    "uz": {
++        "home": (
++            "👔 <b>Janob HR</b>\n\n"
++            "O'zingizga mos ishni tanlang va arizani Telegram ichida yuboring. "
++            "Jarayon odatda 5–7 daqiqa davom etadi.\n\n"
++            "Nimadan boshlaymiz?"
++        ),
++        "jobs": "💼 Ochiq vakansiyalar",
++        "status": "📄 Arizam holati",
++        "about": "ℹ️ Jarayon qanday ishlaydi?",
++        "about_text": (
++            "<b>Ariza topshirish tartibi</b>\n\n"
++            "1. Vakansiyani tanlaysiz\n"
++            "2. Qisqa savollarga javob berasiz\n"
++            "3. Aloqa ma'lumotingizni qoldirasiz\n"
++            "4. Natijani shu bot orqali olasiz\n\n"
++            "Ariza bepul. Ma'lumotlaringiz faqat ish beruvchi tomonidan ko'riladi."
++        ),
++        "none": "Sizda hali yuborilgan ariza yo'q.",
++        "back": "⬅️ Bosh menyu",
++    },
++    "ru": {
++        "home": (
++            "👔 <b>Janob HR</b>\n\n"
++            "Выберите подходящую вакансию и отправьте заявку прямо в Telegram. "
++            "Обычно это занимает 5–7 минут.\n\n"
++            "С чего начнём?"
++        ),
++        "jobs": "💼 Открытые вакансии",
++        "status": "📄 Статус заявки",
++        "about": "ℹ️ Как это работает?",
++        "about_text": (
++            "<b>Как подать заявку</b>\n\n"
++            "1. Выберите вакансию\n"
++            "2. Ответьте на короткие вопросы\n"
++            "3. Оставьте контакты\n"
++            "4. Получите результат в этом боте\n\n"
++            "Заявка бесплатна. Данные видит только работодатель."
++        ),
++        "none": "У вас пока нет отправленных заявок.",
++        "back": "⬅️ Главное меню",
++    },
++}
++
++_APPLICATION_STATUS = {
++    "pending": ("⏳", "Ko'rib chiqilmoqda", "На рассмотрении"),
++    "accepted": ("✅", "Suhbatga chaqirildi", "Приглашение на собеседование"),
++    "declined": ("—", "Hozircha davom etmadi", "Заявка не прошла дальше"),
++    "rejected_hard_filter": (
++        "—",
++        "Talablarga mos kelmadi",
++        "Не соответствует требованиям",
++    ),
++    "rejected_irrelevant": ("—", "Ariza yakunlanmadi", "Заявка не завершена"),
++    "rejected_ai_generated": ("—", "Ariza yakunlanmadi", "Заявка не завершена"),
++}
++
++
++def _home_keyboard(lang: str):
++    copy = _COPY[lang]
++    builder = InlineKeyboardBuilder()
++    builder.button(text=copy["jobs"], callback_data=f"candidate:jobs:{lang}")
++    builder.button(text=copy["status"], callback_data=f"candidate:status:{lang}")
++    builder.button(text=copy["about"], callback_data=f"candidate:about:{lang}")
++    builder.button(text="🌐 Til / Язык", callback_data="candidate:language")
++    builder.adjust(1)
++    return builder.as_markup()
++
++
++async def _show_home(message: Message, lang: str, *, edit: bool = False):
++    method = message.edit_text if edit else message.answer
++    await method(_COPY[lang]["home"], reply_markup=_home_keyboard(lang))
++
+ 
+ async def _show_vacancy_menu(
+     message: Message, state: FSMContext, lang: str, tenant_id: int
+@@ -51,7 +125,10 @@ async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
+         builder.button(text=label, callback_data=f"lang:{code}")
+     builder.adjust(1)
+ 
+-    await message.answer(CHOOSE_LANGUAGE_PROMPT, reply_markup=builder.as_markup())
++    await message.answer(
++        "👔 <b>Janob HR</b>\n\n" + CHOOSE_LANGUAGE_PROMPT,
++        reply_markup=builder.as_markup(),
++    )
+     await state.set_state(ApplyForm.choosing_language)
+ 
+ 
+@@ -61,29 +138,92 @@ async def choose_language(callback: CallbackQuery, state: FSMContext, tenant_id:
+     if lang not in LANGUAGES:
+         lang = DEFAULT_LANG
+ 
++    await state.set_state(None)
+     await state.update_data(lang=lang)
+-    await callback.message.delete()
++    await _show_home(callback.message, lang, edit=True)
++    await callback.answer()
++
++
++@router.callback_query(F.data == "candidate:language")
++async def change_language(callback: CallbackQuery, state: FSMContext):
++    builder = InlineKeyboardBuilder()
++    for code, label in LANGUAGES.items():
++        builder.button(text=label, callback_data=f"lang:{code}")
++    builder.adjust(1)
++    await state.set_state(ApplyForm.choosing_language)
++    await callback.message.edit_text(
++        CHOOSE_LANGUAGE_PROMPT, reply_markup=builder.as_markup()
++    )
++    await callback.answer()
++
+ 
+-    # --- Takroriy ariza himoyasi: nomzodning ko'rib chiqilayotgan arizasi bo'lsa,
+-    # unga yangi anketa boshlash o'rniga hozirgi holatini eslatamiz. ---
++@router.callback_query(F.data.startswith("candidate:jobs:"))
++async def open_jobs(callback: CallbackQuery, state: FSMContext, tenant_id: int):
++    lang = callback.data.rsplit(":", 1)[1]
+     pending = await database.get_pending_application_for_user(
+         tenant_id, callback.from_user.id
+     )
+     if pending:
+-        await callback.message.answer(
+-            t(
+-                "pending_application_notice",
+-                lang,
+-                vacancy_title=pending["vacancy_title"],
+-            )
++        await callback.answer(
++            (
++                "Bu vakansiya bo'yicha arizangiz ko'rib chiqilmoqda."
++                if lang == "uz"
++                else "Ваша заявка уже находится на рассмотрении."
++            ),
++            show_alert=True,
+         )
+-        await callback.answer()
+         return
+-
++    await callback.message.delete()
++    await state.update_data(lang=lang)
+     await _show_vacancy_menu(callback.message, state, lang, tenant_id)
+     await callback.answer()
+ 
+ 
++@router.callback_query(F.data.startswith("candidate:status:"))
++async def application_status(callback: CallbackQuery, tenant_id: int):
++    lang = callback.data.rsplit(":", 1)[1]
++    app = await database.get_latest_application_for_user(
++        tenant_id, callback.from_user.id
++    )
++    copy = _COPY[lang]
++    if app:
++        icon, uz_status, ru_status = _APPLICATION_STATUS.get(
++            app["status"], ("•", app["status"], app["status"])
++        )
++        status_text = uz_status if lang == "uz" else ru_status
++        text = (
++            f"📄 <b>{app['vacancy_title']}</b>\n\n"
++            f"{icon} {status_text}\n"
++            f"🗓 {(app.get('created_at') or '')[:10]}"
++        )
++    else:
++        text = copy["none"]
++    builder = InlineKeyboardBuilder()
++    builder.button(text=copy["back"], callback_data=f"candidate:home:{lang}")
++    await callback.message.edit_text(text, reply_markup=builder.as_markup())
++    await callback.answer()
++
++
++@router.callback_query(F.data.startswith("candidate:about:"))
++async def about_process(callback: CallbackQuery):
++    lang = callback.data.rsplit(":", 1)[1]
++    builder = InlineKeyboardBuilder()
++    builder.button(text=_COPY[lang]["back"], callback_data=f"candidate:home:{lang}")
++    await callback.message.edit_text(
++        _COPY[lang]["about_text"], reply_markup=builder.as_markup()
++    )
++    await callback.answer()
++
++
++@router.callback_query(F.data.startswith("candidate:home:"))
++async def back_home(callback: CallbackQuery, state: FSMContext):
++    lang = callback.data.rsplit(":", 1)[1]
++    await state.set_state(None)
++    await state.update_data(lang=lang)
++    await _show_home(callback.message, lang, edit=True)
++    await callback.answer()
++
++
+ @router.message(Command("cancel"))
+ async def cmd_cancel(message: Message, state: FSMContext):
+     data = await state.get_data()
+diff --git a/services/database.py b/services/database.py
+index 8487e30..15c72eb 100644
+--- a/services/database.py
++++ b/services/database.py
+@@ -605,6 +605,18 @@ async def get_pending_application_for_user(tenant_id: int, user_id: int) -> dict
+     return _parse_app_row(row) if row else None
+ 
+ 
++async def get_latest_application_for_user(tenant_id: int, user_id: int) -> dict | None:
++    async with aiosqlite.connect(SQLITE_PATH) as db:
++        db.row_factory = aiosqlite.Row
++        cursor = await db.execute(
++            "SELECT * FROM applications WHERE tenant_id = ? AND user_id = ? "
++            "ORDER BY id DESC LIMIT 1",
++            (tenant_id, user_id),
++        )
++        row = await cursor.fetchone()
++    return _parse_app_row(row) if row else None
++
++
+ async def add_admin_message(tenant_id: int, app_id: int, chat_id: int, message_id: int):
+     app = await get_application(tenant_id, app_id)
+     messages = app["admin_messages"] if app else []
+diff --git a/setup_bot.py b/setup_bot.py
+index 33dcc80..47586b3 100644
+--- a/setup_bot.py
++++ b/setup_bot.py
+@@ -60,7 +60,9 @@ async def receive_company_name(message: Message, state: FSMContext):
+ 
+     await state.update_data(company_name=name)
+     keyboard = ReplyKeyboardMarkup(
+-        keyboard=[[KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]],
++        keyboard=[
++            [KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]
++        ],
+         resize_keyboard=True,
+         one_time_keyboard=True,
+     )
+-- 
+2.51.1
+

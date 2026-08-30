@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   apply-fix:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +20,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git apply --index janobhr-fix.patch
-          git rm janobhr-fix.patch .github/workflows/apply-janobhr-fix.yml
+          git rm janobhr-fix.patch
           git commit -m "Fix multi-tenant polling, admin flow, and payment handling"
           git push

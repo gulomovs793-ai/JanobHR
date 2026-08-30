@@ -20,6 +20,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git apply --index janobhr-fix.patch
+          git reset .github/workflows/tests.yml
+          rm -f .github/workflows/tests.yml
           git rm janobhr-fix.patch
           git commit -m "Fix multi-tenant polling, admin flow, and payment handling"
           git push

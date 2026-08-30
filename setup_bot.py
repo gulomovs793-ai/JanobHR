@@ -19,7 +19,12 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import Message
+from aiogram.types import (
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
 from config import FOUNDER_USER_IDS, SETUP_BOT_TOKEN
 
@@ -30,6 +35,7 @@ router = Router(name="setup")
 
 class SetupForm(StatesGroup):
     waiting_company_name = State()
+    waiting_contact = State()
     waiting_candidate_token = State()
     waiting_admin_token = State()
 
@@ -53,12 +59,38 @@ async def receive_company_name(message: Message, state: FSMContext):
         return
 
     await state.update_data(company_name=name)
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
     await message.answer(
-        "Ajoyib! Endi @BotFather orqali yaratgan botingizning <b>TOKENINI</b> yuboring.\n\n"
+        "Bog'lanish uchun telefon raqamingizni yuboring. Bu raqam faqat Janob HR "
+        "asoschisiga ko'rinadi.",
+        reply_markup=keyboard,
+    )
+    await state.set_state(SetupForm.waiting_contact)
+
+
+@router.message(SetupForm.waiting_contact, F.contact)
+async def receive_contact(message: Message, state: FSMContext):
+    await state.update_data(
+        contact_name=message.from_user.full_name,
+        contact_phone=message.contact.phone_number,
+        contact_username=message.from_user.username or "",
+    )
+    await message.answer(
+        "Rahmat. Endi @BotFather orqali yaratgan botingizning <b>TOKENINI</b> yuboring.\n\n"
         "Agar hali botingiz bo'lmasa: @BotFather ga o'ting, <code>/newbot</code> yuboring, "
-        "ism va username bering — sizga token beradi. O'sha tokenni shu yerga joylashtiring."
+        "ism va username bering — sizga token beradi. O'sha tokenni shu yerga joylashtiring.",
+        reply_markup=ReplyKeyboardRemove(),
     )
     await state.set_state(SetupForm.waiting_candidate_token)
+
+
+@router.message(SetupForm.waiting_contact)
+async def wrong_contact_type(message: Message):
+    await message.answer("Pastdagi «📱 Telefon raqamni yuborish» tugmasini bosing.")
 
 
 @router.message(SetupForm.waiting_candidate_token, F.text)
@@ -144,6 +176,9 @@ async def receive_admin_token(message: Message, state: FSMContext):
             bot_token=data["candidate_bot_token"],
             admin_bot_token=token,
             admin_user_ids=[admin_id],
+            contact_name=data.get("contact_name", message.from_user.full_name),
+            contact_phone=data.get("contact_phone", ""),
+            contact_username=data.get("contact_username", ""),
         )
     except Exception:
         logger.exception("Mijozni bazaga yozishda kutilmagan xato.")
@@ -176,6 +211,7 @@ async def receive_admin_token(message: Message, state: FSMContext):
             f"Nomzod-bot: @{data['candidate_bot_username']}\n"
             f"Admin-bot: @{admin_me.username}\n"
             f"Admin Telegram ID: <code>{admin_id}</code>\n\n"
+            f"Telefon: <code>{data.get('contact_phone') or '—'}</code>\n"
             "To'lov tushgach, boshqaruv panelidan faollashtiring."
         )
         for founder_id in FOUNDER_USER_IDS:

@@ -28,6 +28,24 @@ class FakeAdminBot:
 
 
 class RegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_tenant_contact_is_saved_for_founder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "contacts.db")
+            with patch.object(database, "SQLITE_PATH", db_path):
+                await database.init_db()
+                tenant_id = await database.create_tenant(
+                    "Test Business",
+                    "candidate-token",
+                    "admin-token",
+                    [123],
+                    contact_name="Ali Valiyev",
+                    contact_phone="+998901234567",
+                    contact_username="alivaliyev",
+                )
+                tenant = await database.get_tenant(tenant_id)
+            self.assertEqual(tenant["contact_phone"], "+998901234567")
+            self.assertEqual(tenant["contact_username"], "alivaliyev")
+
     async def test_fsm_storage_initializes_on_fresh_database(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage = SQLiteStorage(str(Path(tmp) / "fsm.db"))

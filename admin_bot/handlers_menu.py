@@ -13,19 +13,21 @@ router = Router(name="admin_menu")
 
 def _main_menu_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="📋 Vakansiyalar", callback_data="menu:vacancies")
+    builder.button(text="📥 Yangi arizalar", callback_data="apps:list:pending:0")
+    builder.button(text="👥 Barcha nomzodlar", callback_data="apps:list:all:0")
+    builder.button(text="💼 Vakansiyalar", callback_data="menu:vacancies")
+    builder.button(text="📅 Suhbatlar", callback_data="menu:interview")
+    builder.button(text="📊 Natijalar", callback_data="menu:stats")
     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
-    builder.button(text="📅 Suhbat vaqtlari", callback_data="menu:interview")
-    builder.button(text="📊 Statistika", callback_data="menu:stats")
-    builder.adjust(1)
+    builder.adjust(1, 1, 2, 2)
     return builder.as_markup()
 
 
 async def show_main_menu(message: Message):
     await message.answer(
-        "👔 <b>Janob HR — Admin panel</b>\n\n"
-        "HR jarayoningizni shu yerdan boshqaring: vakansiyalar, arizalar, "
-        "suhbat rejasi va statistika.\n\nQuyidagilardan birini tanlang:",
+        "👔 <b>Janob HR</b>\n\n"
+        "Nomzodlarni saralash, suhbatlarni rejalash va natijalarni boshqarish.\n\n"
+        "Kerakli bo'limni tanlang:",
         reply_markup=_main_menu_keyboard(),
     )
 

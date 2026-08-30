@@ -25,13 +25,17 @@ router = Router(name="founder_panel")
 
 
 def _tenant_summary(t: dict) -> str:
+    username = t.get("contact_username")
+    telegram_contact = f"@{username}" if username else "—"
     return (
-        f"<b>№{t['id']} — {t['company_name']}</b>\n"
-        f"Holat: {t['status']}\n"
+        f"🏢 <b>№{t['id']} — {t['company_name']}</b>\n\n"
+        f"👤 Mas'ul: {t.get('contact_name') or '—'}\n"
+        f"📱 Telefon: <code>{t.get('contact_phone') or '—'}</code>\n"
+        f"💬 Telegram: {telegram_contact}\n"
+        f"📌 Holat: {t['status']}\n\n"
         f"Nomzod-bot: {t.get('bot_username') or t['bot_token'][:12] + '...'}\n"
         f"Admin-bot: {t.get('admin_bot_username') or (t.get('admin_bot_token') or '—')[:12] + '...'}\n"
-        f"Admin ID(lar): {', '.join(str(a) for a in t['admin_user_ids'])}\n"
-        f"Ro'yxatdan o'tgan: {t['created_at'][:16].replace('T', ' ')}"
+        f"🗓 Ro'yxatdan o'tgan: {t['created_at'][:16].replace('T', ' ')}"
     )
 
 
@@ -43,16 +47,20 @@ async def cmd_start(message: Message):
 
 
 async def show_main_menu(message: Message):
-    pending = await database.list_tenants(status="pending")
-    active = await database.list_tenants(status="active")
+    stats = await database.get_founder_stats()
 
     builder = InlineKeyboardBuilder()
-    builder.button(text=f"⏳ Kutilmoqda ({len(pending)})", callback_data="fp:pending")
-    builder.button(text=f"✅ Faol mijozlar ({len(active)})", callback_data="fp:active")
-    builder.adjust(1)
+    builder.button(text=f"🔥 Yangi leadlar ({stats['pending']})", callback_data="fp:pending")
+    builder.button(text=f"💼 Faol mijozlar ({stats['active']})", callback_data="fp:active")
+    builder.button(text=f"⏸ To'xtatilgan ({stats['inactive']})", callback_data="fp:inactive")
+    builder.button(text="📊 Biznes ko'rsatkichlari", callback_data="fp:stats")
+    builder.adjust(2, 1, 1)
 
     await message.answer(
-        "👑 <b>Janob HR — Bosh boshqaruv</b>\n\nQuyidagilardan birini tanlang:",
+        "👑 <b>Janob HR — Founder</b>\n\n"
+        f"Oxirgi 30 kun: <b>{stats['monthly_applications']} ta ariza</b>\n"
+        f"Jami faol biznes: <b>{stats['active']} ta</b>\n\n"
+        "Kerakli bo'limni tanlang:",
         reply_markup=builder.as_markup(),
     )
 
@@ -78,8 +86,9 @@ async def list_pending(callback: CallbackQuery):
     else:
         text = "⏳ <b>Faollashtirishni kutayotgan mijozlar:</b>"
         for t in tenants:
+            phone = t.get("contact_phone") or "raqam yo'q"
             builder.button(
-                text=f"№{t['id']} — {t['company_name']}",
+                text=f"№{t['id']} · {t['company_name']} · {phone}",
                 callback_data=f"fp:view:{t['id']}",
             )
     builder.button(text="⬅️ Orqaga", callback_data="fp:main")
@@ -101,14 +110,53 @@ async def list_active(callback: CallbackQuery):
     else:
         text = "✅ <b>Faol mijozlar:</b>"
         for t in tenants:
+            phone = t.get("contact_phone") or "raqam yo'q"
             builder.button(
-                text=f"№{t['id']} — {t['company_name']}",
+                text=f"№{t['id']} · {t['company_name']} · {phone}",
                 callback_data=f"fp:view:{t['id']}",
             )
     builder.button(text="⬅️ Orqaga", callback_data="fp:main")
     builder.adjust(1)
 
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fp:inactive")
+async def list_inactive(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    tenants = await database.list_tenants(status="inactive")
+    builder = InlineKeyboardBuilder()
+    text = "⏸ <b>To'xtatilgan mijozlar:</b>" if tenants else "To'xtatilgan mijoz yo'q."
+    for t in tenants:
+        phone = t.get("contact_phone") or "raqam yo'q"
+        builder.button(
+            text=f"№{t['id']} · {t['company_name']} · {phone}",
+            callback_data=f"fp:view:{t['id']}",
+        )
+    builder.button(text="⬅️ Bosh menyu", callback_data="fp:main")
+    builder.adjust(1)
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fp:stats")
+async def show_business_stats(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    stats = await database.get_founder_stats()
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ Bosh menyu", callback_data="fp:main")
+    await callback.message.edit_text(
+        "📊 <b>Janob HR biznes ko'rsatkichlari</b>\n\n"
+        f"🔥 Yangi leadlar: <b>{stats['pending']}</b>\n"
+        f"💼 Faol mijozlar: <b>{stats['active']}</b>\n"
+        f"⏸ To'xtatilgan: <b>{stats['inactive']}</b>\n\n"
+        f"📥 Oxirgi 30 kun arizalari: <b>{stats['monthly_applications']}</b>\n"
+        f"🗂 Jami arizalar: <b>{stats['total_applications']}</b>",
+        reply_markup=builder.as_markup(),
+    )
     await callback.answer()
 
 
@@ -130,6 +178,10 @@ async def view_tenant(callback: CallbackQuery):
         )
     elif tenant["status"] == "active":
         builder.button(text="🔴 To'xtatish", callback_data=f"fp:deactivate:{tenant_id}")
+    elif tenant["status"] == "inactive":
+        builder.button(
+            text="🟢 Qayta faollashtirish", callback_data=f"fp:activate:{tenant_id}"
+        )
     builder.button(text="⬅️ Orqaga", callback_data="fp:main")
     builder.adjust(1)
 

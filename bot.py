@@ -93,6 +93,7 @@ def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
 
 def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     from admin_bot import (
+        handlers_candidates,
         handlers_decisions,
         handlers_export,
         handlers_interview,
@@ -112,6 +113,7 @@ def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     dp.update.outer_middleware(AdminOnlyMiddleware())
 
     dp.include_router(handlers_menu.router)
+    dp.include_router(handlers_candidates.router)
     dp.include_router(handlers_vacancy_list.router)
     dp.include_router(handlers_vacancy_edit.router)
     dp.include_router(handlers_decisions.router)

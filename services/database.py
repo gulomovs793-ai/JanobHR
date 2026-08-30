@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS tenants (
     admin_bot_token TEXT UNIQUE,
     admin_bot_username TEXT,
     admin_user_ids TEXT NOT NULL DEFAULT '[]',
+    contact_name TEXT,
+    contact_phone TEXT,
+    contact_username TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL
 );
@@ -338,6 +341,13 @@ async def init_db():
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL)
+        # Mavjud Render diskidagi eski bazalarni ma'lumot yo'qotmasdan
+        # yangilaymiz. SQLite `ADD COLUMN` uchun IF NOT EXISTS bermaydi.
+        cursor = await db.execute("PRAGMA table_info(tenants)")
+        tenant_columns = {row[1] for row in await cursor.fetchall()}
+        for column in ("contact_name", "contact_phone", "contact_username"):
+            if column not in tenant_columns:
+                await db.execute(f"ALTER TABLE tenants ADD COLUMN {column} TEXT")
         await db.commit()
     logger.info("Ma'lumotlar bazasi (ko'p mijozli) tayyor: %s", SQLITE_PATH)
 
@@ -350,6 +360,9 @@ async def create_tenant(
     bot_token: str,
     admin_bot_token: str,
     admin_user_ids: list[int],
+    contact_name: str = "",
+    contact_phone: str = "",
+    contact_username: str = "",
 ) -> int:
     """Yangi mijoz yaratadi va unga standart 3 ta namunaviy vakansiyani urug'laydi.
     Ikkita alohida token oladi: `bot_token` — nomzod-bot uchun, `admin_bot_token` —
@@ -358,12 +371,16 @@ async def create_tenant(
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
             "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
-            "status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
+            "contact_name, contact_phone, contact_username, status, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
             (
                 company_name,
                 bot_token,
                 admin_bot_token,
                 json.dumps(admin_user_ids),
+                contact_name,
+                contact_phone,
+                contact_username,
                 created_at,
             ),
         )
@@ -451,6 +468,29 @@ async def list_tenants(status: str | None = None) -> list[dict]:
         t["admin_user_ids"] = json.loads(t["admin_user_ids"])
         result.append(t)
     return result
+
+
+async def get_founder_stats() -> dict:
+    """Founder panel uchun platforma bo'yicha qisqa biznes ko'rsatkichlari."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT status, COUNT(*) FROM tenants GROUP BY status"
+        )
+        tenant_counts = dict(await cursor.fetchall())
+        cursor = await db.execute("SELECT COUNT(*) FROM applications")
+        total_applications = (await cursor.fetchone())[0]
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM applications WHERE created_at >= ?",
+            ((datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),),
+        )
+        monthly_applications = (await cursor.fetchone())[0]
+    return {
+        "pending": tenant_counts.get("pending", 0),
+        "active": tenant_counts.get("active", 0),
+        "inactive": tenant_counts.get("inactive", 0),
+        "total_applications": total_applications,
+        "monthly_applications": monthly_applications,
+    }
 
 
 async def update_tenant_status(
@@ -624,6 +664,33 @@ async def get_applications_for_vacancy(
         )
         rows = await cursor.fetchall()
     return [_parse_app_row(r) for r in rows]
+
+
+async def list_applications(
+    tenant_id: int,
+    *,
+    status: str | None = None,
+    limit: int = 5,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Admin bot ro'yxati uchun sahifalangan arizalar va umumiy soni."""
+    where = "tenant_id = ?"
+    params: list = [tenant_id]
+    if status:
+        where += " AND status = ?"
+        params.append(status)
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            f"SELECT COUNT(*) FROM applications WHERE {where}", params
+        )
+        total = (await cursor.fetchone())[0]
+        cursor = await db.execute(
+            f"SELECT * FROM applications WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        )
+        rows = await cursor.fetchall()
+    return [_parse_app_row(row) for row in rows], total
 
 
 # ============================= VAKANSIYALAR (admin bot) =============================

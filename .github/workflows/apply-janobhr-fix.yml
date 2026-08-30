@@ -1,0 +1,24 @@
+name: Apply JanobHR fix
+
+on:
+  push:
+    branches: [multi-tenant]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply tested fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git apply --index janobhr-fix.patch
+          git rm janobhr-fix.patch .github/workflows/apply-janobhr-fix.yml
+          git commit -m "Fix multi-tenant polling, admin flow, and payment handling"
+          git push

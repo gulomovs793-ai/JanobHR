@@ -8,6 +8,7 @@ from aiogram.fsm.storage.base import StorageKey
 
 import webhook_app
 from handlers import admin as admin_handlers
+from handlers import create_bot
 from services import database
 from services.payment_automation import handle_payment_notification
 from services.storage import SQLiteStorage
@@ -28,6 +29,16 @@ class FakeAdminBot:
 
 
 class RegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_business_lead_is_sent_by_janob_hr_admin_bot(self):
+        admin_bot = type("AdminBot", (), {"send_message": AsyncMock()})()
+        with (
+            patch.object(create_bot.bot_registry, "admin_bot", admin_bot),
+            patch.object(create_bot, "ADMIN_USER_IDS", {123}),
+        ):
+            await create_bot._send_to_janob_hr_admin("lead")
+
+        admin_bot.send_message.assert_awaited_once_with(chat_id=123, text="lead")
+
     async def test_tenant_contact_is_saved_for_founder(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "contacts.db")

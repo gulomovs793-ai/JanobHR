@@ -11,6 +11,8 @@ import logging
 from html import escape
 
 from aiogram import Bot, F, Router
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -24,12 +26,45 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-from config import FOUNDER_USER_IDS
-from services import database
+from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, FOUNDER_USER_IDS
+from services import bot_registry, database
 
 logger = logging.getLogger("janob_hr_bot")
 
 router = Router(name="create_bot")
+
+
+async def _send_to_janob_hr_admin(text: str) -> None:
+    """Biznes leadlarni faqat Janob HR Admin bot orqali yuboradi."""
+    recipient_ids = ADMIN_USER_IDS or FOUNDER_USER_IDS
+    if not recipient_ids:
+        logger.error("Biznes lead uchun ADMIN_USER_IDS sozlanmagan.")
+        return
+
+    admin_bot = bot_registry.admin_bot
+    temporary_bot = None
+    if admin_bot is None:
+        if not ADMIN_BOT_TOKEN:
+            logger.error("Biznes lead uchun ADMIN_BOT_TOKEN sozlanmagan.")
+            return
+        temporary_bot = Bot(
+            token=ADMIN_BOT_TOKEN,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
+        admin_bot = temporary_bot
+
+    try:
+        for admin_id in recipient_ids:
+            try:
+                await admin_bot.send_message(chat_id=admin_id, text=text)
+            except Exception:
+                logger.exception(
+                    "Biznes leadni Janob HR Admin orqali yuborib bo'lmadi: %s",
+                    admin_id,
+                )
+    finally:
+        if temporary_bot is not None:
+            await temporary_bot.session.close()
 
 
 class CreateBotForm(StatesGroup):
@@ -165,8 +200,7 @@ async def receive_company_name(message: Message, state: FSMContext):
         one_time_keyboard=True,
     )
     await message.answer(
-        "Siz bilan bog'lanishimiz uchun telefon raqamingizni yuboring. "
-        "Raqam faqat Janob HR asoschisiga ko'rinadi.",
+        "Siz bilan bog'lanishimiz uchun telefon raqamingizni yuboring.",
         reply_markup=keyboard,
     )
     await state.set_state(CreateBotForm.waiting_contact)
@@ -192,24 +226,17 @@ async def receive_contact(message: Message, state: FSMContext):
     )
     await state.set_state(CreateBotForm.waiting_candidate_token)
 
-    if FOUNDER_USER_IDS:
-        notice = (
-            "🔥 <b>Yangi biznes lead!</b>\n\n"
-            f"Kompaniya: <b>{escape(data['company_name'])}</b>\n"
-            f"Muammo: {escape(data['hiring_problem'])}\n"
-            f"Hozirgi jarayon: {escape(data['current_process'])}\n"
-            f"Kerakli natija: {escape(data['desired_result'])}\n"
-            f"Kontakt: {escape(message.from_user.full_name)}\n"
-            f"Telefon: <code>{escape(message.contact.phone_number)}</code>\n"
-            f"Telegram: @{escape(message.from_user.username or '—')}"
-        )
-        for founder_id in FOUNDER_USER_IDS:
-            try:
-                await message.bot.send_message(founder_id, notice)
-            except Exception:
-                logger.exception(
-                    "Biznes leadni asoschiga yuborib bo'lmadi: %s", founder_id
-                )
+    notice = (
+        "🔥 <b>Yangi biznes lead!</b>\n\n"
+        f"Kompaniya: <b>{escape(data['company_name'])}</b>\n"
+        f"Muammo: {escape(data['hiring_problem'])}\n"
+        f"Hozirgi jarayon: {escape(data['current_process'])}\n"
+        f"Kerakli natija: {escape(data['desired_result'])}\n"
+        f"Kontakt: {escape(message.from_user.full_name)}\n"
+        f"Telefon: <code>{escape(message.contact.phone_number)}</code>\n"
+        f"Telegram: @{escape(message.from_user.username or '—')}"
+    )
+    await _send_to_janob_hr_admin(notice)
 
 
 @router.message(CreateBotForm.waiting_contact)
@@ -327,22 +354,15 @@ async def receive_admin_token(message: Message, state: FSMContext):
         admin_username,
     )
 
-    if FOUNDER_USER_IDS:
-        notice = (
-            f"🆕 <b>Yangi buyurtma (2 bot)!</b>\n\n"
-            f"№{tenant_id} — {data['company_name']}\n"
-            f"Nomzod-bot: @{data['candidate_bot_username']}\n"
-            f"Admin-bot: @{admin_username}\n"
-            f"Telefon: <code>{data.get('contact_phone') or '—'}</code>\n"
-            f"Kim orqali: <code>{admin_id}</code>"
-        )
-        for founder_id in FOUNDER_USER_IDS:
-            try:
-                await message.bot.send_message(chat_id=founder_id, text=notice)
-            except Exception:
-                logger.exception(
-                    "Asoschiga (id=%s) bildirishnoma yuborib bo'lmadi.", founder_id
-                )
+    notice = (
+        f"🆕 <b>Yangi buyurtma (2 bot)!</b>\n\n"
+        f"№{tenant_id} — {escape(data['company_name'])}\n"
+        f"Nomzod-bot: @{escape(data['candidate_bot_username'])}\n"
+        f"Admin-bot: @{escape(admin_username)}\n"
+        f"Telefon: <code>{escape(data.get('contact_phone') or '—')}</code>\n"
+        f"Kim orqali: <code>{admin_id}</code>"
+    )
+    await _send_to_janob_hr_admin(notice)
 
 
 @router.message(CreateBotForm.waiting_candidate_token)

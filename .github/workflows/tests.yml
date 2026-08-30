@@ -6,6 +6,7 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Runs on every production branch update and can also be started manually.
 jobs:
   test:
     runs-on: ubuntu-latest

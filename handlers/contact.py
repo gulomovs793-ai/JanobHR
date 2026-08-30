@@ -3,12 +3,18 @@ Janob HR Bot — nomzoddan yakuniy aloqa ma'lumotlarini (to'liq ism-familiya,
 telefon raqami) yig'ish. Barcha savollar (va agar kerak bo'lsa, fayl) qabul
 qilingandan so'ng, arizani yakunlashdan oldin shu bosqich ishga tushadi.
 """
+
 import logging
 import re
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from aiogram.types import (
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
 from i18n import DEFAULT_LANG, t
 from states import ApplyForm
@@ -42,7 +48,9 @@ async def handle_full_name(message: Message, state: FSMContext):
     await state.update_data(candidate_full_name=full_name)
 
     keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=t("share_phone_button", lang), request_contact=True)]],
+        keyboard=[
+            [KeyboardButton(text=t("share_phone_button", lang), request_contact=True)]
+        ],
         resize_keyboard=True,
         one_time_keyboard=True,
     )

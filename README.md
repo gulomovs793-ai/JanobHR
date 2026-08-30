@@ -85,13 +85,22 @@ demo/test qilish uchun bu yetarli.
 
 ## Serverga (24/7) joylashtirish
 
-Eng oson yo'llar:
-- **VPS** (masalan Timeweb, Contabo, DigitalOcean): loyihani serverga
-  yuklab, `screen`/`tmux` yoki `systemd` service orqali `python3 bot.py`ni
-  doimiy ishlatish.
-- **Railway.app / Render.com**: repo'ni ulaysiz, `Start command`ga
-  `python bot.py` yozasiz, Environment Variables bo'limiga `.env`
-  qiymatlarini kiritasiz — bepul/arzon tarifda ishlaydi.
+Multi-tenant production rejimida faqat webhook server ishlatiladi:
+
+```bash
+python webhook_app.py
+```
+
+- Render/Railway'da **bitta Web Service** oching va Start Command sifatida
+  `python webhook_app.py` yozing.
+- `WEBHOOK_BASE_URL`ni servisning HTTPS manziliga qo'ying.
+- Shu tokenlar bilan ishlaydigan eski `python bot.py` yoki alohida Founder Bot
+  servislarini to'xtating. Bir tokenni ikki polling/webhook jarayonida ishlatish
+  Telegram `Too Many Requests` / `GetUpdates` xatosini chiqaradi.
+- `setup_bot.py` alohida ishlatilsa, u faqat o'zining `SETUP_BOT_TOKEN` tokeni
+  bilan va bitta nusxada ishlashi kerak.
+- Lokal, bitta kompaniyali eski polling rejimi kerak bo'lsa `WEBHOOK_BASE_URL`ni
+  bo'sh qoldirib, faqat `python bot.py`ni bitta nusxada ishga tushiring.
 
 ## GitHub'ga yuklash
 

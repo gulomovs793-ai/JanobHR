@@ -8,6 +8,7 @@ Ro'yxatdan o'tgandan keyin, asoschi to'lovni qo'lda tekshirib, alohida
 boshqaruv paneli orqali mijozni "faollashtiradi" — shundan keyin uning
 o'z boti avtomatik ishga tushadi.
 """
+
 import asyncio
 import logging
 
@@ -29,7 +30,8 @@ router = Router(name="setup")
 
 class SetupForm(StatesGroup):
     waiting_company_name = State()
-    waiting_token = State()
+    waiting_candidate_token = State()
+    waiting_admin_token = State()
 
 
 @router.message(CommandStart())
@@ -56,11 +58,11 @@ async def receive_company_name(message: Message, state: FSMContext):
         "Agar hali botingiz bo'lmasa: @BotFather ga o'ting, <code>/newbot</code> yuboring, "
         "ism va username bering — sizga token beradi. O'sha tokenni shu yerga joylashtiring."
     )
-    await state.set_state(SetupForm.waiting_token)
+    await state.set_state(SetupForm.waiting_candidate_token)
 
 
-@router.message(SetupForm.waiting_token, F.text)
-async def receive_token(message: Message, state: FSMContext):
+@router.message(SetupForm.waiting_candidate_token, F.text)
+async def receive_candidate_token(message: Message, state: FSMContext):
     from services import database  # aylanma import'dan qochish uchun shu yerda
 
     token = message.text.strip()
@@ -87,7 +89,7 @@ async def receive_token(message: Message, state: FSMContext):
     try:
         test_bot = Bot(token=token)
         me = await test_bot.get_me()
-    except Exception:
+    except Exception:  # noqa: BLE001 - noto'g'ri token turli aiogram xatolarini beradi
         await wait_msg.edit_text(
             "❌ Bu token noto'g'ri yoki ishlamayapti. Iltimos, @BotFather'dan to'g'ri "
             "tokenni nusxalab, qayta yuboring."
@@ -97,12 +99,51 @@ async def receive_token(message: Message, state: FSMContext):
         if test_bot is not None:
             await test_bot.session.close()
 
+    await state.update_data(
+        candidate_bot_token=token, candidate_bot_username=me.username
+    )
+    await wait_msg.edit_text(f"✅ Nomzod-bot tayyor: <b>@{me.username}</b>")
+    await message.answer(
+        "Endi @BotFather orqali yaratgan, butunlay boshqa "
+        "<b>ADMIN PANEL-BOT</b> tokenini yuboring."
+    )
+    await state.set_state(SetupForm.waiting_admin_token)
+
+
+@router.message(SetupForm.waiting_admin_token, F.text)
+async def receive_admin_token(message: Message, state: FSMContext):
+    from services import database
+
+    token = message.text.strip()
     data = await state.get_data()
+    if token == data.get("candidate_bot_token"):
+        await message.answer("Admin panel-bot uchun boshqa bot tokeni kerak.")
+        return
+
+    if await database.get_tenant_by_token(token):
+        await message.answer("Bu token allaqachon ro'yxatdan o'tgan.")
+        return
+
+    wait_msg = await message.answer("🔍 Admin-bot tokenini tekshiryapman...")
+    test_bot = None
+    try:
+        test_bot = Bot(token=token)
+        admin_me = await test_bot.get_me()
+    except Exception:  # noqa: BLE001 - noto'g'ri token turli aiogram xatolarini beradi
+        await wait_msg.edit_text("❌ Admin-bot tokeni noto'g'ri yoki ishlamayapti.")
+        return
+    finally:
+        if test_bot is not None:
+            await test_bot.session.close()
+
     admin_id = message.from_user.id
 
     try:
         tenant_id = await database.create_tenant(
-            company_name=data["company_name"], bot_token=token, admin_user_ids=[admin_id],
+            company_name=data["company_name"],
+            bot_token=data["candidate_bot_token"],
+            admin_bot_token=token,
+            admin_user_ids=[admin_id],
         )
     except Exception:
         logger.exception("Mijozni bazaga yozishda kutilmagan xato.")
@@ -112,7 +153,9 @@ async def receive_token(message: Message, state: FSMContext):
         return
 
     await wait_msg.edit_text(
-        f"✅ Tabriklaymiz! <b>@{me.username}</b> boti muvaffaqiyatli ro'yxatdan o'tkazildi.\n\n"
+        "✅ Tabriklaymiz! Ikkala bot ham ro'yxatdan o'tkazildi.\n\n"
+        f"Nomzod-bot: <b>@{data['candidate_bot_username']}</b>\n"
+        f"Admin-bot: <b>@{admin_me.username}</b>\n\n"
         f"Mijoz raqamingiz: <code>{tenant_id}</code>\n\n"
         "To'lovni amalga oshirgach, botingiz bir necha daqiqada avtomatik ishga tushadi — "
         "sizga shu yerda xabar beramiz."
@@ -121,14 +164,17 @@ async def receive_token(message: Message, state: FSMContext):
 
     logger.info(
         "Yangi mijoz ro'yxatdan o'tdi: id=%s, kompaniya=%s, bot=@%s",
-        tenant_id, data["company_name"], me.username,
+        tenant_id,
+        data["company_name"],
+        data["candidate_bot_username"],
     )
 
     if FOUNDER_USER_IDS:
         notice_text = (
             f"🆕 <b>Yangi mijoz ro'yxatdan o'tdi</b>\n\n"
             f"№{tenant_id} — {data['company_name']}\n"
-            f"Bot: @{me.username}\n"
+            f"Nomzod-bot: @{data['candidate_bot_username']}\n"
+            f"Admin-bot: @{admin_me.username}\n"
             f"Admin Telegram ID: <code>{admin_id}</code>\n\n"
             "To'lov tushgach, boshqaruv panelidan faollashtiring."
         )
@@ -136,10 +182,13 @@ async def receive_token(message: Message, state: FSMContext):
             try:
                 await message.bot.send_message(chat_id=founder_id, text=notice_text)
             except Exception:
-                logger.exception("Asoschiga (id=%s) bildirishnoma yuborib bo'lmadi.", founder_id)
+                logger.exception(
+                    "Asoschiga (id=%s) bildirishnoma yuborib bo'lmadi.", founder_id
+                )
 
 
-@router.message(SetupForm.waiting_token)
+@router.message(SetupForm.waiting_candidate_token)
+@router.message(SetupForm.waiting_admin_token)
 async def wrong_token_type(message: Message, state: FSMContext):
     await message.answer("Iltimos, tokenni oddiy matn ko'rinishida yuboring.")
 
@@ -148,7 +197,9 @@ async def main():
     from services import database
 
     await database.init_db()
-    bot = Bot(token=SETUP_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(
+        token=SETUP_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     await bot.delete_webhook(drop_pending_updates=True)
@@ -157,5 +208,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
     asyncio.run(main())

@@ -1,4 +1,5 @@
 """Janob HR Bot — vakansiya tanlash bosqichi."""
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
@@ -46,7 +47,9 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: 
         followup_asked_indices=[],
         awaiting_followup_for=None,
     )
-    await callback.message.edit_text(t("vacancy_selected", lang, title=vacancy["title"]))
+    await callback.message.edit_text(
+        t("vacancy_selected", lang, title=vacancy["title"])
+    )
 
     from handlers.resume_upfront import ask_resume_upfront
 

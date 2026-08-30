@@ -1,4 +1,5 @@
 """Admin bot — qo'lda kiritilgan savollar matnini tuzilgan ro'yxatga aylantirish."""
+
 from services.database import make_vacancy_key
 
 MANUAL_FORMAT_HELP = (

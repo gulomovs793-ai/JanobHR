@@ -1,4 +1,5 @@
 """Admin bot — asosiy menyu va statistika."""
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext

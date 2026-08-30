@@ -1,4 +1,7 @@
 """Janob HR Bot — rezyume (PDF), video-vizitka yoki portfolio link qabul qilish (ixtiyoriy)."""
+
+import logging
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -8,6 +11,7 @@ from i18n import DEFAULT_LANG, t
 from states import ApplyForm
 
 router = Router(name="files")
+logger = logging.getLogger("janob_hr_bot")
 
 
 @router.message(ApplyForm.waiting_file, F.document)
@@ -45,7 +49,7 @@ async def skip_resume(callback: CallbackQuery, state: FSMContext):
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
-        pass
+        logger.debug("Skip-resume tugmasini olib tashlab bo'lmadi.", exc_info=True)
     await ask_full_name(callback.message, state)
 
 

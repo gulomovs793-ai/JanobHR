@@ -10,19 +10,21 @@ Ishga tushirilganda, bazadagi barcha FAOL mijozlar uchun webhook o'rnatiladi.
 Yangi mijoz keyinroq (Phase 3/4) `register_new_tenant_webhook()` orqali,
 serverni qayta ishga tushirmasdan qo'shiladi.
 """
+
 import asyncio
 import logging
+import os
 
 from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, TokenBasedRequestHandler, setup_application
+from aiogram.webhook.aiohttp_server import TokenBasedRequestHandler, setup_application
 from aiohttp import web
 
-from config import WEBHOOK_BASE_URL, FOUNDER_BOT_TOKEN
+from config import FOUNDER_BOT_TOKEN, WEBHOOK_BASE_URL
 from services import database
 from services.storage import SQLiteStorage
-from services.tenant_middleware import IsAdminBot, IsCandidateBot, TenantMiddleware
+from services.tenant_middleware import TenantMiddleware
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -37,14 +39,17 @@ def _build_dispatcher() -> Dispatcher:
     (IsCandidateBot filtri). Admin routerlari — FAQAT Admin panel-bot orqali,
     VA shu mijozning admini bo'lgan foydalanuvchidan (IsAdminBot filtri).
     """
-    from aiogram import Router
 
-    from handlers import start, vacancy, questions, files, sell, contact, resume_upfront
-    from admin_bot import (
-        handlers_menu, handlers_vacancy_list, handlers_vacancy_edit,
-        handlers_decisions, handlers_interview, handlers_export,
-    )
     import founder_panel
+    from admin_bot import (
+        handlers_decisions,
+        handlers_export,
+        handlers_interview,
+        handlers_menu,
+        handlers_vacancy_edit,
+        handlers_vacancy_list,
+    )
+    from handlers import contact, files, questions, resume_upfront, sell, start, vacancy
     from services.tenant_middleware import IsAdminBot, IsCandidateBot, IsFounderBot
 
     fsm_storage = SQLiteStorage(db_path=database.SQLITE_PATH)
@@ -54,16 +59,29 @@ def _build_dispatcher() -> Dispatcher:
     candidate_root = Router(name="candidate_root")
     candidate_root.message.filter(IsCandidateBot())
     candidate_root.callback_query.filter(IsCandidateBot())
-    for r in (sell.router, start.router, vacancy.router, resume_upfront.router,
-              questions.router, files.router, contact.router):
+    for r in (
+        sell.router,
+        start.router,
+        vacancy.router,
+        resume_upfront.router,
+        questions.router,
+        files.router,
+        contact.router,
+    ):
         candidate_root.include_router(r)
     dp.include_router(candidate_root)
 
     admin_root = Router(name="admin_root")
     admin_root.message.filter(IsAdminBot())
     admin_root.callback_query.filter(IsAdminBot())
-    for r in (handlers_menu.router, handlers_vacancy_list.router, handlers_vacancy_edit.router,
-              handlers_decisions.router, handlers_interview.router, handlers_export.router):
+    for r in (
+        handlers_menu.router,
+        handlers_vacancy_list.router,
+        handlers_vacancy_edit.router,
+        handlers_decisions.router,
+        handlers_interview.router,
+        handlers_export.router,
+    ):
         admin_root.include_router(r)
     dp.include_router(admin_root)
 
@@ -83,6 +101,9 @@ def _build_dispatcher() -> Dispatcher:
 async def register_new_tenant_webhook(bot_token: str) -> str:
     """Yangi bot (nomzod yoki admin) uchun serverni qayta ishga tushirmasdan
     webhookni o'rnatadi. Bot username'ini qaytaradi."""
+    if not WEBHOOK_BASE_URL:
+        raise RuntimeError("WEBHOOK_BASE_URL sozlanmagan.")
+
     bot = Bot(token=bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     try:
         webhook_url = f"{WEBHOOK_BASE_URL}/webhook/{bot_token}"
@@ -100,6 +121,10 @@ async def register_new_tenant_webhook(bot_token: str) -> str:
 
 async def on_startup(app: web.Application):
     await database.init_db()
+    # Dispatcher ishlatadigan persistent FSM jadvali database.init_db() tarkibiga
+    # kirmaydi. Uni alohida yaratmasak, yangi serverda birinchi /start so'rovi
+    # "no such table: fsm_storage" bilan yiqiladi.
+    await app["dispatcher"].storage.init()
     tenants = await database.list_tenants(status="active")
     for tenant in tenants:
         try:
@@ -107,7 +132,9 @@ async def on_startup(app: web.Application):
             if tenant.get("admin_bot_token"):
                 await register_new_tenant_webhook(tenant["admin_bot_token"])
         except Exception:
-            logger.exception("Mijoz (id=%s) webhooklarini ornatib bolmadi.", tenant["id"])
+            logger.exception(
+                "Mijoz (id=%s) webhooklarini ornatib bolmadi.", tenant["id"]
+            )
 
     if FOUNDER_BOT_TOKEN:
         try:
@@ -129,9 +156,13 @@ async def on_startup(app: web.Application):
 
         if is_userbot_configured():
             asyncio.create_task(start_userbot())
-            logger.info("Userbot (to'lovlarni aniqlash) fon vazifasi sifatida ishga tushirildi.")
+            logger.info(
+                "Userbot (to'lovlarni aniqlash) fon vazifasi sifatida ishga tushirildi."
+            )
         else:
-            logger.info("Userbot sozlanmagan (TELEGRAM_API_ID/HASH/SESSION yo'q) — o'tkazib yuborildi.")
+            logger.info(
+                "Userbot sozlanmagan (TELEGRAM_API_ID/HASH/SESSION yo'q) — o'tkazib yuborildi."
+            )
     except Exception:
         logger.exception("Userbot ishga tushmadi — asosiy bot ishlashda davom etadi.")
 
@@ -153,4 +184,4 @@ def create_app() -> web.Application:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    web.run_app(create_app(), host="0.0.0.0", port=8080)
+    web.run_app(create_app(), host="0.0.0.0", port=int(os.getenv("PORT", "8080")))

@@ -6,6 +6,7 @@ tizimning nusxasini buyurtma qilishi mumkin. Har bir mijoz IKKITA alohida
 bot yaratadi: bittasi nomzodlar bilan ishlaydigan bot, ikkinchisi — faqat
 o'zining administratorlari ishlatadigan Admin panel-bot.
 """
+
 import logging
 
 from aiogram import Bot, F, Router
@@ -35,7 +36,7 @@ async def _validate_token(token: str) -> str | None:
         test_bot = Bot(token=token)
         me = await test_bot.get_me()
         return me.username
-    except Exception:
+    except Exception:  # noqa: BLE001 - noto'g'ri token turli aiogram xatolarini beradi
         return None
     finally:
         if test_bot is not None:
@@ -81,11 +82,15 @@ async def receive_candidate_token(message: Message, state: FSMContext):
         existing = await database.get_tenant_by_token(token)
     except Exception:
         logger.exception("Tenant tekshirishda kutilmagan xato.")
-        await message.answer("⚠️ Texnik xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.")
+        await message.answer(
+            "⚠️ Texnik xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring."
+        )
         return
 
     if existing:
-        await message.answer("Bu token allaqachon ro'yxatdan o'tgan. Boshqa tokenmi tekshiring.")
+        await message.answer(
+            "Bu token allaqachon ro'yxatdan o'tgan. Boshqa tokenmi tekshiring."
+        )
         return
 
     wait_msg = await message.answer("🔍 Tokenni tekshiryapman...")
@@ -123,11 +128,15 @@ async def receive_admin_token(message: Message, state: FSMContext):
         existing = await database.get_tenant_by_token(token)
     except Exception:
         logger.exception("Tenant tekshirishda kutilmagan xato.")
-        await message.answer("⚠️ Texnik xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.")
+        await message.answer(
+            "⚠️ Texnik xatolik yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring."
+        )
         return
 
     if existing:
-        await message.answer("Bu token allaqachon ro'yxatdan o'tgan. Boshqa tokenmi tekshiring.")
+        await message.answer(
+            "Bu token allaqachon ro'yxatdan o'tgan. Boshqa tokenmi tekshiring."
+        )
         return
 
     wait_msg = await message.answer("🔍 Tokenni tekshiryapman...")
@@ -150,7 +159,9 @@ async def receive_admin_token(message: Message, state: FSMContext):
         )
     except Exception:
         logger.exception("Mijozni bazaga yozishda kutilmagan xato.")
-        await wait_msg.edit_text("⚠️ Texnik xatolik yuz berdi. Iltimos, /create_bot bilan qayta urinib ko'ring.")
+        await wait_msg.edit_text(
+            "⚠️ Texnik xatolik yuz berdi. Iltimos, /create_bot bilan qayta urinib ko'ring."
+        )
         return
 
     await wait_msg.edit_text(
@@ -164,7 +175,10 @@ async def receive_admin_token(message: Message, state: FSMContext):
 
     logger.info(
         "Joriy bot orqali yangi buyurtma: id=%s, kompaniya=%s, nomzod-bot=@%s, admin-bot=@%s",
-        tenant_id, data["company_name"], data["candidate_bot_username"], admin_username,
+        tenant_id,
+        data["company_name"],
+        data["candidate_bot_username"],
+        admin_username,
     )
 
     if FOUNDER_USER_IDS:
@@ -179,7 +193,9 @@ async def receive_admin_token(message: Message, state: FSMContext):
             try:
                 await message.bot.send_message(chat_id=founder_id, text=notice)
             except Exception:
-                logger.exception("Asoschiga (id=%s) bildirishnoma yuborib bo'lmadi.", founder_id)
+                logger.exception(
+                    "Asoschiga (id=%s) bildirishnoma yuborib bo'lmadi.", founder_id
+                )
 
 
 @router.message(CreateBotForm.waiting_candidate_token)

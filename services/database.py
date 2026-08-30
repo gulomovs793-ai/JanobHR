@@ -7,10 +7,10 @@ BIRINCHI parametr sifatida qabul qiladi va SQL so'rovida albatta ishlatadi —
 shu orqali bitta mijoz boshqasining ma'lumotini HECH QACHON ko'ra olmasligi
 ta'minlanadi. Yangi funksiya qo'shganda ham shu qoidaga rioya qilish SHART.
 """
+
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import aiosqlite
 
@@ -130,7 +130,8 @@ CREATE TABLE IF NOT EXISTS payment_notifications_seen (
 # 3 ta namunaviy vakansiya (avvalgi bir-mijozli tizimdan meros).
 _DEFAULT_VACANCIES = [
     {
-        "key": "sales", "title": "🧑‍💼 Sotuv menejeri",
+        "key": "sales",
+        "title": "🧑‍💼 Sotuv menejeri",
         "reject_message": (
             "Anketangiz uchun rahmat! Hozircha ushbu tajriba talablarimizga to'liq mos "
             "kelmayapti, shu sababli ushbu bosqichda davom eta olmaymiz. "
@@ -138,82 +139,188 @@ _DEFAULT_VACANCIES = [
         ),
         "resume_required": False,
         "questions": [
-            {"key": "experience", "text": "Oldin sotuv sohasida ishlaganmisiz? (Ha/Yo'q)", "hard_filter": True},
-            {"key": "experience_details", "text": "Qayerda va qancha muddat sotuv qilgansiz? Qisqacha yozing."},
-            {"key": "crm", "text": "Qanday CRM tizimlarida ishlagansiz? (Bitrix24, amoCRM va h.k.)"},
-            {"key": "scorecard_plan", "text": (
-                "Bizning kompaniya keyingi chorakda sotuvni kamida $20,000 ga oshirishi kerak. "
-                "Ishga kelganingizdan keyin birinchi 30 kun ichida bunga qanday hissa qo'shasiz? "
-                "Aniq rejangizni 3 ta qadamda yozing."
-            ), "ai_score": True},
-            {"key": "achievement", "text": (
-                "Oldingi ish joyingizda erishgan eng katta va aniq yutug'ingizni yozing "
-                "(iloji bo'lsa, raqamlar bilan)."
-            ), "ai_score": True},
-            {"key": "mistake_lesson", "text": (
-                "Ishingizda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va undan qanday dars oldingiz?"
-            ), "ai_score": True},
-            {"key": "hard_client", "text": "Qiyin mijoz bilan qanday ishlaysiz? Bitta real holatni yozib bering.", "ai_score": True},
-            {"key": "teamwork", "text": "Jamoada ishlash tajribangizni bitta real misol bilan tushuntiring.", "ai_score": True},
-            {"key": "motivation", "text": "Nega aynan bizning kompaniyada ishlashni xohlaysiz?", "ai_score": True},
-            {"key": "salary_expectation", "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)"},
+            {
+                "key": "experience",
+                "text": "Oldin sotuv sohasida ishlaganmisiz? (Ha/Yo'q)",
+                "hard_filter": True,
+            },
+            {
+                "key": "experience_details",
+                "text": "Qayerda va qancha muddat sotuv qilgansiz? Qisqacha yozing.",
+            },
+            {
+                "key": "crm",
+                "text": "Qanday CRM tizimlarida ishlagansiz? (Bitrix24, amoCRM va h.k.)",
+            },
+            {
+                "key": "scorecard_plan",
+                "text": (
+                    "Bizning kompaniya keyingi chorakda sotuvni kamida $20,000 ga oshirishi kerak. "
+                    "Ishga kelganingizdan keyin birinchi 30 kun ichida bunga qanday hissa qo'shasiz? "
+                    "Aniq rejangizni 3 ta qadamda yozing."
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "achievement",
+                "text": (
+                    "Oldingi ish joyingizda erishgan eng katta va aniq yutug'ingizni yozing "
+                    "(iloji bo'lsa, raqamlar bilan)."
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "mistake_lesson",
+                "text": (
+                    "Ishingizda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va undan qanday dars oldingiz?"
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "hard_client",
+                "text": "Qiyin mijoz bilan qanday ishlaysiz? Bitta real holatni yozib bering.",
+                "ai_score": True,
+            },
+            {
+                "key": "teamwork",
+                "text": "Jamoada ishlash tajribangizni bitta real misol bilan tushuntiring.",
+                "ai_score": True,
+            },
+            {
+                "key": "motivation",
+                "text": "Nega aynan bizning kompaniyada ishlashni xohlaysiz?",
+                "ai_score": True,
+            },
+            {
+                "key": "salary_expectation",
+                "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)",
+            },
         ],
     },
     {
-        "key": "designer", "title": "🎨 Dizayner",
+        "key": "designer",
+        "title": "🎨 Dizayner",
         "reject_message": (
             "Anketangiz uchun rahmat! Hozircha tajribangiz talablarimizga mos kelmayapti. "
             "Portfolioingizni boyitib, keyinroq qayta murojaat qilishingiz mumkin. Omad! 🙏"
         ),
         "resume_required": True,
         "questions": [
-            {"key": "tool", "text": "Figma yoki Adobe (Photoshop/Illustrator) dasturlaridan qaysi birida ishlaysiz?"},
-            {"key": "portfolio", "text": "Portfolio (ishlaringiz namunasi) linkini yuboring.", "hard_filter": True},
-            {"key": "scorecard_output", "text": (
-                "Bizning brend uchun ijtimoiy tarmoqlarda oyiga kamida 20 ta post dizayni "
-                "tayyorlashingiz kerak bo'ladi. Birinchi haftada ishni qanday tashkil qilasiz "
-                "va sifatni qanday ta'minlaysiz?"
-            ), "ai_score": True},
-            {"key": "achievement", "text": (
-                "Eng faxrlanadigan loyihangizni tasvirlab bering — u qanday aniq natija "
-                "(masalan, mijoz sotuvi, engagement o'sishi) keltirdi?"
-            ), "ai_score": True},
-            {"key": "mistake_lesson", "text": "Dizaynda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va undan qanday dars oldingiz?", "ai_score": True},
-            {"key": "style", "text": "Sizga qaysi dizayn yo'nalishi (uslub) yaqinroq va nega?", "ai_score": True},
-            {"key": "deadline_handling", "text": "Bir vaqtning o'zida bir nechta muhim topshiriq kelib qolsa, ularni qanday tartibga solasiz?", "ai_score": True},
-            {"key": "feedback_handling", "text": "Mijoz yoki rahbar ishingizni qattiq tanqid qilsa, munosabatingiz qanday bo'ladi?", "ai_score": True},
-            {"key": "salary_expectation", "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)"},
+            {
+                "key": "tool",
+                "text": "Figma yoki Adobe (Photoshop/Illustrator) dasturlaridan qaysi birida ishlaysiz?",
+            },
+            {
+                "key": "portfolio",
+                "text": "Portfolio (ishlaringiz namunasi) linkini yuboring.",
+                "hard_filter": True,
+            },
+            {
+                "key": "scorecard_output",
+                "text": (
+                    "Bizning brend uchun ijtimoiy tarmoqlarda oyiga kamida 20 ta post dizayni "
+                    "tayyorlashingiz kerak bo'ladi. Birinchi haftada ishni qanday tashkil qilasiz "
+                    "va sifatni qanday ta'minlaysiz?"
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "achievement",
+                "text": (
+                    "Eng faxrlanadigan loyihangizni tasvirlab bering — u qanday aniq natija "
+                    "(masalan, mijoz sotuvi, engagement o'sishi) keltirdi?"
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "mistake_lesson",
+                "text": "Dizaynda yo'l qo'ygan eng jiddiy xatoyingiz nima bo'lgan va undan qanday dars oldingiz?",
+                "ai_score": True,
+            },
+            {
+                "key": "style",
+                "text": "Sizga qaysi dizayn yo'nalishi (uslub) yaqinroq va nega?",
+                "ai_score": True,
+            },
+            {
+                "key": "deadline_handling",
+                "text": "Bir vaqtning o'zida bir nechta muhim topshiriq kelib qolsa, ularni qanday tartibga solasiz?",
+                "ai_score": True,
+            },
+            {
+                "key": "feedback_handling",
+                "text": "Mijoz yoki rahbar ishingizni qattiq tanqid qilsa, munosabatingiz qanday bo'ladi?",
+                "ai_score": True,
+            },
+            {
+                "key": "salary_expectation",
+                "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)",
+            },
         ],
     },
     {
-        "key": "smm", "title": "📱 SMM mutaxassis",
+        "key": "smm",
+        "title": "📱 SMM mutaxassis",
         "reject_message": (
             "Anketangiz uchun rahmat! Hozircha tajribangiz talablarimizga mos kelmayapti. "
             "Boshqa vakansiyalarimizni kuzatib boring — omad tilaymiz! 🙏"
         ),
         "resume_required": False,
         "questions": [
-            {"key": "platforms", "text": "Qaysi platformalarda (Instagram, Telegram, TikTok) tajribangiz bor?"},
-            {"key": "content_plan", "text": "Kontent-reja tuzish tajribangiz bormi? (Ha/Yo'q)", "hard_filter": True},
-            {"key": "scorecard_growth", "text": (
-                "Bizning Instagram sahifamizni 3 oy ichida kamida 5,000 ta yangi obunachiga "
-                "olib chiqishingiz kerak. Buni qanday aniq qadamlar bilan amalga oshirasiz?"
-            ), "ai_score": True},
-            {"key": "cases", "text": (
-                "Oldingi ishlaringizdan eng yaxshi natija bergan case'ni raqamlar bilan yozib "
-                "bering (masalan: \"Reels 100,000 ko'rishga yetdi\")."
-            ), "ai_score": True},
-            {"key": "mistake_lesson", "text": "SMMda qilgan eng katta xatoyingiz nima edi va undan qanday xulosa chiqardingiz?", "ai_score": True},
-            {"key": "trend_reaction", "text": (
-                "Ijtimoiy tarmoqlarda tez o'zgaruvchi trendlarga qanday moslashasiz? "
-                "Oxirgi kuzatgan va ishlatgan trendingizni ayting."
-            ), "ai_score": True},
-            {"key": "crisis_management", "text": (
-                "Agar brend haqida salbiy komment yoki kichik inqiroziy vaziyat yuzaga kelsa, "
-                "birinchi qadamingiz nima bo'ladi?"
-            ), "ai_score": True},
-            {"key": "tools", "text": "Qanday dizayn/analitika vositalaridan (Canva, Meta Business Suite va h.k.) foydalanasiz?"},
-            {"key": "salary_expectation", "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)"},
+            {
+                "key": "platforms",
+                "text": "Qaysi platformalarda (Instagram, Telegram, TikTok) tajribangiz bor?",
+            },
+            {
+                "key": "content_plan",
+                "text": "Kontent-reja tuzish tajribangiz bormi? (Ha/Yo'q)",
+                "hard_filter": True,
+            },
+            {
+                "key": "scorecard_growth",
+                "text": (
+                    "Bizning Instagram sahifamizni 3 oy ichida kamida 5,000 ta yangi obunachiga "
+                    "olib chiqishingiz kerak. Buni qanday aniq qadamlar bilan amalga oshirasiz?"
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "cases",
+                "text": (
+                    "Oldingi ishlaringizdan eng yaxshi natija bergan case'ni raqamlar bilan yozib "
+                    'bering (masalan: "Reels 100,000 ko\'rishga yetdi").'
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "mistake_lesson",
+                "text": "SMMda qilgan eng katta xatoyingiz nima edi va undan qanday xulosa chiqardingiz?",
+                "ai_score": True,
+            },
+            {
+                "key": "trend_reaction",
+                "text": (
+                    "Ijtimoiy tarmoqlarda tez o'zgaruvchi trendlarga qanday moslashasiz? "
+                    "Oxirgi kuzatgan va ishlatgan trendingizni ayting."
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "crisis_management",
+                "text": (
+                    "Agar brend haqida salbiy komment yoki kichik inqiroziy vaziyat yuzaga kelsa, "
+                    "birinchi qadamingiz nima bo'ladi?"
+                ),
+                "ai_score": True,
+            },
+            {
+                "key": "tools",
+                "text": "Qanday dizayn/analitika vositalaridan (Canva, Meta Business Suite va h.k.) foydalanasiz?",
+            },
+            {
+                "key": "salary_expectation",
+                "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)",
+            },
         ],
     },
 ]
@@ -237,8 +344,12 @@ async def init_db():
 
 # ============================= MIJOZLAR (tenants) =============================
 
+
 async def create_tenant(
-    company_name: str, bot_token: str, admin_bot_token: str, admin_user_ids: list[int],
+    company_name: str,
+    bot_token: str,
+    admin_bot_token: str,
+    admin_user_ids: list[int],
 ) -> int:
     """Yangi mijoz yaratadi va unga standart 3 ta namunaviy vakansiyani urug'laydi.
     Ikkita alohida token oladi: `bot_token` — nomzod-bot uchun, `admin_bot_token` —
@@ -248,7 +359,13 @@ async def create_tenant(
         cursor = await db.execute(
             "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
             "status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
-            (company_name, bot_token, admin_bot_token, json.dumps(admin_user_ids), created_at),
+            (
+                company_name,
+                bot_token,
+                admin_bot_token,
+                json.dumps(admin_user_ids),
+                created_at,
+            ),
         )
         tenant_id = cursor.lastrowid
 
@@ -256,15 +373,22 @@ async def create_tenant(
             await db.execute(
                 "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
                 "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
-                (tenant_id, v["key"], v["title"], v["reject_message"],
-                 json.dumps(v["questions"], ensure_ascii=False), int(v["resume_required"]), created_at),
+                (
+                    tenant_id,
+                    v["key"],
+                    v["title"],
+                    v["reject_message"],
+                    json.dumps(v["questions"], ensure_ascii=False),
+                    int(v["resume_required"]),
+                    created_at,
+                ),
             )
         await db.commit()
     logger.info("Yangi mijoz yaratildi: id=%s, %s", tenant_id, company_name)
     return tenant_id
 
 
-async def get_tenant(tenant_id: int) -> Optional[dict]:
+async def get_tenant(tenant_id: int) -> dict | None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,))
@@ -276,7 +400,7 @@ async def get_tenant(tenant_id: int) -> Optional[dict]:
     return t
 
 
-async def get_tenant_by_role_token(token: str) -> Optional[tuple[dict, str]]:
+async def get_tenant_by_role_token(token: str) -> tuple[dict, str] | None:
     """Berilgan token — nomzod-bot yoki Admin panel-bot tokenlaridan qaysi biriga
     mos kelishini tekshiradi. Topilsa (mijoz, rol) qaytaradi, rol — "candidate"
     yoki "admin". Hech biriga mos kelmasa None qaytaradi."""
@@ -289,7 +413,9 @@ async def get_tenant_by_role_token(token: str) -> Optional[tuple[dict, str]]:
             t["admin_user_ids"] = json.loads(t["admin_user_ids"])
             return t, "candidate"
 
-        cursor = await db.execute("SELECT * FROM tenants WHERE admin_bot_token = ?", (token,))
+        cursor = await db.execute(
+            "SELECT * FROM tenants WHERE admin_bot_token = ?", (token,)
+        )
         row = await cursor.fetchone()
         if row:
             t = dict(row)
@@ -299,7 +425,7 @@ async def get_tenant_by_role_token(token: str) -> Optional[tuple[dict, str]]:
     return None
 
 
-async def get_tenant_by_token(bot_token: str) -> Optional[dict]:
+async def get_tenant_by_token(bot_token: str) -> dict | None:
     """ESKIRGAN: `get_tenant_by_role_token`ni ishlating. Faqat orqaga moslik
     uchun (masalan `/create_bot`da "bu token allaqachon band" tekshiruvi
     ikkala ustunni ham qamrab olishi kerak — shu funksiya endi ikkalasini
@@ -308,7 +434,7 @@ async def get_tenant_by_token(bot_token: str) -> Optional[dict]:
     return result[0] if result else None
 
 
-async def list_tenants(status: Optional[str] = None) -> list[dict]:
+async def list_tenants(status: str | None = None) -> list[dict]:
     query = "SELECT * FROM tenants"
     params = ()
     if status:
@@ -327,7 +453,9 @@ async def list_tenants(status: Optional[str] = None) -> list[dict]:
     return result
 
 
-async def update_tenant_status(tenant_id: int, status: str, bot_username: Optional[str] = None) -> None:
+async def update_tenant_status(
+    tenant_id: int, status: str, bot_username: str | None = None
+) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         if bot_username is not None:
             await db.execute(
@@ -335,17 +463,23 @@ async def update_tenant_status(tenant_id: int, status: str, bot_username: Option
                 (status, bot_username, tenant_id),
             )
         else:
-            await db.execute("UPDATE tenants SET status = ? WHERE id = ?", (status, tenant_id))
+            await db.execute(
+                "UPDATE tenants SET status = ? WHERE id = ?", (status, tenant_id)
+            )
         await db.commit()
 
 
 async def set_admin_bot_username(tenant_id: int, username: str) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute("UPDATE tenants SET admin_bot_username = ? WHERE id = ?", (username, tenant_id))
+        await db.execute(
+            "UPDATE tenants SET admin_bot_username = ? WHERE id = ?",
+            (username, tenant_id),
+        )
         await db.commit()
 
 
 # ============================= ARIZALAR (applications) =============================
+
 
 def _parse_app_row(row) -> dict:
     app = dict(row)
@@ -358,11 +492,22 @@ def _parse_app_row(row) -> dict:
 
 
 async def save_application(
-    *, tenant_id: int, user_id: int, username: str, full_name: str,
-    vacancy_key: str, vacancy_title: str, answers: dict, ai_scores: dict,
-    resume_file_id: Optional[str], video_file_id: Optional[str], status: str,
-    phone_number: str = "", lang: str = "uz",
-    ai_suspect_flags: Optional[list] = None, voice_answers: Optional[dict] = None,
+    *,
+    tenant_id: int,
+    user_id: int,
+    username: str,
+    full_name: str,
+    vacancy_key: str,
+    vacancy_title: str,
+    answers: dict,
+    ai_scores: dict,
+    resume_file_id: str | None,
+    video_file_id: str | None,
+    status: str,
+    phone_number: str = "",
+    lang: str = "uz",
+    ai_suspect_flags: list | None = None,
+    voice_answers: dict | None = None,
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
@@ -374,27 +519,41 @@ async def save_application(
                 phone_number, lang, ai_suspect_flags, voice_answers, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (tenant_id, user_id, username, full_name, vacancy_key, vacancy_title,
-             json.dumps(answers, ensure_ascii=False), json.dumps(ai_scores, ensure_ascii=False),
-             resume_file_id, video_file_id, status, phone_number, lang,
-             json.dumps(ai_suspect_flags or [], ensure_ascii=False),
-             json.dumps(voice_answers or {}, ensure_ascii=False), created_at),
+            (
+                tenant_id,
+                user_id,
+                username,
+                full_name,
+                vacancy_key,
+                vacancy_title,
+                json.dumps(answers, ensure_ascii=False),
+                json.dumps(ai_scores, ensure_ascii=False),
+                resume_file_id,
+                video_file_id,
+                status,
+                phone_number,
+                lang,
+                json.dumps(ai_suspect_flags or [], ensure_ascii=False),
+                json.dumps(voice_answers or {}, ensure_ascii=False),
+                created_at,
+            ),
         )
         await db.commit()
         return cursor.lastrowid
 
 
-async def get_application(tenant_id: int, app_id: int) -> Optional[dict]:
+async def get_application(tenant_id: int, app_id: int) -> dict | None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM applications WHERE id = ? AND tenant_id = ?", (app_id, tenant_id),
+            "SELECT * FROM applications WHERE id = ? AND tenant_id = ?",
+            (app_id, tenant_id),
         )
         row = await cursor.fetchone()
     return _parse_app_row(row) if row else None
 
 
-async def get_pending_application_for_user(tenant_id: int, user_id: int) -> Optional[dict]:
+async def get_pending_application_for_user(tenant_id: int, user_id: int) -> dict | None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -454,7 +613,9 @@ async def count_slot_bookings(tenant_id: int, slot: str) -> int:
     return row[0] if row else 0
 
 
-async def get_applications_for_vacancy(tenant_id: int, vacancy_key: str, limit: int = 300) -> list[dict]:
+async def get_applications_for_vacancy(
+    tenant_id: int, vacancy_key: str, limit: int = 300
+) -> list[dict]:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -466,6 +627,7 @@ async def get_applications_for_vacancy(tenant_id: int, vacancy_key: str, limit: 
 
 
 # ============================= VAKANSIYALAR (admin bot) =============================
+
 
 def _row_to_vacancy(row) -> dict:
     v = dict(row)
@@ -488,14 +650,17 @@ async def list_vacancies(tenant_id: int, active_only: bool = True) -> list[dict]
     return [_row_to_vacancy(r) for r in rows]
 
 
-async def _get_localized_title(tenant_id: int, key: str, title_uz: str, lang: str) -> str:
+async def _get_localized_title(
+    tenant_id: int, key: str, title_uz: str, lang: str
+) -> str:
     if lang != "ru":
         return title_uz
 
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT title_ru FROM vacancies WHERE tenant_id = ? AND key = ?", (tenant_id, key),
+            "SELECT title_ru FROM vacancies WHERE tenant_id = ? AND key = ?",
+            (tenant_id, key),
         )
         row = await cursor.fetchone()
 
@@ -503,6 +668,7 @@ async def _get_localized_title(tenant_id: int, key: str, title_uz: str, lang: st
         return row["title_ru"]
 
     from services.ai_scoring import translate_simple_text
+
     translated = await translate_simple_text(title_uz)
     if not translated:
         return title_uz
@@ -516,7 +682,9 @@ async def _get_localized_title(tenant_id: int, key: str, title_uz: str, lang: st
     return translated
 
 
-async def list_vacancies_localized(tenant_id: int, lang: str, active_only: bool = True) -> list[dict]:
+async def list_vacancies_localized(
+    tenant_id: int, lang: str, active_only: bool = True
+) -> list[dict]:
     vacancies = await list_vacancies(tenant_id, active_only=active_only)
     if lang != "ru":
         return vacancies
@@ -528,23 +696,26 @@ async def list_vacancies_localized(tenant_id: int, lang: str, active_only: bool 
     return result
 
 
-async def get_vacancy(tenant_id: int, key: str) -> Optional[dict]:
+async def get_vacancy(tenant_id: int, key: str) -> dict | None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM vacancies WHERE tenant_id = ? AND key = ?", (tenant_id, key),
+            "SELECT * FROM vacancies WHERE tenant_id = ? AND key = ?",
+            (tenant_id, key),
         )
         row = await cursor.fetchone()
     return _row_to_vacancy(row) if row else None
 
 
-async def get_vacancy_localized(tenant_id: int, key: str, lang: str) -> Optional[dict]:
+async def get_vacancy_localized(tenant_id: int, key: str, lang: str) -> dict | None:
     vacancy = await get_vacancy(tenant_id, key)
     if not vacancy or lang != "ru":
         return vacancy
 
     vacancy = dict(vacancy)
-    vacancy["title"] = await _get_localized_title(tenant_id, key, vacancy["title"], lang)
+    vacancy["title"] = await _get_localized_title(
+        tenant_id, key, vacancy["title"], lang
+    )
 
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -556,20 +727,31 @@ async def get_vacancy_localized(tenant_id: int, key: str, lang: str) -> Optional
 
     if row and row["questions_ru"]:
         vacancy["questions"] = json.loads(row["questions_ru"])
-        vacancy["reject_message"] = row["reject_message_ru"] or vacancy["reject_message"]
+        vacancy["reject_message"] = (
+            row["reject_message_ru"] or vacancy["reject_message"]
+        )
         return vacancy
 
     from services.ai_scoring import translate_vacancy_content
-    translated = await translate_vacancy_content(vacancy["questions"], vacancy["reject_message"])
+
+    translated = await translate_vacancy_content(
+        vacancy["questions"], vacancy["reject_message"]
+    )
     if not translated:
-        logger.warning("Vakansiya (tenant=%s, %s) rus tiliga tarjima qilinmadi.", tenant_id, key)
+        logger.warning(
+            "Vakansiya (tenant=%s, %s) rus tiliga tarjima qilinmadi.", tenant_id, key
+        )
         return vacancy
 
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
             "UPDATE vacancies SET questions_ru = ?, reject_message_ru = ? WHERE tenant_id = ? AND key = ?",
-            (json.dumps(translated["questions"], ensure_ascii=False), translated["reject_message"],
-             tenant_id, key),
+            (
+                json.dumps(translated["questions"], ensure_ascii=False),
+                translated["reject_message"],
+                tenant_id,
+                key,
+            ),
         )
         await db.commit()
 
@@ -581,6 +763,7 @@ async def get_vacancy_localized(tenant_id: int, key: str, lang: str) -> Optional
 def make_vacancy_key(title: str) -> str:
     import re
     import unicodedata
+
     normalized = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", normalized).strip("_").lower()
     slug = slug[:40]
@@ -588,15 +771,28 @@ def make_vacancy_key(title: str) -> str:
 
 
 async def create_vacancy(
-    *, tenant_id: int, key: str, title: str, reject_message: str, questions: list, resume_required: bool
+    *,
+    tenant_id: int,
+    key: str,
+    title: str,
+    reject_message: str,
+    questions: list,
+    resume_required: bool,
 ) -> None:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
             "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
             "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
-            (tenant_id, key, title, reject_message, json.dumps(questions, ensure_ascii=False),
-             int(resume_required), created_at),
+            (
+                tenant_id,
+                key,
+                title,
+                reject_message,
+                json.dumps(questions, ensure_ascii=False),
+                int(resume_required),
+                created_at,
+            ),
         )
         await db.commit()
 
@@ -621,18 +817,22 @@ async def update_vacancy(tenant_id: int, key: str, **fields) -> None:
     values += [tenant_id, key]
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            f"UPDATE vacancies SET {', '.join(set_clauses)} WHERE tenant_id = ? AND key = ?", values,
+            f"UPDATE vacancies SET {', '.join(set_clauses)} WHERE tenant_id = ? AND key = ?",
+            values,
         )
         await db.commit()
 
 
 async def delete_vacancy(tenant_id: int, key: str) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute("DELETE FROM vacancies WHERE tenant_id = ? AND key = ?", (tenant_id, key))
+        await db.execute(
+            "DELETE FROM vacancies WHERE tenant_id = ? AND key = ?", (tenant_id, key)
+        )
         await db.commit()
 
 
 # ============================= SUHBAT VAQTLARI (admin bot) =============================
+
 
 async def list_interview_slots(tenant_id: int, active_only: bool = True) -> list[dict]:
     query = "SELECT * FROM interview_slots WHERE tenant_id = ?"
@@ -661,7 +861,8 @@ async def add_interview_slot(tenant_id: int, label: str, capacity: int = 1) -> i
 async def delete_interview_slot(tenant_id: int, slot_id: int):
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            "DELETE FROM interview_slots WHERE id = ? AND tenant_id = ?", (slot_id, tenant_id),
+            "DELETE FROM interview_slots WHERE id = ? AND tenant_id = ?",
+            (slot_id, tenant_id),
         )
         await db.commit()
 
@@ -679,12 +880,18 @@ async def get_available_interview_slots(tenant_id: int) -> list[dict]:
 async def get_interview_settings(tenant_id: int) -> dict:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM interview_settings WHERE tenant_id = ?", (tenant_id,))
+        cursor = await db.execute(
+            "SELECT * FROM interview_settings WHERE tenant_id = ?", (tenant_id,)
+        )
         row = await cursor.fetchone()
     if not row:
         return {
-            "location_text": None, "location_lat": None, "location_lng": None,
-            "interviewer_name": None, "interviewer_phone": None, "notes": None,
+            "location_text": None,
+            "location_lat": None,
+            "location_lng": None,
+            "interviewer_name": None,
+            "interviewer_phone": None,
+            "notes": None,
         }
     return dict(row)
 
@@ -705,8 +912,15 @@ async def update_interview_settings(tenant_id: int, **fields):
                 location_lng = excluded.location_lng, interviewer_name = excluded.interviewer_name,
                 interviewer_phone = excluded.interviewer_phone, notes = excluded.notes
             """,
-            (tenant_id, merged.get("location_text"), merged.get("location_lat"), merged.get("location_lng"),
-             merged.get("interviewer_name"), merged.get("interviewer_phone"), merged.get("notes")),
+            (
+                tenant_id,
+                merged.get("location_text"),
+                merged.get("location_lat"),
+                merged.get("location_lng"),
+                merged.get("interviewer_name"),
+                merged.get("interviewer_phone"),
+                merged.get("notes"),
+            ),
         )
         await db.commit()
 
@@ -714,14 +928,18 @@ async def update_interview_settings(tenant_id: int, **fields):
 # ============================= STATISTIKA (admin bot) =============================
 
 _TERMINAL_REJECTED_STATUSES = {
-    "rejected_hard_filter", "rejected_irrelevant", "rejected_ai_generated", "declined",
+    "rejected_hard_filter",
+    "rejected_irrelevant",
+    "rejected_ai_generated",
+    "declined",
 }
 
 
 async def get_overall_stats(tenant_id: int) -> dict:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
-            "SELECT status, COUNT(*) FROM applications WHERE tenant_id = ? GROUP BY status", (tenant_id,),
+            "SELECT status, COUNT(*) FROM applications WHERE tenant_id = ? GROUP BY status",
+            (tenant_id,),
         )
         rows = await cursor.fetchall()
 
@@ -730,12 +948,15 @@ async def get_overall_stats(tenant_id: int) -> dict:
     rejected_total = sum(by_status.get(s, 0) for s in _TERMINAL_REJECTED_STATUSES)
 
     return {
-        "total": total, "pending": by_status.get("pending", 0), "accepted": by_status.get("accepted", 0),
+        "total": total,
+        "pending": by_status.get("pending", 0),
+        "accepted": by_status.get("accepted", 0),
         "declined_by_admin": by_status.get("declined", 0),
         "rejected_hard_filter": by_status.get("rejected_hard_filter", 0),
         "rejected_irrelevant": by_status.get("rejected_irrelevant", 0),
         "rejected_ai_generated": by_status.get("rejected_ai_generated", 0),
-        "rejected_total": rejected_total, "by_status": by_status,
+        "rejected_total": rejected_total,
+        "by_status": by_status,
     }
 
 
@@ -743,7 +964,8 @@ async def get_vacancy_stats(tenant_id: int) -> list[dict]:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
             "SELECT vacancy_key, vacancy_title, status, COUNT(*) FROM applications "
-            "WHERE tenant_id = ? GROUP BY vacancy_key, vacancy_title, status", (tenant_id,),
+            "WHERE tenant_id = ? GROUP BY vacancy_key, vacancy_title, status",
+            (tenant_id,),
         )
         rows = await cursor.fetchall()
 
@@ -751,8 +973,14 @@ async def get_vacancy_stats(tenant_id: int) -> list[dict]:
     for vacancy_key, vacancy_title, status, count in rows:
         entry = per_vacancy.setdefault(
             vacancy_key,
-            {"vacancy_key": vacancy_key, "vacancy_title": vacancy_title, "total": 0,
-             "pending": 0, "accepted": 0, "rejected": 0},
+            {
+                "vacancy_key": vacancy_key,
+                "vacancy_title": vacancy_title,
+                "total": 0,
+                "pending": 0,
+                "accepted": 0,
+                "rejected": 0,
+            },
         )
         entry["total"] += count
         if status == "pending":
@@ -767,8 +995,13 @@ async def get_vacancy_stats(tenant_id: int) -> list[dict]:
 
 # ============================= TOLOV BUYURTMALARI =============================
 
+
 async def create_payment_order(
-    tenant_id: int, order_code: str, base_amount: int, amount: int, expires_at: str,
+    tenant_id: int,
+    order_code: str,
+    base_amount: int,
+    amount: int,
+    expires_at: str,
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
@@ -794,7 +1027,7 @@ async def cancel_open_payment_orders_for_tenant(tenant_id: int) -> None:
         await db.commit()
 
 
-async def get_open_payment_order_by_amount(amount: int) -> Optional[dict]:
+async def get_open_payment_order_by_amount(amount: int) -> dict | None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -845,7 +1078,9 @@ async def try_approve_payment_order(order_id: int) -> bool:
         return cursor.rowcount > 0
 
 
-async def mark_payment_order_needs_review(order_id: int, notification_text: str) -> None:
+async def mark_payment_order_needs_review(
+    order_id: int, notification_text: str
+) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
             "UPDATE payment_orders SET status = 'needs_review', notification_text = ? WHERE id = ?",
@@ -858,7 +1093,8 @@ async def was_notification_seen_recently(text_hash: str, minutes: int = 30) -> b
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT received_at FROM payment_notifications_seen WHERE hash = ?", (text_hash,),
+            "SELECT received_at FROM payment_notifications_seen WHERE hash = ?",
+            (text_hash,),
         )
         row = await cursor.fetchone()
     if not row:

@@ -4,6 +4,7 @@ boshqarish. KO'P MIJOZLI: /start bosilganda, agar yuboruvchi shu mijozning
 admin ro'yxatida bo'lsa — Admin menyu, aks holda — nomzod oqimi ko'rsatiladi
 (bitta bot, ikkala rol).
 """
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -17,8 +18,12 @@ from states import ApplyForm
 router = Router(name="start")
 
 
-async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str, tenant_id: int):
-    vacancies = await database.list_vacancies_localized(tenant_id, lang, active_only=True)
+async def _show_vacancy_menu(
+    message: Message, state: FSMContext, lang: str, tenant_id: int
+):
+    vacancies = await database.list_vacancies_localized(
+        tenant_id, lang, active_only=True
+    )
     greeting = t("greeting", lang)
 
     if not vacancies:
@@ -31,7 +36,8 @@ async def _show_vacancy_menu(message: Message, state: FSMContext, lang: str, ten
     builder.adjust(1)
 
     await message.answer(
-        t("vacancy_list_prompt", lang, greeting=greeting), reply_markup=builder.as_markup()
+        t("vacancy_list_prompt", lang, greeting=greeting),
+        reply_markup=builder.as_markup(),
     )
     await state.set_state(ApplyForm.choosing_vacancy)
 
@@ -60,10 +66,16 @@ async def choose_language(callback: CallbackQuery, state: FSMContext, tenant_id:
 
     # --- Takroriy ariza himoyasi: nomzodning ko'rib chiqilayotgan arizasi bo'lsa,
     # unga yangi anketa boshlash o'rniga hozirgi holatini eslatamiz. ---
-    pending = await database.get_pending_application_for_user(tenant_id, callback.from_user.id)
+    pending = await database.get_pending_application_for_user(
+        tenant_id, callback.from_user.id
+    )
     if pending:
         await callback.message.answer(
-            t("pending_application_notice", lang, vacancy_title=pending["vacancy_title"])
+            t(
+                "pending_application_notice",
+                lang,
+                vacancy_title=pending["vacancy_title"],
+            )
         )
         await callback.answer()
         return

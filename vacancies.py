@@ -6,8 +6,18 @@ yaratish, tahrirlash va o'chirish mumkin.
 """
 
 NEGATIVE_WORDS = {
-    "yo'q", "yoq", "yo'q.", "yo'q,", "hali yo'q", "yoq hali",
-    "hech qachon", "bilmayman", "nет", "не", "нет", "no",
+    "yo'q",
+    "yoq",
+    "yo'q.",
+    "yo'q,",
+    "hali yo'q",
+    "yoq hali",
+    "hech qachon",
+    "bilmayman",
+    "nет",
+    "не",
+    "нет",
+    "no",
 }
 
 
@@ -50,5 +60,7 @@ REFERENCE_CHECK_QUESTION_RU = {
 
 def build_questions(vacancy: dict, lang: str = "uz") -> list[dict]:
     """Vakansiyaning (bazadan olingan) savollariga Topgrading savolini qo'shib qaytaradi."""
-    ref_question = REFERENCE_CHECK_QUESTION_RU if lang == "ru" else REFERENCE_CHECK_QUESTION_UZ
+    ref_question = (
+        REFERENCE_CHECK_QUESTION_RU if lang == "ru" else REFERENCE_CHECK_QUESTION_UZ
+    )
     return [*vacancy["questions"], ref_question]

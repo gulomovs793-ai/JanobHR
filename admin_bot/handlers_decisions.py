@@ -7,6 +7,7 @@ o'sha bot bilan suhbatlashgan). Ikkalasi endi mustaqil, alohida token bilan
 ishlagani uchun, shu yerda tenant yozuvidagi `bot_token`dan vaqtinchalik
 Bot obyekti yasab, xabar yuboramiz.
 """
+
 import logging
 
 from aiogram import Bot, F, Router
@@ -31,7 +32,9 @@ async def handle_decision(callback: CallbackQuery, tenant_id: int, tenant: dict)
         return
 
     if app["status"] != "pending":
-        await callback.answer("Bu anketa bo'yicha qaror allaqachon qabul qilingan.", show_alert=True)
+        await callback.answer(
+            "Bu anketa bo'yicha qaror allaqachon qabul qilingan.", show_alert=True
+        )
         return
 
     lang = app.get("lang", DEFAULT_LANG)
@@ -51,15 +54,21 @@ async def handle_decision(callback: CallbackQuery, tenant_id: int, tenant: dict)
             from handlers.sell import send_slot_offer
 
             await send_slot_offer(
-                candidate_bot, tenant_id, app["user_id"], app_id,
-                t("decision_accept_intro", lang), lang,
+                candidate_bot,
+                tenant_id,
+                app["user_id"],
+                app_id,
+                t("decision_accept_intro", lang),
+                lang,
             )
         else:
             await candidate_bot.send_message(
                 chat_id=app["user_id"], text=t("decision_decline_text", lang)
             )
     except Exception:
-        logger.exception("Nomzodga xabar yuborib bo'lmadi (user_id=%s).", app["user_id"])
+        logger.exception(
+            "Nomzodga xabar yuborib bo'lmadi (user_id=%s).", app["user_id"]
+        )
     finally:
         await candidate_bot.session.close()
 

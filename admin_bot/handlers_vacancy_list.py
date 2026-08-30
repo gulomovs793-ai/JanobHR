@@ -1,4 +1,5 @@
 """Admin bot — vakansiyalar ro'yxati, tafsilotlari, faollashtirish/o'chirish."""
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -21,7 +22,9 @@ async def list_vacancies(callback: CallbackQuery, tenant_id: int):
         text = "📋 <b>Vakansiyalar</b>\n\nBiror birini tanlang:"
         for v in vacancies:
             status = "🟢" if v["active"] else "🔴"
-            builder.button(text=f"{status} {v['title']}", callback_data=f"vac:{v['key']}")
+            builder.button(
+                text=f"{status} {v['title']}", callback_data=f"vac:{v['key']}"
+            )
     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
     builder.button(text="⬅️ Orqaga", callback_data="menu:main")
     builder.adjust(1)
@@ -33,7 +36,9 @@ async def list_vacancies(callback: CallbackQuery, tenant_id: int):
 async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str):
     vacancy = await database.get_vacancy(tenant_id, key)
     if not vacancy:
-        await callback.answer("Bu vakansiya topilmadi (o'chirilgan bo'lishi mumkin).", show_alert=True)
+        await callback.answer(
+            "Bu vakansiya topilmadi (o'chirilgan bo'lishi mumkin).", show_alert=True
+        )
         return
 
     stats_list = await database.get_vacancy_stats(tenant_id)
@@ -61,9 +66,15 @@ async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str
     builder.button(text=toggle_text, callback_data=f"vactoggle:{key}")
     builder.button(text="🏆 Eng yaxshi nomzodlar", callback_data=f"vacranking:{key}")
     builder.button(text="📥 Excel yuklab olish", callback_data=f"vacexport:{key}")
-    builder.button(text="🔄 Savollarni AI bilan yangilash", callback_data=f"vacregen:{key}")
-    builder.button(text="✏️ Bitta savolni tahrirlash", callback_data=f"vaceditlist:{key}")
-    builder.button(text="✍️ Savollarni to'liq qayta yozish", callback_data=f"vacmanual:{key}")
+    builder.button(
+        text="🔄 Savollarni AI bilan yangilash", callback_data=f"vacregen:{key}"
+    )
+    builder.button(
+        text="✏️ Bitta savolni tahrirlash", callback_data=f"vaceditlist:{key}"
+    )
+    builder.button(
+        text="✍️ Savollarni to'liq qayta yozish", callback_data=f"vacmanual:{key}"
+    )
     builder.button(text="🗑 O'chirish", callback_data=f"vacdel:{key}")
     builder.button(text="⬅️ Ro'yxatga qaytish", callback_data="menu:vacancies")
     builder.adjust(1)
@@ -98,7 +109,9 @@ async def confirm_delete(callback: CallbackQuery, tenant_id: int):
         return
 
     builder = InlineKeyboardBuilder()
-    builder.button(text="⚠️ Ha, butunlay o'chirish", callback_data=f"vacdelconfirm:{key}")
+    builder.button(
+        text="⚠️ Ha, butunlay o'chirish", callback_data=f"vacdelconfirm:{key}"
+    )
     builder.button(text="Bekor qilish", callback_data=f"vac:{key}")
     builder.adjust(1)
 

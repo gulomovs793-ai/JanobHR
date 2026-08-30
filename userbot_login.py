@@ -13,6 +13,7 @@ chiqadi — shuni Render'da TELEGRAM_USERBOT_SESSION o'zgaruvchisiga qo'ying.
 Environment'ga qo'ying — hech qayerga yozib qo'ymang, hech kimga bermang,
 skrinshot qilib yubormang.
 """
+
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 

@@ -2,6 +2,7 @@
 Admin bot — suhbat vaqtlari (sana+soat), uchrashuv manzili, intervyuchi
 kontakti va eslatma matnini boshqarish. Har biri shu MIJOZGA (tenant_id) xos.
 """
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -24,7 +25,9 @@ class InterviewForm(StatesGroup):
 
 def _settings_summary(settings: dict) -> str:
     location = settings.get("location_text") or (
-        f"({settings['location_lat']}, {settings['location_lng']})" if settings.get("location_lat") else "sozlanmagan"
+        f"({settings['location_lat']}, {settings['location_lng']})"
+        if settings.get("location_lat")
+        else "sozlanmagan"
     )
     return (
         f"📍 Manzil: {location}\n"
@@ -64,7 +67,9 @@ async def _show_menu(message: Message, state: FSMContext, tenant_id: int):
 
 
 @router.callback_query(F.data == "menu:interview")
-async def open_interview_menu(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+async def open_interview_menu(
+    callback: CallbackQuery, state: FSMContext, tenant_id: int
+):
     await callback.message.delete()
     await _show_menu(callback.message, state, tenant_id)
     await callback.answer()
@@ -95,7 +100,9 @@ async def receive_slot_capacity(message: Message, state: FSMContext, tenant_id: 
         return
 
     data = await state.get_data()
-    await database.add_interview_slot(tenant_id, data["new_slot_label"], capacity=int(text))
+    await database.add_interview_slot(
+        tenant_id, data["new_slot_label"], capacity=int(text)
+    )
     await message.answer(f"✅ Qo'shildi: {data['new_slot_label']} (sig'imi: {text})")
     await _show_menu(message, state, tenant_id)
 
@@ -108,7 +115,9 @@ async def show_delete_slot_list(callback: CallbackQuery, tenant_id: int):
         builder.button(text=f"🗑 {s['label']}", callback_data=f"ivslot:del:{s['id']}")
     builder.button(text="⬅️ Orqaga", callback_data="menu:interview")
     builder.adjust(1)
-    await callback.message.edit_text("Qaysi vaqtni o'chirasiz?", reply_markup=builder.as_markup())
+    await callback.message.edit_text(
+        "Qaysi vaqtni o'chirasiz?", reply_markup=builder.as_markup()
+    )
     await callback.answer()
 
 
@@ -126,7 +135,7 @@ async def start_set_location(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Uchrashuv manzilini yuboring — Telegram'ning 📎 → Location (Joylashuv) tugmasi "
         "orqali xaritadan tanlang, YOKI oddiy matn ko'rinishida yozing (masalan: "
-        "\"Toshkent sh., Chilonzor tumani, ... ko'chasi 1-uy\")."
+        '"Toshkent sh., Chilonzor tumani, ... ko\'chasi 1-uy").'
     )
     await state.set_state(InterviewForm.setting_location)
     await callback.answer()
@@ -135,8 +144,10 @@ async def start_set_location(callback: CallbackQuery, state: FSMContext):
 @router.message(InterviewForm.setting_location, F.location)
 async def receive_location_pin(message: Message, state: FSMContext, tenant_id: int):
     await database.update_interview_settings(
-        tenant_id, location_lat=message.location.latitude,
-        location_lng=message.location.longitude, location_text=None,
+        tenant_id,
+        location_lat=message.location.latitude,
+        location_lng=message.location.longitude,
+        location_text=None,
     )
     await message.answer("✅ Manzil (xarita) saqlandi.")
     await _show_menu(message, state, tenant_id)
@@ -145,7 +156,10 @@ async def receive_location_pin(message: Message, state: FSMContext, tenant_id: i
 @router.message(InterviewForm.setting_location, F.text)
 async def receive_location_text(message: Message, state: FSMContext, tenant_id: int):
     await database.update_interview_settings(
-        tenant_id, location_text=message.text.strip(), location_lat=None, location_lng=None,
+        tenant_id,
+        location_text=message.text.strip(),
+        location_lat=None,
+        location_lng=None,
     )
     await message.answer("✅ Manzil saqlandi.")
     await _show_menu(message, state, tenant_id)
@@ -160,21 +174,29 @@ async def start_set_name(callback: CallbackQuery, state: FSMContext):
 
 @router.message(InterviewForm.setting_interviewer_name, F.text)
 async def receive_interviewer_name(message: Message, state: FSMContext, tenant_id: int):
-    await database.update_interview_settings(tenant_id, interviewer_name=message.text.strip())
+    await database.update_interview_settings(
+        tenant_id, interviewer_name=message.text.strip()
+    )
     await message.answer("✅ Saqlandi.")
     await _show_menu(message, state, tenant_id)
 
 
 @router.callback_query(F.data == "ivset:phone")
 async def start_set_phone(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Suhbatni o'tkazadigan insonning telefon raqamini yozing:")
+    await callback.message.edit_text(
+        "Suhbatni o'tkazadigan insonning telefon raqamini yozing:"
+    )
     await state.set_state(InterviewForm.setting_interviewer_phone)
     await callback.answer()
 
 
 @router.message(InterviewForm.setting_interviewer_phone, F.text)
-async def receive_interviewer_phone(message: Message, state: FSMContext, tenant_id: int):
-    await database.update_interview_settings(tenant_id, interviewer_phone=message.text.strip())
+async def receive_interviewer_phone(
+    message: Message, state: FSMContext, tenant_id: int
+):
+    await database.update_interview_settings(
+        tenant_id, interviewer_phone=message.text.strip()
+    )
     await message.answer("✅ Saqlandi.")
     await _show_menu(message, state, tenant_id)
 
@@ -183,7 +205,7 @@ async def receive_interviewer_phone(message: Message, state: FSMContext, tenant_
 async def start_set_notes(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Nomzodga suhbatdan oldin yuboriladigan eslatma matnini yozing (masalan: "
-        "\"Iltimos, belgilangan vaqtda kechikmasdan keling va pasportingizni olib keling.\"):"
+        '"Iltimos, belgilangan vaqtda kechikmasdan keling va pasportingizni olib keling."):'
     )
     await state.set_state(InterviewForm.setting_notes)
     await callback.answer()

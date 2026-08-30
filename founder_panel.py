@@ -4,6 +4,7 @@ ishlata oladi. Vazifasi: yangi (pending) mijozlarni ko'rib chiqish va
 to'lov tasdiqlangach, bir tugma bilan faollashtirish — bu paytda ikkala
 bot (nomzod + admin) uchun webhook avtomatik o'rnatiladi.
 """
+
 import asyncio
 import logging
 
@@ -15,7 +16,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
+from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, WEBHOOK_BASE_URL
 from services import database
 
 logger = logging.getLogger("janob_hr_founder")
@@ -77,7 +78,10 @@ async def list_pending(callback: CallbackQuery):
     else:
         text = "⏳ <b>Faollashtirishni kutayotgan mijozlar:</b>"
         for t in tenants:
-            builder.button(text=f"№{t['id']} — {t['company_name']}", callback_data=f"fp:view:{t['id']}")
+            builder.button(
+                text=f"№{t['id']} — {t['company_name']}",
+                callback_data=f"fp:view:{t['id']}",
+            )
     builder.button(text="⬅️ Orqaga", callback_data="fp:main")
     builder.adjust(1)
 
@@ -97,7 +101,10 @@ async def list_active(callback: CallbackQuery):
     else:
         text = "✅ <b>Faol mijozlar:</b>"
         for t in tenants:
-            builder.button(text=f"№{t['id']} — {t['company_name']}", callback_data=f"fp:view:{t['id']}")
+            builder.button(
+                text=f"№{t['id']} — {t['company_name']}",
+                callback_data=f"fp:view:{t['id']}",
+            )
     builder.button(text="⬅️ Orqaga", callback_data="fp:main")
     builder.adjust(1)
 
@@ -118,13 +125,17 @@ async def view_tenant(callback: CallbackQuery):
 
     builder = InlineKeyboardBuilder()
     if tenant["status"] == "pending":
-        builder.button(text="✅ Faollashtirish", callback_data=f"fp:activate:{tenant_id}")
+        builder.button(
+            text="✅ Faollashtirish", callback_data=f"fp:activate:{tenant_id}"
+        )
     elif tenant["status"] == "active":
         builder.button(text="🔴 To'xtatish", callback_data=f"fp:deactivate:{tenant_id}")
     builder.button(text="⬅️ Orqaga", callback_data="fp:main")
     builder.adjust(1)
 
-    await callback.message.edit_text(_tenant_summary(tenant), reply_markup=builder.as_markup())
+    await callback.message.edit_text(
+        _tenant_summary(tenant), reply_markup=builder.as_markup()
+    )
     await callback.answer()
 
 
@@ -169,9 +180,16 @@ async def deactivate_tenant(callback: CallbackQuery):
 async def main():
     if not FOUNDER_BOT_TOKEN:
         raise RuntimeError("FOUNDER_BOT_TOKEN topilmadi.")
+    if WEBHOOK_BASE_URL:
+        raise RuntimeError(
+            "Founder Bot webhook_app.py ichida ishlaydi. WEBHOOK_BASE_URL sozlangan "
+            "muhitda founder_panel.py ni alohida ishga tushirmang."
+        )
 
     await database.init_db()
-    bot = Bot(token=FOUNDER_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(
+        token=FOUNDER_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     await bot.delete_webhook(drop_pending_updates=True)
@@ -180,5 +198,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
     asyncio.run(main())

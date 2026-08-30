@@ -15,10 +15,11 @@ javob kutiladi, shuning uchun nomzod yoki admin hech narsani sezmaydi.
 Hech qanday provayder sozlanmagan bo'lsa yoki barchasi ishlamasa, None qaytadi
 — bot AI'siz ham ishlayveradi.
 """
+
 import json
 import logging
 import re
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 import aiohttp
 
@@ -45,7 +46,7 @@ _PROVIDERS = [
 ]
 
 
-async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> Optional[str]:
+async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str | None:
     """Sozlangan provayderlarni navbat bilan sinaydi, birinchi muvaffaqiyatlisidan
     xom matnni qaytaradi. Hech biri sozlanmagan yoki barchasi ishlamasa — None.
     """
@@ -64,34 +65,41 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> Opt
             "max_tokens": max_tokens,
         }
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     f"{base.rstrip('/')}/chat/completions",
                     json=payload,
                     headers={"Authorization": f"Bearer {key}"},
                     timeout=aiohttp.ClientTimeout(total=12),
-                ) as resp:
-                    if resp.status != 200:
-                        body = await resp.text()
-                        logger.warning(
-                            "AI provayder (%s) xatosi: HTTP %s | %s", label, resp.status, body[:300]
-                        )
-                        continue  # navbatdagi provayderga o'tamiz
-                    data = await resp.json()
-                    content = data["choices"][0]["message"]["content"]
-                    if not content or not content.strip():
-                        # HTTP 200 keldi, lekin matn bo'sh — bu odatda "fikrlash"
-                        # (reasoning) modellari max_tokens byudjetini ichki fikrlashga
-                        # sarflab, ko'rinadigan javob yozishga ulgurmaganda sodir
-                        # bo'ladi. Bu holatni MUVAFFAQIYAT deb hisoblamaymiz —
-                        # navbatdagi provayderga o'tamiz.
-                        finish_reason = data.get("choices", [{}])[0].get("finish_reason")
-                        logger.warning(
-                            "AI provayder (%s) bo'sh javob qaytardi (finish_reason=%s), "
-                            "keyingi provayderga o'tamiz.", label, finish_reason,
-                        )
-                        continue
-                    return content.strip()
+                ) as resp,
+            ):
+                if resp.status != 200:
+                    body = await resp.text()
+                    logger.warning(
+                        "AI provayder (%s) xatosi: HTTP %s | %s",
+                        label,
+                        resp.status,
+                        body[:300],
+                    )
+                    continue  # navbatdagi provayderga o'tamiz
+                data = await resp.json()
+                content = data["choices"][0]["message"]["content"]
+                if not content or not content.strip():
+                    # HTTP 200 keldi, lekin matn bo'sh — bu odatda "fikrlash"
+                    # (reasoning) modellari max_tokens byudjetini ichki fikrlashga
+                    # sarflab, ko'rinadigan javob yozishga ulgurmaganda sodir
+                    # bo'ladi. Bu holatni MUVAFFAQIYAT deb hisoblamaymiz —
+                    # navbatdagi provayderga o'tamiz.
+                    finish_reason = data.get("choices", [{}])[0].get("finish_reason")
+                    logger.warning(
+                        "AI provayder (%s) bo'sh javob qaytardi (finish_reason=%s), "
+                        "keyingi provayderga o'tamiz.",
+                        label,
+                        finish_reason,
+                    )
+                    continue
+                return content.strip()
         except Exception:
             logger.exception("AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi.", label)
             continue  # navbatdagi provayderga o'tamiz
@@ -158,7 +166,7 @@ FAQAT quyidagi JSON formatida javob ber, boshqa hech qanday matn, izoh yoki mark
 """
 
 
-async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
+async def score_answer(question: str, answer: str) -> ScoreResult | None:
     content = await _call_ai(
         _SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=700
     )
@@ -205,7 +213,6 @@ async def score_answer(question: str, answer: str) -> Optional[ScoreResult]:
         return None
 
 
-
 _RELEVANCE_SYSTEM_PROMPT = """Sen HR-botning kirish filtridasan. Vazifang — nomzodning \
 javobi berilgan savolga va lavozimga mazmunan aloqadormi yoki yo'qmi, shuni tekshirish.
 
@@ -224,7 +231,7 @@ FAQAT bitta so'z bilan javob ber: HA yoki YOQ. Boshqa hech qanday matn yozma.
 """
 
 
-async def check_relevance(question: str, answer: str) -> Optional[bool]:
+async def check_relevance(question: str, answer: str) -> bool | None:
     """AI_score bilan belgilanmagan (oddiy faktik) savollar uchun yengil aloqadorlik tekshiruvi.
 
     True — javob mavzuga/kasbga aloqador, False — aloqasiz/bema'ni. Hech qanday
@@ -232,7 +239,9 @@ async def check_relevance(question: str, answer: str) -> Optional[bool]:
     chaqiruvchi tekshiruvni o'tkazib yuborishi kerak (botni AI'siz ham ishlashi uchun).
     """
     content = await _call_ai(
-        _RELEVANCE_SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=50
+        _RELEVANCE_SYSTEM_PROMPT,
+        f"Savol: {question}\nNomzod javobi: {answer}",
+        max_tokens=50,
     )
     if content is None:
         return None
@@ -277,14 +286,18 @@ FAQAT quyidagi JSON massiv formatida javob ber, boshqa hech qanday matn yozma:
 """
 
 
-async def generate_questions(job_title: str, description: str, count: int = 9) -> Optional[list[dict]]:
+async def generate_questions(
+    job_title: str, description: str, count: int = 9
+) -> list[dict] | None:
     """Berilgan lavozim uchun Scorecard/Behavioral uslubidagi savollar ro'yxatini
     AI orqali generatsiya qiladi. Muvaffaqiyatsiz bo'lsa (yoki hech qanday provayder
     sozlanmagan bo'lsa) None qaytaradi — admin bunday holda savollarni qo'lda kiritishi
     kerak bo'ladi.
     """
     system_prompt = _QUESTION_GENERATION_PROMPT.format(count=count)
-    user_prompt = f"Lavozim: {job_title}\nQisqacha tavsif: {description or '(tavsif berilmagan)'}"
+    user_prompt = (
+        f"Lavozim: {job_title}\nQisqacha tavsif: {description or '(tavsif berilmagan)'}"
+    )
 
     content = await _call_ai(system_prompt, user_prompt, max_tokens=2500)
     if content is None:
@@ -294,7 +307,7 @@ async def generate_questions(job_title: str, description: str, count: int = 9) -
         content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
         parsed = json.loads(content)
         if not isinstance(parsed, list):
-            raise ValueError("AI ro'yxat (list) qaytarishi kerak edi")
+            raise TypeError("AI ro'yxat (list) qaytarishi kerak edi")
 
         questions = []
         seen_keys = set()
@@ -302,7 +315,10 @@ async def generate_questions(job_title: str, description: str, count: int = 9) -
             text = str(item.get("text", "")).strip()
             if not text:
                 continue
-            key = str(item.get("key", f"savol_{i+1}")).strip().lower().replace(" ", "_") or f"savol_{i+1}"
+            key = (
+                str(item.get("key", f"savol_{i + 1}")).strip().lower().replace(" ", "_")
+                or f"savol_{i + 1}"
+            )
             # Kalitlar takrorlanmasligi kerak (bazada ustun nomi sifatida ishlatilmaydi,
             # lekin javoblar lug'atida kalit bo'lgani uchun noyob bo'lishi shart).
             original_key = key
@@ -355,7 +371,7 @@ FAQAT quyidagi JSON formatida javob ber, boshqa hech narsa yozma:
 """
 
 
-async def extract_resume_data(resume_text: str, questions: list[dict]) -> Optional[dict]:
+async def extract_resume_data(resume_text: str, questions: list[dict]) -> dict | None:
     """Rezyume matnidan qisqa xulosa va (faqat oddiy faktik) savollarga tayyor javoblarni
     chiqarib beradi. `questions` — faqat "ai_score" va "hard_filter" BELGILANMAGAN
     savollar ro'yxati bo'lishi kerak (chaqiruvchi shuni ta'minlashi kerak) — Scorecard/
@@ -423,7 +439,7 @@ FAQAT tarjima qilingan matnni yoz — hech qanday izoh, tirnoq belgisi yoki qo's
 so'z qo'shma. Agar matnda emoji bo'lsa, uni saqlab qol."""
 
 
-async def translate_simple_text(text: str) -> Optional[str]:
+async def translate_simple_text(text: str) -> str | None:
     """Qisqa matn (masalan lavozim nomi) uchun yengil tarjima. Muvaffaqiyatsiz bo'lsa
     None qaytadi."""
     content = await _call_ai(_SIMPLE_TRANSLATION_PROMPT, text, max_tokens=100)
@@ -433,13 +449,16 @@ async def translate_simple_text(text: str) -> Optional[str]:
     return cleaned or None
 
 
-async def translate_vacancy_content(questions: list[dict], reject_message: str) -> Optional[dict]:
+async def translate_vacancy_content(
+    questions: list[dict], reject_message: str
+) -> dict | None:
     """Vakansiya savollari va rad etish xabarini rus tiliga tarjima qiladi (key va
     hard_filter/ai_score bayroqlarini o'zgartirmasdan). Muvaffaqiyatsiz bo'lsa None
     qaytaradi — chaqiruvchi bunday holda o'zbekcha versiyani ishlatishi kerak.
     """
     payload = json.dumps(
-        {"questions": questions, "reject_message": reject_message}, ensure_ascii=False,
+        {"questions": questions, "reject_message": reject_message},
+        ensure_ascii=False,
     )
     system_prompt = _VACANCY_TRANSLATION_PROMPT.format(payload=payload)
 
@@ -461,7 +480,9 @@ async def translate_vacancy_content(questions: list[dict], reject_message: str) 
         original_keys = [q["key"] for q in questions]
         translated_keys = [q.get("key") for q in translated_questions]
         if translated_keys != original_keys:
-            logger.warning("Tarjima kalitlari asl savollar bilan mos kelmadi, bekor qilinadi.")
+            logger.warning(
+                "Tarjima kalitlari asl savollar bilan mos kelmadi, bekor qilinadi."
+            )
             return None
 
         return {"questions": translated_questions, "reject_message": reject_message_ru}
@@ -479,7 +500,7 @@ class AggregateResult(TypedDict):
     avg_aniqlik: int
 
 
-def aggregate_scores(ai_scores: dict) -> Optional[AggregateResult]:
+def aggregate_scores(ai_scores: dict) -> AggregateResult | None:
     """Bir nechta savol bo'yicha AI baholarini bitta yakuniy natijaga birlashtiradi.
 
     ai_scores — {savol_key: ScoreResult} lug'ati (questions.py'da to'planadi).
@@ -509,6 +530,10 @@ def aggregate_scores(ai_scores: dict) -> Optional[AggregateResult]:
         verdict = "yashil"
 
     return AggregateResult(
-        avg_score=avg_score, verdict=verdict, red_flags=all_flags,
-        avg_natijadorlik=avg_natijadorlik, avg_masuliyat=avg_masuliyat, avg_aniqlik=avg_aniqlik,
+        avg_score=avg_score,
+        verdict=verdict,
+        red_flags=all_flags,
+        avg_natijadorlik=avg_natijadorlik,
+        avg_masuliyat=avg_masuliyat,
+        avg_aniqlik=avg_aniqlik,
     )

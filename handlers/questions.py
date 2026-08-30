@@ -1,4 +1,5 @@
 """Janob HR Bot — savol-javob oqimi, hard-filter, mavzuga aloqadorlik va AI baholash."""
+
 import logging
 
 from aiogram import F, Router
@@ -41,7 +42,9 @@ async def ask_current_question(message: Message, state: FSMContext):
     if questions[idx].get("voice"):
         question_text += t("voice_question_hint", lang)
 
-    await message.answer(t("question_progress", lang, idx=idx + 1, total=total, text=question_text))
+    await message.answer(
+        t("question_progress", lang, idx=idx + 1, total=total, text=question_text)
+    )
     await state.set_state(ApplyForm.answering_questions)
 
 
@@ -134,8 +137,11 @@ async def handle_voice_answer(message: Message, state: FSMContext):
     answers[q["key"]] = t("voice_answer_placeholder", lang)
 
     await state.update_data(
-        voice_answers=voice_answers, answers=answers, question_index=idx + 1,
-        irrelevant_retry_count=0, ai_suspect_retry_count=0,
+        voice_answers=voice_answers,
+        answers=answers,
+        question_index=idx + 1,
+        irrelevant_retry_count=0,
+        ai_suspect_retry_count=0,
     )
     await message.answer(t("voice_received", lang))
     await ask_current_question(message, state)
@@ -156,7 +162,9 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
 
     # --- Uzunlik chegarasi: juda uzun javoblar o'qishni va AI tahlilini qiyinlashtiradi ---
     if len(answer_text) > MAX_ANSWER_CHARS:
-        await message.answer(t("answer_too_long", lang, length=len(answer_text), max=MAX_ANSWER_CHARS))
+        await message.answer(
+            t("answer_too_long", lang, length=len(answer_text), max=MAX_ANSWER_CHARS)
+        )
         return
 
     # --- Agar bu — oldin so'ralgan aniqlashtiruvchi savolga javob bo'lsa, uni
@@ -178,20 +186,32 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
                 ai_suspect_count = data.get("ai_suspect_retry_count", 0) + 1
                 if ai_suspect_count > _MAX_AI_SUSPECT_RETRIES:
                     await _reject_and_save(
-                        message, state, {**data, "ai_suspect_flagged_keys": flagged_keys},
-                        answers, ai_scores, t("ai_suspect_reject", lang), "rejected_ai_generated",
+                        message,
+                        state,
+                        {**data, "ai_suspect_flagged_keys": flagged_keys},
+                        answers,
+                        ai_scores,
+                        t("ai_suspect_reject", lang),
+                        "rejected_ai_generated",
                     )
                     return
                 await state.update_data(
-                    ai_suspect_retry_count=ai_suspect_count, awaiting_followup_for=idx,
+                    ai_suspect_retry_count=ai_suspect_count,
+                    awaiting_followup_for=idx,
                     ai_suspect_flagged_keys=flagged_keys,
                 )
-                await message.answer(t("ai_suspect_retry", lang, question_text=q["text"]))
+                await message.answer(
+                    t("ai_suspect_retry", lang, question_text=q["text"])
+                )
                 return
 
         await state.update_data(
-            answers=answers, ai_scores=ai_scores, question_index=idx + 1,
-            awaiting_followup_for=None, irrelevant_retry_count=0, ai_suspect_retry_count=0,
+            answers=answers,
+            ai_scores=ai_scores,
+            question_index=idx + 1,
+            awaiting_followup_for=None,
+            irrelevant_retry_count=0,
+            ai_suspect_retry_count=0,
         )
         await ask_current_question(message, state)
         return
@@ -201,8 +221,13 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
         answers = data.get("answers", {})
         answers[q["key"]] = answer_text
         await _reject_and_save(
-            message, state, data, answers, data.get("ai_scores", {}),
-            data["vacancy_reject_message"], "rejected_hard_filter",
+            message,
+            state,
+            data,
+            answers,
+            data.get("ai_scores", {}),
+            data["vacancy_reject_message"],
+            "rejected_hard_filter",
         )
         return
 
@@ -236,8 +261,13 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
         retry_count = data.get("irrelevant_retry_count", 0) + 1
         if retry_count > _MAX_IRRELEVANT_RETRIES:
             await _reject_and_save(
-                message, state, data, answers, ai_scores,
-                t("irrelevant_reject", lang), "rejected_irrelevant",
+                message,
+                state,
+                data,
+                answers,
+                ai_scores,
+                t("irrelevant_reject", lang),
+                "rejected_irrelevant",
             )
             return
 
@@ -255,13 +285,19 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
         ai_suspect_count = data.get("ai_suspect_retry_count", 0) + 1
         if ai_suspect_count > _MAX_AI_SUSPECT_RETRIES:
             await _reject_and_save(
-                message, state, {**data, "ai_suspect_flagged_keys": flagged_keys},
-                answers, ai_scores, t("ai_suspect_reject", lang), "rejected_ai_generated",
+                message,
+                state,
+                {**data, "ai_suspect_flagged_keys": flagged_keys},
+                answers,
+                ai_scores,
+                t("ai_suspect_reject", lang),
+                "rejected_ai_generated",
             )
             return
 
         await state.update_data(
-            ai_suspect_retry_count=ai_suspect_count, ai_suspect_flagged_keys=flagged_keys,
+            ai_suspect_retry_count=ai_suspect_count,
+            ai_suspect_flagged_keys=flagged_keys,
         )
         await message.answer(t("ai_suspect_retry", lang, question_text=q["text"]))
         return
@@ -269,7 +305,8 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
     # --- Javob mavzuga oid, lekin sifati past/abstrakt bo'lsa — bitta marta
     # aniqlashtiruvchi savol beramiz (har bir savol uchun faqat bir marta). ---
     needs_followup = result is not None and (
-        result["score"] < _FOLLOWUP_SCORE_THRESHOLD or "abstrakt_javob" in result.get("red_flags", [])
+        result["score"] < _FOLLOWUP_SCORE_THRESHOLD
+        or "abstrakt_javob" in result.get("red_flags", [])
     )
     already_followed_up = idx in data.get("followup_asked_indices", [])
 
@@ -277,17 +314,26 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
         followup_indices = data.get("followup_asked_indices", [])
         followup_indices.append(idx)
         await state.update_data(
-            answers=answers, ai_scores=ai_scores,
-            followup_asked_indices=followup_indices, awaiting_followup_for=idx,
+            answers=answers,
+            ai_scores=ai_scores,
+            followup_asked_indices=followup_indices,
+            awaiting_followup_for=idx,
         )
         builder = InlineKeyboardBuilder()
-        builder.button(text=t("followup_skip_button", lang), callback_data="followup:skip")
-        await message.answer(t("followup_prompt", lang), reply_markup=builder.as_markup())
+        builder.button(
+            text=t("followup_skip_button", lang), callback_data="followup:skip"
+        )
+        await message.answer(
+            t("followup_prompt", lang), reply_markup=builder.as_markup()
+        )
         return
 
     await state.update_data(
-        answers=answers, ai_scores=ai_scores, question_index=idx + 1,
-        irrelevant_retry_count=0, ai_suspect_retry_count=0,
+        answers=answers,
+        ai_scores=ai_scores,
+        question_index=idx + 1,
+        irrelevant_retry_count=0,
+        ai_suspect_retry_count=0,
     )
     await ask_current_question(message, state)
 
@@ -305,11 +351,13 @@ async def skip_followup(callback: CallbackQuery, state: FSMContext):
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
-        pass
+        logger.debug("Follow-up tugmasini olib tashlab bo'lmadi.", exc_info=True)
 
     await state.update_data(
-        question_index=idx + 1, awaiting_followup_for=None,
-        irrelevant_retry_count=0, ai_suspect_retry_count=0,
+        question_index=idx + 1,
+        awaiting_followup_for=None,
+        irrelevant_retry_count=0,
+        ai_suspect_retry_count=0,
     )
     await ask_current_question(callback.message, state)
 
@@ -344,7 +392,9 @@ async def finish_questions(message: Message, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.button(text=t("skip_button", lang), callback_data="skip_resume")
 
-    await message.answer(t("finish_resume_prompt", lang), reply_markup=builder.as_markup())
+    await message.answer(
+        t("finish_resume_prompt", lang), reply_markup=builder.as_markup()
+    )
     await state.set_state(ApplyForm.waiting_file)
 
 
@@ -380,12 +430,16 @@ async def complete_application(message: Message, state: FSMContext):
     await state.clear()
 
     try:
+        # Qaror tugmalari admin-bot routerida ishlanadi. Shu sabab anketa
+        # nomzod-botdan emas, tenantning admin-botidan yuborilishi kerak.
         await notify_admins(tenant_id, app_id, message.bot)
     except Exception:
         logger.exception("Adminlarga xabar yuborib bo'lmadi (app_id=%s).", app_id)
 
     # --- Sell bosqichi: agar nomzod yuqori ball olsa, avtomatik taklif yuboriladi ---
     try:
-        await maybe_send_sell_pitch(message, tenant_id, app_id, data.get("ai_scores", {}), lang)
+        await maybe_send_sell_pitch(
+            message, tenant_id, app_id, data.get("ai_scores", {}), lang
+        )
     except Exception:
         logger.exception("Sell xabarini yuborib bo'lmadi (app_id=%s).", app_id)

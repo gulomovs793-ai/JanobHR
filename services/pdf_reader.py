@@ -1,4 +1,5 @@
 """Janob HR Bot — PDF fayldan matn chiqarish (rezyume tahlili uchun)."""
+
 import io
 import logging
 

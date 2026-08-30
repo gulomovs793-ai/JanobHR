@@ -7,6 +7,7 @@ berish. Bu funksiya IKKI joydan chaqiriladi:
 Ikkalasi ham BIR XIL natijaga erishishi kerak, shuning uchun mantiq shu
 yerda, bir joyda saqlanadi.
 """
+
 import logging
 
 from aiogram import Bot
@@ -34,7 +35,10 @@ async def activate_tenant(tenant_id: int) -> dict:
         admin_username = await register_new_tenant_webhook(tenant["admin_bot_token"])
     except Exception:
         logger.exception("Mijoz (id=%s) webhooklarini ornatib bolmadi.", tenant_id)
-        return {"ok": False, "error": "Webhook o'rnatishda xato — tokenlar to'g'riligini tekshiring."}
+        return {
+            "ok": False,
+            "error": "Webhook o'rnatishda xato — tokenlar to'g'riligini tekshiring.",
+        }
 
     await database.update_tenant_status(tenant_id, "active", bot_username=cand_username)
     await database.set_admin_bot_username(tenant_id, admin_username)
@@ -50,8 +54,15 @@ async def activate_tenant(tenant_id: int) -> dict:
                 ),
             )
         except Exception:
-            logger.exception("Mijozga faollashtirish xabarini yuborib bo'lmadi (tenant_id=%s).", tenant_id)
+            logger.exception(
+                "Mijozga faollashtirish xabarini yuborib bo'lmadi (tenant_id=%s).",
+                tenant_id,
+            )
         finally:
             await notify_bot.session.close()
 
-    return {"ok": True, "candidate_username": cand_username, "admin_username": admin_username}
+    return {
+        "ok": True,
+        "candidate_username": cand_username,
+        "admin_username": admin_username,
+    }

@@ -14,6 +14,7 @@ uni faqat muhit o'zgaruvchisida saqlang, hech qachon kodga yozmang.
 Ishga tushirish: `python userbot.py` (Render'da alohida Background Worker
 sifatida, FOUNDER_BOT_TOKEN bilan bir xil xizmatda ham ishga tushirish mumkin).
 """
+
 import asyncio
 import logging
 
@@ -21,8 +22,11 @@ from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
 from config import (
-    CARD_BOT_USERNAME, FOUNDER_USER_IDS, TELEGRAM_API_HASH,
-    TELEGRAM_API_ID, TELEGRAM_USERBOT_SESSION,
+    CARD_BOT_USERNAME,
+    FOUNDER_USER_IDS,
+    TELEGRAM_API_HASH,
+    TELEGRAM_API_ID,
+    TELEGRAM_USERBOT_SESSION,
 )
 from services import database
 from services.payment_automation import handle_payment_notification
@@ -41,7 +45,9 @@ async def _notify_founders(text: str):
     from config import FOUNDER_BOT_TOKEN
 
     if not FOUNDER_BOT_TOKEN or not FOUNDER_USER_IDS:
-        logger.warning("[to'lov] Asoschiga xabar yuborilmadi (bot/ID sozlanmagan): %s", text[:200])
+        logger.warning(
+            "[to'lov] Asoschiga xabar yuborilmadi (bot/ID sozlanmagan): %s", text[:200]
+        )
         return
 
     from aiogram import Bot
@@ -63,12 +69,18 @@ async def _activate_tenant_wrapper(tenant_id: int):
 
 async def start_userbot():
     if not is_userbot_configured():
-        logger.info("[userbot] Sozlanmagan (TELEGRAM_API_ID/HASH/SESSION yo'q) — o'tkazib yuborildi.")
+        logger.info(
+            "[userbot] Sozlanmagan (TELEGRAM_API_ID/HASH/SESSION yo'q) — o'tkazib yuborildi."
+        )
         return
 
     client = TelegramClient(
-        StringSession(TELEGRAM_USERBOT_SESSION), TELEGRAM_API_ID, TELEGRAM_API_HASH,
-        connection_retries=10, retry_delay=3, auto_reconnect=True,
+        StringSession(TELEGRAM_USERBOT_SESSION),
+        TELEGRAM_API_ID,
+        TELEGRAM_API_HASH,
+        connection_retries=10,
+        retry_delay=3,
+        auto_reconnect=True,
     )
     await client.connect()
 
@@ -90,11 +102,17 @@ async def start_userbot():
             if not sender_username or sender_username != expected:
                 return
             if not getattr(sender, "bot", False):
-                logger.warning("[userbot] @%s bot emas — e'tiborsiz qoldirildi.", sender_username)
+                logger.warning(
+                    "[userbot] @%s bot emas — e'tiborsiz qoldirildi.", sender_username
+                )
                 return
 
-            logger.info("[userbot] @%s dan xabar keldi (%d belgi).", expected, len(text))
-            result = await handle_payment_notification(text, _notify_founders, _activate_tenant_wrapper)
+            logger.info(
+                "[userbot] @%s dan xabar keldi (%d belgi).", expected, len(text)
+            )
+            result = await handle_payment_notification(
+                text, _notify_founders, _activate_tenant_wrapper
+            )
             logger.info("[userbot] Natija: %s", result.get("status"))
         except Exception:
             logger.exception("[userbot] Xabarni qayta ishlashda xatolik.")
@@ -109,5 +127,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
     asyncio.run(main())

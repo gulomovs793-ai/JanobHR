@@ -98,7 +98,7 @@ TRANSLATIONS = {
         ),
         "wrong_file_type": (
             "Iltimos, PDF fayl, video yoki portfolio havolasini yuboring — yoki yuqoridagi "
-            "\"O'tkazib yuborish\" tugmasini bosing."
+            '"O\'tkazib yuborish" tugmasini bosing.'
         ),
         "portfolio_link_empty": "Iltimos, fayl, portfolio havolasi yuboring, yoki tugmani bosib o'tkazib yuboring.",
         "ask_full_name": "Deyarli tayyor! 🙌 Iltimos, to'liq ism-familiyangizni yozing (masalan: Aliyev Vali).",
@@ -236,7 +236,7 @@ TRANSLATIONS = {
         ),
         "wrong_file_type": (
             "Пожалуйста, отправьте PDF-файл, видео или ссылку на портфолио — либо нажмите "
-            "кнопку \"Пропустить\" выше."
+            'кнопку "Пропустить" выше.'
         ),
         "portfolio_link_empty": "Пожалуйста, отправьте файл, ссылку на портфолио, либо нажмите кнопку, чтобы пропустить.",
         "ask_full_name": "Почти готово! 🙌 Пожалуйста, напишите своё полное имя и фамилию (например: Алиев Вали).",

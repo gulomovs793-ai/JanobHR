@@ -2,7 +2,9 @@
 Janob HR Bot — konfiguratsiya.
 Barcha maxfiy qiymatlar .env faylidan o'qiladi (repo'ga .env qo'shilmasin!).
 """
+
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,7 +23,9 @@ ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
 # Vergul bilan ajratilgan Telegram user ID'lar ro'yxati — faqat shu ID'lar admin
 # botdan foydalana oladi. O'z ID'ingizni bilish uchun @userinfobot'ga /start yuboring.
 ADMIN_USER_IDS = {
-    int(uid.strip()) for uid in os.getenv("ADMIN_USER_IDS", "").split(",") if uid.strip().isdigit()
+    int(uid.strip())
+    for uid in os.getenv("ADMIN_USER_IDS", "").split(",")
+    if uid.strip().isdigit()
 }
 
 AI_API_KEY = os.getenv("AI_API_KEY", "")
@@ -74,7 +78,9 @@ CARD_BOT_USERNAME = os.getenv("CARD_BOT_USERNAME", "CardXabarBot").lstrip("@")
 # Yangi mijoz ro'yxatdan o'tganda, shaxsan xabar beriladigan asoschi ID'lari
 # (bir nechta bo'lishi mumkin, vergul bilan ajratilgan).
 FOUNDER_USER_IDS = {
-    int(uid.strip()) for uid in os.getenv("FOUNDER_USER_ID", "").split(",") if uid.strip().isdigit()
+    int(uid.strip())
+    for uid in os.getenv("FOUNDER_USER_ID", "").split(",")
+    if uid.strip().isdigit()
 }
 
 # Bitta savolga javob uchun belgilar chegarasi. Nomzod bundan uzunroq yozsa,

@@ -19,13 +19,12 @@ Xavfsizlik: bu yerda xato — pulsiz faollashtirish yoki chalkash faollash-
 tirish degani, shuning uchun har bir tekshiruv O'ZBEK OVOZ AI'dagi bilan
 bir xil qat'iylikda saqlangan.
 """
+
 import hashlib
 import logging
 import random
 import re
-import string
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from config import MONTHLY_PRICE_SOM, ORDER_TTL_MINUTES, PAYMENT_CARD_NUMBER
 from services import database
@@ -33,12 +32,22 @@ from services import database
 logger = logging.getLogger("janob_hr_bot")
 
 _NOTIFY_EXCLUDE_KEYWORDS = [
-    "spisan", "spisano", "spisanie",  # yechib olindi — bu CHIQUVCHI tranzaksiya
-    "otmen", "otkaz", "cancel",       # bekor qilindi
-    "oshibk", "error", "fail",        # xatolik
-    "nedostatoch", "insufficient",    # mablag' yetarli emas
-    "vozvrat", "refund",              # qaytarish
-    "zapros", "otklon", "declin",     # so'rov rad etildi
+    "spisan",
+    "spisano",
+    "spisanie",  # yechib olindi — bu CHIQUVCHI tranzaksiya
+    "otmen",
+    "otkaz",
+    "cancel",  # bekor qilindi
+    "oshibk",
+    "error",
+    "fail",  # xatolik
+    "nedostatoch",
+    "insufficient",  # mablag' yetarli emas
+    "vozvrat",
+    "refund",  # qaytarish
+    "zapros",
+    "otklon",
+    "declin",  # so'rov rad etildi
 ]
 
 
@@ -52,21 +61,26 @@ def looks_like_failed_or_outgoing(text: str) -> bool:
     lines = [line.strip() for line in (text or "").splitlines()]
     has_incoming = any(re.match(r"^(\+|➕)", line) for line in lines)
     has_outgoing = any(re.match(r"^(-|−|➖)", line) for line in lines)
-    if has_outgoing and not has_incoming:
-        return True
-
-    return False
+    return bool(has_outgoing and not has_incoming)
 
 
-def _extract_amount(text: str) -> Optional[int]:
+def _extract_amount(text: str) -> int | None:
     """Bitta satrdan summani ajratib oladi."""
-    m = re.search(r"(\d[\d\s.,']{1,15}\d|\d)\s*(?:so'?m|сўм|сум|sum|som|uzs)", text or "", re.IGNORECASE)
+    m = re.search(
+        r"(\d[\d\s.,']{1,15}\d|\d)\s*(?:so'?m|сўм|сум|sum|som|uzs)",
+        text or "",
+        re.IGNORECASE,
+    )
     if not m:
         return None
 
     raw = re.sub(r"[\s']", "", m.group(1))
     decimal_tail = re.match(r"^([\d.,]*?)[.,](\d{2})$", raw)
-    raw = re.sub(r"[.,]", "", decimal_tail.group(1)) if decimal_tail else re.sub(r"[.,]", "", raw)
+    raw = (
+        re.sub(r"[.,]", "", decimal_tail.group(1))
+        if decimal_tail
+        else re.sub(r"[.,]", "", raw)
+    )
 
     try:
         n = int(raw)
@@ -75,7 +89,7 @@ def _extract_amount(text: str) -> Optional[int]:
         return None
 
 
-def parse_notification_amount(text: str) -> Optional[int]:
+def parse_notification_amount(text: str) -> int | None:
     """Bank/karta bildirishnomasi matnidan summani (butun so'mda) ajratib
     oladi. Kirim ("+") qatori BALANS qatoridan ustun qo'yiladi."""
     raw = text or ""
@@ -130,7 +144,7 @@ async def _pick_unique_amount(base_price: int) -> int:
     return base_price + random.randint(1, 200)
 
 
-async def create_payment_order(tenant_id: int, base_amount: int = None) -> dict:
+async def create_payment_order(tenant_id: int, base_amount: int | None = None) -> dict:
     """Mijoz uchun yangi to'lov buyurtmasi yaratadi (avvalgi ochiq
     buyurtmalarini bekor qilib). Noyob summa va tugash muddati bilan."""
     base_amount = base_amount or MONTHLY_PRICE_SOM
@@ -139,16 +153,28 @@ async def create_payment_order(tenant_id: int, base_amount: int = None) -> dict:
 
     amount = await _pick_unique_amount(base_amount)
     order_code = _new_order_code()
-    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=ORDER_TTL_MINUTES)).isoformat()
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(minutes=ORDER_TTL_MINUTES)
+    ).isoformat()
 
     order_id = await database.create_payment_order(
-        tenant_id=tenant_id, order_code=order_code,
-        base_amount=base_amount, amount=amount, expires_at=expires_at,
+        tenant_id=tenant_id,
+        order_code=order_code,
+        base_amount=base_amount,
+        amount=amount,
+        expires_at=expires_at,
     )
-    return {"id": order_id, "order_code": order_code, "amount": amount, "expires_at": expires_at}
+    return {
+        "id": order_id,
+        "order_code": order_code,
+        "amount": amount,
+        "expires_at": expires_at,
+    }
 
 
-async def handle_payment_notification(raw_text: str, notify_founders, activate_tenant) -> dict:
+async def handle_payment_notification(
+    raw_text: str, notify_founders, activate_tenant
+) -> dict:
     """Userbot orqali kelgan xom bildirishnoma matnini qayta ishlaydi.
 
     `notify_founders(text: str)` — asoschilarga xabar yuborish uchun async chaqiruv.
@@ -160,13 +186,17 @@ async def handle_payment_notification(raw_text: str, notify_founders, activate_t
         return {"status": "no_amount"}
 
     if looks_like_failed_or_outgoing(text):
-        logger.info("[to'lov] chiquvchi/muvaffaqiyatsiz tranzaksiya, e'tiborsiz qoldirildi.")
+        logger.info(
+            "[to'lov] chiquvchi/muvaffaqiyatsiz tranzaksiya, e'tiborsiz qoldirildi."
+        )
         return {"status": "ignored_excluded"}
 
     if not card_matches_ours(text):
         found_cards = re.findall(r"[*x•·]{2,}\s*(\d{4})", text, re.IGNORECASE)
         our_digits = re.sub(r"\D", "", PAYMENT_CARD_NUMBER or "")
-        logger.warning("[to'lov] boshqa kartaga tegishli bildirishnoma, e'tiborsiz qoldirildi.")
+        logger.warning(
+            "[to'lov] boshqa kartaga tegishli bildirishnoma, e'tiborsiz qoldirildi."
+        )
         await notify_founders(
             f"⚠️ Bildirishnoma karta bo'yicha rad etildi.\n"
             f"Matnda topilgan karta: {', '.join(found_cards) or 'aniqlanmadi'}\n"
@@ -189,7 +219,9 @@ async def handle_payment_notification(raw_text: str, notify_founders, activate_t
 
     if not candidates:
         open_orders = await database.list_open_payment_orders()
-        open_summary = ", ".join(f"{o['order_code']}={o['amount']}" for o in open_orders) or "yo'q"
+        open_summary = (
+            ", ".join(f"{o['order_code']}={o['amount']}" for o in open_orders) or "yo'q"
+        )
         await notify_founders(
             f"⚠️ Noma'lum to'lov bildirishnomasi.\n\nAniqlangan summa: {amount:,} so'm\n"
             f"Matn: {text[:300]}\n\nJoriy ochiq buyurtmalar: {open_summary}\n\n"
@@ -212,9 +244,15 @@ async def handle_payment_notification(raw_text: str, notify_founders, activate_t
         return {"status": "duplicate", "amount": amount}
 
     try:
-        await activate_tenant(order["tenant_id"])
+        activation = await activate_tenant(order["tenant_id"])
+        if not activation or not activation.get("ok"):
+            error = (activation or {}).get("error", "Noma'lum faollashtirish xatosi")
+            raise RuntimeError(error)
     except Exception:
-        logger.exception("Tolov aniqlandi, lekin tenantni faollashtirishda xato (order=%s).", order["order_code"])
+        logger.exception(
+            "Tolov aniqlandi, lekin tenantni faollashtirishda xato (order=%s).",
+            order["order_code"],
+        )
         await database.mark_payment_order_needs_review(order["id"], str(text[:200]))
         await notify_founders(
             f"🚨 Avtomatik tasdiqlash xatosi: {order['order_code']} to'lovi aniqlandi, "
@@ -226,4 +264,9 @@ async def handle_payment_notification(raw_text: str, notify_founders, activate_t
         f"🤖✅ Avtomatik tasdiqlandi!\n\nBuyurtma: {order['order_code']}\n"
         f"Mijoz (tenant_id): {order['tenant_id']}\nSumma: {amount:,} so'm"
     )
-    return {"status": "approved", "amount": amount, "order_code": order["order_code"], "tenant_id": order["tenant_id"]}
+    return {
+        "status": "approved",
+        "amount": amount,
+        "order_code": order["order_code"],
+        "tenant_id": order["tenant_id"],
+    }

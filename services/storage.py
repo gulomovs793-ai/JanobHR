@@ -11,9 +11,10 @@ Bu klass xuddi shu ma'lumotni SQLite'da saqlaydi, shuning uchun jarayon qayta
 ishga tushsa ham (fayl tizimi saqlanib qolgan bo'lsa — buning uchun Render'da
 Disk ulash tavsiya etiladi), nomzodlar hech narsani sezmasdan davom eta oladi.
 """
+
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiosqlite
 from aiogram.fsm.storage.base import BaseStorage, StorageKey
@@ -62,7 +63,7 @@ class SQLiteStorage(BaseStorage):
             )
             await db.commit()
 
-    async def get_state(self, key: StorageKey) -> Optional[str]:
+    async def get_state(self, key: StorageKey) -> str | None:
         async with aiosqlite.connect(self._db_path) as db:
             cursor = await db.execute(
                 "SELECT state FROM fsm_storage WHERE storage_key = ?", (_key_str(key),)
@@ -70,7 +71,7 @@ class SQLiteStorage(BaseStorage):
             row = await cursor.fetchone()
         return row[0] if row else None
 
-    async def set_data(self, key: StorageKey, data: Dict[str, Any]) -> None:
+    async def set_data(self, key: StorageKey, data: dict[str, Any]) -> None:
         data_json = json.dumps(data, ensure_ascii=False)
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
@@ -82,7 +83,7 @@ class SQLiteStorage(BaseStorage):
             )
             await db.commit()
 
-    async def get_data(self, key: StorageKey) -> Dict[str, Any]:
+    async def get_data(self, key: StorageKey) -> dict[str, Any]:
         async with aiosqlite.connect(self._db_path) as db:
             cursor = await db.execute(
                 "SELECT data FROM fsm_storage WHERE storage_key = ?", (_key_str(key),)

@@ -1,4 +1,5 @@
 """Admin bot — nomzodlar ro'yxatini Excel (.xlsx) fayl sifatida eksport qilish."""
+
 import io
 import logging
 
@@ -23,8 +24,16 @@ _STATUS_LABELS = {
 }
 
 _HEADERS = [
-    "#", "Ism-familiya", "Username", "Telefon", "AI ball", "Verdikt",
-    "Holat", "Ariza sanasi", "Tanlagan suhbat vaqti", "Javoblar",
+    "#",
+    "Ism-familiya",
+    "Username",
+    "Telefon",
+    "AI ball",
+    "Verdikt",
+    "Holat",
+    "Ariza sanasi",
+    "Tanlagan suhbat vaqti",
+    "Javoblar",
 ]
 
 
@@ -60,18 +69,20 @@ async def export_candidates_excel(callback: CallbackQuery, tenant_id: int):
 
     for i, (score, verdict, answers_text, app) in enumerate(rows, 1):
         created = (app.get("created_at") or "")[:16].replace("T", " ")
-        ws.append([
-            i,
-            app["full_name"],
-            app["username"] or "",
-            app.get("phone_number") or "",
-            score if score is not None else "",
-            verdict,
-            _STATUS_LABELS.get(app["status"], app["status"]),
-            created,
-            app.get("selected_slot") or "",
-            answers_text,
-        ])
+        ws.append(
+            [
+                i,
+                app["full_name"],
+                app["username"] or "",
+                app.get("phone_number") or "",
+                score if score is not None else "",
+                verdict,
+                _STATUS_LABELS.get(app["status"], app["status"]),
+                created,
+                app.get("selected_slot") or "",
+                answers_text,
+            ]
+        )
 
     # Ustun kengliklarini o'qishga qulay qilib sozlaymiz.
     widths = [4, 22, 16, 16, 9, 9, 20, 16, 20, 80]

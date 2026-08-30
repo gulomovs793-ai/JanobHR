@@ -2,6 +2,7 @@
 Janob HR Bot — ixtiyoriy Firebase Firestore sinxronizatsiyasi.
 FIREBASE_CREDENTIALS_PATH bo'sh bo'lsa, hech narsa qilmaydi.
 """
+
 import asyncio
 import logging
 

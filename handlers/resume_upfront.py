@@ -9,6 +9,7 @@ savollar rezyumedan HECH QACHON to'ldirilmaydi — ular har doim nomzodning
 o'zidan so'raladi, chunki aynan shu savollar orqali "faqat CV'da yaxshi
 ko'rinadigan" nomzodlar chinakam tekshiriladi.
 """
+
 import logging
 
 from aiogram import F, Router
@@ -34,7 +35,9 @@ async def ask_resume_upfront(message: Message, state: FSMContext):
 
     builder = InlineKeyboardBuilder()
     builder.button(text=t("skip_button", lang), callback_data="skip_resume_upfront")
-    await message.answer(t("resume_upfront_prompt", lang), reply_markup=builder.as_markup())
+    await message.answer(
+        t("resume_upfront_prompt", lang), reply_markup=builder.as_markup()
+    )
     await state.set_state(ApplyForm.waiting_resume_upfront)
 
 
@@ -44,13 +47,15 @@ async def _proceed_to_questions(message: Message, state: FSMContext):
     await ask_current_question(message, state)
 
 
-@router.callback_query(ApplyForm.waiting_resume_upfront, F.data == "skip_resume_upfront")
+@router.callback_query(
+    ApplyForm.waiting_resume_upfront, F.data == "skip_resume_upfront"
+)
 async def skip_resume(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
-        pass
+        logger.debug("Resume tugmasini olib tashlab bo'lmadi.", exc_info=True)
     await _proceed_to_questions(callback.message, state)
 
 
@@ -93,7 +98,9 @@ async def handle_resume_pdf(message: Message, state: FSMContext):
     questions = data["vacancy_questions"]
     # Faqat ODDIY FAKTIK savollar (ai_score va hard_filter BELGILANMAGAN)
     # rezyumedan to'ldirilishi mumkin.
-    eligible = [q for q in questions if not q.get("ai_score") and not q.get("hard_filter")]
+    eligible = [
+        q for q in questions if not q.get("ai_score") and not q.get("hard_filter")
+    ]
 
     extracted = await extract_resume_data(pdf_text, eligible) if eligible else None
 
@@ -120,7 +127,9 @@ async def handle_resume_pdf(message: Message, state: FSMContext):
 
     if prefilled_texts:
         skipped_list = "\n".join(f"✓ {txt}" for txt in prefilled_texts)
-        await wait_msg.edit_text(t("resume_extracted_with_list", lang, skipped_list=skipped_list))
+        await wait_msg.edit_text(
+            t("resume_extracted_with_list", lang, skipped_list=skipped_list)
+        )
     else:
         await wait_msg.edit_text(t("resume_extracted_no_list", lang))
 

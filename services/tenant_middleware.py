@@ -10,15 +10,17 @@ Kelayotgan har bir yangilanish qaysi TOKEN orqali kelgani asosida, qaysi
 mijozga (`tenant_id`) VA qaysi BOTGA (`bot_role`: "candidate" yoki "admin")
 tegishli ekani aniqlanadi.
 """
+
 import logging
-from typing import Any, Awaitable, Callable, Dict
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.filters import BaseFilter
 from aiogram.types import TelegramObject
 
-from services import database
 from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
+from services import database
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -34,9 +36,9 @@ class TenantMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any],
+        data: dict[str, Any],
     ) -> Any:
         bot = data["bot"]
 
@@ -53,7 +55,9 @@ class TenantMiddleware(BaseMiddleware):
 
         tenant, bot_role = result
         if tenant["status"] != "active":
-            logger.warning("Nofaol mijoz (id=%s) tokeni orqali so'rov keldi.", tenant["id"])
+            logger.warning(
+                "Nofaol mijoz (id=%s) tokeni orqali so'rov keldi.", tenant["id"]
+            )
             return None
 
         data["tenant_id"] = tenant["id"]
@@ -74,7 +78,9 @@ class TenantMiddleware(BaseMiddleware):
 class IsCandidateBot(BaseFilter):
     """Faqat nomzod-bot orqali kelgan yangilanishlar uchun."""
 
-    async def __call__(self, event: TelegramObject, bot_role: str = "candidate") -> bool:
+    async def __call__(
+        self, event: TelegramObject, bot_role: str = "candidate"
+    ) -> bool:
         return bot_role == "candidate"
 
 
@@ -83,7 +89,10 @@ class IsAdminBot(BaseFilter):
     foydalanuvchidan kelgan yangilanishlar uchun."""
 
     async def __call__(
-        self, event: TelegramObject, bot_role: str = "candidate", is_admin: bool = False,
+        self,
+        event: TelegramObject,
+        bot_role: str = "candidate",
+        is_admin: bool = False,
     ) -> bool:
         return bot_role == "admin" and is_admin
 
@@ -94,7 +103,9 @@ class IsFounderBot(BaseFilter):
     token TO'G'RI kelishi HAM YETARLI EMAS, yuboruvchi shaxs ham
     ro'yxatda bo'lishi shart)."""
 
-    async def __call__(self, event: TelegramObject, bot_role: str = "candidate") -> bool:
+    async def __call__(
+        self, event: TelegramObject, bot_role: str = "candidate"
+    ) -> bool:
         if bot_role != "founder":
             return False
         user = getattr(event, "from_user", None)

@@ -5,6 +5,7 @@ mavjudini yangilash) bir xil bosqichlarni ishlatadi — FSM ma'lumotidagi
 `editing_vacancy_key` maydoni orqali farqlanadi (mavjud bo'lsa — tahrirlash,
 bo'lmasa — yangi yaratish).
 """
+
 import logging
 
 from aiogram import F, Router
@@ -12,7 +13,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from admin_bot.parsing import MANUAL_FORMAT_HELP, format_questions_preview, parse_manual_questions, to_manual_format
+from admin_bot.parsing import (
+    MANUAL_FORMAT_HELP,
+    format_questions_preview,
+    parse_manual_questions,
+    to_manual_format,
+)
 from admin_bot.states import AdminForm
 from services import database
 from services.ai_scoring import generate_questions
@@ -29,11 +35,12 @@ _DEFAULT_REJECT_MESSAGE = (
 
 # ============================= 1) YANGI VAKANSIYA BOSHLASH =============================
 
+
 @router.callback_query(F.data == "menu:new")
 async def start_new_vacancy(callback: CallbackQuery, state: FSMContext):
     await state.clear()  # editing_vacancy_key bo'lmasligi kerak — bu YANGI yaratish
     await callback.message.edit_text(
-        "➕ <b>Yangi vakansiya</b>\n\nLavozim nomini yozing (masalan: \"Quruvchi\", \"Buxgalter\", \"Haydovchi\")."
+        '➕ <b>Yangi vakansiya</b>\n\nLavozim nomini yozing (masalan: "Quruvchi", "Buxgalter", "Haydovchi").'
     )
     await state.set_state(AdminForm.creating_title)
     await callback.answer()
@@ -56,6 +63,7 @@ async def receive_title(message: Message, state: FSMContext):
 
 
 # ============================= 2) MAVJUDNI AI BILAN YANGILASH =============================
+
 
 @router.callback_query(F.data.startswith("vacregen:"))
 async def start_regenerate(callback: CallbackQuery, state: FSMContext, tenant_id: int):
@@ -88,9 +96,13 @@ async def receive_description(message: Message, state: FSMContext):
 
 async def _generate_and_show(message: Message, state: FSMContext):
     data = await state.get_data()
-    wait_msg = await message.answer("🤖 AI savollarni tuzmoqda, bir necha soniya kuting...")
+    wait_msg = await message.answer(
+        "🤖 AI savollarni tuzmoqda, bir necha soniya kuting..."
+    )
 
-    questions = await generate_questions(data["vacancy_title"], data.get("vacancy_description", ""))
+    questions = await generate_questions(
+        data["vacancy_title"], data.get("vacancy_description", "")
+    )
 
     if not questions:
         await wait_msg.edit_text(
@@ -132,6 +144,7 @@ def _review_keyboard():
 
 # ============================= 3) AI TAKLIFINI KO'RIB CHIQISH =============================
 
+
 @router.callback_query(AdminForm.reviewing_ai_questions, F.data == "aiq:regen")
 async def regenerate_questions(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Qayta generatsiya qilinmoqda...")
@@ -155,7 +168,9 @@ async def switch_to_manual(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(AdminForm.reviewing_ai_questions, F.data == "aiq:save")
-async def accept_ai_questions(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+async def accept_ai_questions(
+    callback: CallbackQuery, state: FSMContext, tenant_id: int
+):
     data = await state.get_data()
     await state.update_data(final_questions=data.get("pending_questions", []))
     await callback.answer("Saqlanmoqda...")
@@ -193,7 +208,9 @@ async def back_to_review_from_picker(callback: CallbackQuery, state: FSMContext)
     await callback.answer()
 
 
-@router.callback_query(AdminForm.reviewing_ai_questions, F.data.startswith("aiq:editq:"))
+@router.callback_query(
+    AdminForm.reviewing_ai_questions, F.data.startswith("aiq:editq:")
+)
 async def start_edit_pending_question(callback: CallbackQuery, state: FSMContext):
     idx = int(callback.data.split(":")[2])
     data = await state.get_data()
@@ -239,11 +256,14 @@ async def receive_pending_question_edit(message: Message, state: FSMContext):
 
 # ============================= 4) QO'LDA KIRITISH =============================
 
+
 @router.message(AdminForm.entering_manual_questions, F.text)
 async def receive_manual_questions(message: Message, state: FSMContext, tenant_id: int):
     questions = parse_manual_questions(message.text)
     if not questions:
-        await message.answer("Hech bo'lmasa bitta savol kiriting. Qaytadan urinib ko'ring.")
+        await message.answer(
+            "Hech bo'lmasa bitta savol kiriting. Qaytadan urinib ko'ring."
+        )
         return
 
     await state.update_data(final_questions=questions)
@@ -252,6 +272,7 @@ async def receive_manual_questions(message: Message, state: FSMContext, tenant_i
 
 # ============================= 5) YAKUNLASH (saqlash) =============================
 
+
 async def _finalize_vacancy(message: Message, state: FSMContext, tenant_id: int):
     data = await state.get_data()
     title = data["vacancy_title"]
@@ -259,8 +280,12 @@ async def _finalize_vacancy(message: Message, state: FSMContext, tenant_id: int)
     editing_key = data.get("editing_vacancy_key")
 
     if editing_key:
-        await database.update_vacancy(tenant_id, editing_key, title=title, questions=questions)
-        result_text = f"✅ <b>{title}</b> vakansiyasi yangilandi ({len(questions)} ta savol)."
+        await database.update_vacancy(
+            tenant_id, editing_key, title=title, questions=questions
+        )
+        result_text = (
+            f"✅ <b>{title}</b> vakansiyasi yangilandi ({len(questions)} ta savol)."
+        )
     else:
         base_key = database.make_vacancy_key(title)
         key = base_key
@@ -273,8 +298,12 @@ async def _finalize_vacancy(message: Message, state: FSMContext, tenant_id: int)
         # ixtiyoriy (handlers/questions.py'da), shuning uchun bu yerda alohida
         # so'ralmaydi — standart True qiymati saqlanadi, lekin amalda ishlatilmaydi.
         await database.create_vacancy(
-            tenant_id=tenant_id, key=key, title=title, reject_message=_DEFAULT_REJECT_MESSAGE,
-            questions=questions, resume_required=True,
+            tenant_id=tenant_id,
+            key=key,
+            title=title,
+            reject_message=_DEFAULT_REJECT_MESSAGE,
+            questions=questions,
+            resume_required=True,
         )
         result_text = (
             f"✅ Yangi vakansiya yaratildi: <b>{title}</b> ({len(questions)} ta savol).\n\n"
@@ -291,6 +320,7 @@ async def _finalize_vacancy(message: Message, state: FSMContext, tenant_id: int)
 
 
 # ============================= 6) TO'G'RIDAN-TO'G'RI QO'LDA TAHRIRLASH =============================
+
 
 @router.callback_query(F.data.startswith("vacmanual:"))
 async def start_manual_edit(callback: CallbackQuery, state: FSMContext, tenant_id: int):
@@ -315,6 +345,7 @@ async def start_manual_edit(callback: CallbackQuery, state: FSMContext, tenant_i
 
 # ============================= 7) BITTA SAVOLNI ALOHIDA TAHRIRLASH =============================
 
+
 @router.callback_query(F.data.startswith("vaceditlist:"))
 async def show_question_picker(callback: CallbackQuery, tenant_id: int):
     key = callback.data.split(":", 1)[1]
@@ -338,7 +369,9 @@ async def show_question_picker(callback: CallbackQuery, tenant_id: int):
 
 
 @router.callback_query(F.data.startswith("vaceditq:"))
-async def start_edit_single_question(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+async def start_edit_single_question(
+    callback: CallbackQuery, state: FSMContext, tenant_id: int
+):
     _, key, idx_str = callback.data.split(":")
     idx = int(idx_str)
     vacancy = await database.get_vacancy(tenant_id, key)
@@ -361,7 +394,9 @@ async def start_edit_single_question(callback: CallbackQuery, state: FSMContext,
 
 
 @router.message(AdminForm.editing_single_question, F.text)
-async def receive_single_question_edit(message: Message, state: FSMContext, tenant_id: int):
+async def receive_single_question_edit(
+    message: Message, state: FSMContext, tenant_id: int
+):
     data = await state.get_data()
     key = data["editing_vacancy_key"]
     idx = data["editing_question_index"]
@@ -387,4 +422,6 @@ async def receive_single_question_edit(message: Message, state: FSMContext, tena
 
     builder = InlineKeyboardBuilder()
     builder.button(text="⬅️ Vakansiyaga qaytish", callback_data=f"vac:{key}")
-    await message.answer(f"✅ {idx + 1}-savol yangilandi.", reply_markup=builder.as_markup())
+    await message.answer(
+        f"✅ {idx + 1}-savol yangilandi.", reply_markup=builder.as_markup()
+    )

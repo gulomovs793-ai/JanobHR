@@ -12,7 +12,6 @@ from html import escape
 from io import BytesIO
 
 from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -184,10 +183,7 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
         downloaded.seek(0)
         return BufferedInputFile(downloaded.read(), filename=filename)
 
-    admin_bot = Bot(
-        token=tenant["admin_bot_token"],
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    admin_bot = Bot(token=tenant["admin_bot_token"])
     try:
         for admin_id in tenant["admin_user_ids"]:
             try:
@@ -231,7 +227,10 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
                             )
 
                 sent = await admin_bot.send_message(
-                    chat_id=admin_id, text=text, reply_markup=builder.as_markup()
+                    chat_id=admin_id,
+                    text=text,
+                    reply_markup=builder.as_markup(),
+                    parse_mode=ParseMode.HTML,
                 )
                 await database.add_admin_message(
                     tenant_id, app_id, admin_id, sent.message_id
@@ -261,14 +260,13 @@ async def notify_admin_slot_selected(tenant_id: int, app_id: int, slot: str):
         f"(@{escape(str(app['username'] or '—'))}) suhbat uchun "
         f"vaqtni tanladi: <b>{escape(str(slot))}</b>"
     )
-    admin_bot = Bot(
-        token=tenant["admin_bot_token"],
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    admin_bot = Bot(token=tenant["admin_bot_token"])
     try:
         for admin_id in tenant["admin_user_ids"]:
             try:
-                await admin_bot.send_message(chat_id=admin_id, text=text)
+                await admin_bot.send_message(
+                    chat_id=admin_id, text=text, parse_mode=ParseMode.HTML
+                )
             except Exception:
                 logger.exception(
                     "Admin (id=%s) ga vaqt tanlovi haqida xabar berib bo'lmadi.",

@@ -26,7 +26,16 @@ if not BOT_TOKEN:
         "BOT_TOKEN topilmadi. .env faylini .env.example asosida yarating va "
         "BotFather'dan olingan tokenni kiriting."
     )
-from handlers import contact, files, questions, resume_upfront, sell, start, vacancy
+from handlers import (
+    contact,
+    create_bot,
+    files,
+    questions,
+    resume_upfront,
+    sell,
+    start,
+    vacancy,
+)
 from services import bot_registry
 from services.database import init_db
 from services.storage import SQLiteStorage
@@ -81,6 +90,7 @@ def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     # prefiksi) bilan ishlaydi. Qaror (qabul/rad) tugmalari endi Admin botda
     # ishlanadi (admin_bot/handlers_decisions.py), shuning uchun bu yerda yo'q.
     dp.include_router(sell.router)
+    dp.include_router(create_bot.router)
     dp.include_router(start.router)
     dp.include_router(vacancy.router)
     dp.include_router(resume_upfront.router)

@@ -8,9 +8,12 @@ esa nomzod-botdan yuklab olinib, admin-botga qayta yuklanadi.
 """
 
 import logging
+from html import escape
 from io import BytesIO
 
 from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -38,11 +41,14 @@ _MAX_TEXT_LENGTH = 3800
 
 async def _format_application_text(app: dict) -> str:
     lines = [
-        f"🆕 <b>Yangi anketa</b> — {app['vacancy_title']}",
-        f"👤 {app['full_name']} (@{app['username'] or '—'}, id: {app['user_id']})",
+        f"🆕 <b>Yangi anketa</b> — {escape(str(app['vacancy_title']))}",
+        (
+            f"👤 {escape(str(app['full_name']))} "
+            f"(@{escape(str(app['username'] or '—'))}, id: {app['user_id']})"
+        ),
     ]
     if app.get("phone_number"):
-        lines.append(f"📞 {app['phone_number']}")
+        lines.append(f"📞 {escape(str(app['phone_number']))}")
     if app.get("lang") == "ru":
         lines.append("🌐 Til: Rus tilida murojaat qilgan")
     lines.append("")
@@ -51,7 +57,7 @@ async def _format_application_text(app: dict) -> str:
     tenant_id = app["tenant_id"]
 
     for key, value in app["answers"].items():
-        text = str(value)
+        text = escape(str(value))
         if len(text) > 500:
             text = text[:500] + "…"
         lines.append(f"• {text}")
@@ -63,7 +69,7 @@ async def _format_application_text(app: dict) -> str:
                 emoji = _VERDICT_EMOJI.get(result.get("verdict"), "⚪")
                 score = result.get("score")
                 score_part = f"{score}/100 — " if score is not None else ""
-                lines.append(f"   ↳ {emoji} <i>{score_part}{izoh}</i>")
+                lines.append(f"   ↳ {emoji} <i>{score_part}{escape(izoh)}</i>")
 
     aggregate = aggregate_scores(ai_scores)
 
@@ -178,7 +184,10 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
         downloaded.seek(0)
         return BufferedInputFile(downloaded.read(), filename=filename)
 
-    admin_bot = Bot(token=tenant["admin_bot_token"])
+    admin_bot = Bot(
+        token=tenant["admin_bot_token"],
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     try:
         for admin_id in tenant["admin_user_ids"]:
             try:
@@ -248,10 +257,14 @@ async def notify_admin_slot_selected(tenant_id: int, app_id: int, slot: str):
         return
 
     text = (
-        f"📅 <b>{app['full_name']}</b> (@{app['username'] or '—'}) suhbat uchun "
-        f"vaqtni tanladi: <b>{slot}</b>"
+        f"📅 <b>{escape(str(app['full_name']))}</b> "
+        f"(@{escape(str(app['username'] or '—'))}) suhbat uchun "
+        f"vaqtni tanladi: <b>{escape(str(slot))}</b>"
     )
-    admin_bot = Bot(token=tenant["admin_bot_token"])
+    admin_bot = Bot(
+        token=tenant["admin_bot_token"],
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     try:
         for admin_id in tenant["admin_user_ids"]:
             try:

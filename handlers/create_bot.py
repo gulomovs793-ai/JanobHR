@@ -8,12 +8,16 @@ o'zining administratorlari ishlatadigan Admin panel-bot.
 """
 
 import logging
+from html import escape
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
@@ -29,6 +33,9 @@ router = Router(name="create_bot")
 
 
 class CreateBotForm(StatesGroup):
+    waiting_hiring_problem = State()
+    waiting_current_process = State()
+    waiting_desired_result = State()
     waiting_company_name = State()
     waiting_contact = State()
     waiting_candidate_token = State()
@@ -49,16 +56,96 @@ async def _validate_token(token: str) -> str | None:
             await test_bot.session.close()
 
 
-@router.message(Command("create_bot"))
-async def cmd_create_bot(message: Message, state: FSMContext):
+async def _start_business_flow(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "🚀 <b>O'z HR botingizni yarating!</b>\n\n"
-        "Hozir siz sinab ko'rgan aynan shu tizimni o'z kompaniyangiz uchun "
-        "sozlab beramiz. Sizga IKKITA bot kerak bo'ladi:\n"
-        "1️⃣ Nomzodlar ariza topshiradigan bot\n"
-        "2️⃣ Faqat sizning o'zingiz (va xodimlaringiz) ishlatadigan Admin panel-bot\n\n"
-        "Avval, kompaniyangiz nomini yozing:"
+        "Har bir kompaniyada xodim yollashdagi asosiy muammo har xil bo'ladi: "
+        "ba'zilarida mos nomzod topish, ba'zilarida saralashga ketadigan vaqt, "
+        "boshqalarida esa ishga olingan xodimning uzoq ishlamasligi muammo bo'ladi.\n\n"
+        "<b>Hozir orzuyingizdagi xodimni yollashda sizni eng ko'p qiynayotgan "
+        "narsa nima?</b>"
+    )
+    await state.set_state(CreateBotForm.waiting_hiring_problem)
+
+
+@router.message(Command("create_bot"))
+async def cmd_create_bot(message: Message, state: FSMContext):
+    await _start_business_flow(message, state)
+
+
+@router.callback_query(F.data == "business:start")
+async def start_business_callback(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await _start_business_flow(callback.message, state)
+
+
+@router.callback_query(F.data == "business:skip")
+async def skip_business_callback(callback: CallbackQuery):
+    await callback.answer("Mayli, istalgan vaqtda /create_bot buyrug'ini yuboring.")
+    await callback.message.edit_reply_markup(reply_markup=None)
+
+
+@router.message(CreateBotForm.waiting_hiring_problem, F.text)
+async def receive_hiring_problem(message: Message, state: FSMContext):
+    value = message.text.strip()
+    if len(value) < 2:
+        await message.answer("Muammoni qisqacha yozib bering.")
+        return
+    await state.update_data(hiring_problem=value)
+    await message.answer("Odatda ishingizga qiziqqan nomzodlarni qanday saralaysiz?")
+    await state.set_state(CreateBotForm.waiting_current_process)
+
+
+@router.message(CreateBotForm.waiting_current_process, F.text)
+async def receive_current_process(message: Message, state: FSMContext):
+    value = message.text.strip()
+    if len(value) < 2:
+        await message.answer("Hozirgi saralash jarayoningizni qisqacha yozing.")
+        return
+    await state.update_data(current_process=value)
+    await message.answer(
+        "Qaysi muammoyingizni hal qilib bersak, Janob HR bilan muntazam "
+        "ishlagan bo'lardingiz?"
+    )
+    await state.set_state(CreateBotForm.waiting_desired_result)
+
+
+@router.message(CreateBotForm.waiting_desired_result, F.text)
+async def receive_desired_result(message: Message, state: FSMContext):
+    value = message.text.strip()
+    if len(value) < 2:
+        await message.answer("Siz uchun kerakli natijani qisqacha yozing.")
+        return
+    await state.update_data(desired_result=value)
+    data = await state.get_data()
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Ha, davom etaman", callback_data="business:trial"
+                )
+            ],
+            [InlineKeyboardButton(text="Hozir emas", callback_data="business:skip")],
+        ]
+    )
+    await message.answer(
+        f"Siz aytgan asosiy muammo — <b>{escape(data['hiring_problem'])}</b>.\n\n"
+        f"Hozir nomzodlarni <b>{escape(data['current_process'])}</b>, shu sabab "
+        "saralashda vaqt va kuch yo'qotyapsiz. Janob HR nomzodlarni bir xil "
+        "mezon asosida tekshiradi va sizga eng moslarini ajratib beradi.\n\n"
+        "🎁 Buni o'zingiz ko'rish uchun birinchi <b>5 ta ariza BUTUNLAY BEPUL</b>.\n\n"
+        "Davom etasizmi?",
+        reply_markup=keyboard,
+    )
+    await state.set_state(None)
+
+
+@router.callback_query(F.data == "business:trial")
+async def start_trial(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "Zo'r. Shaxsiy HR botingizni tayyorlash uchun kompaniyangiz nomini yozing."
     )
     await state.set_state(CreateBotForm.waiting_company_name)
 
@@ -69,7 +156,6 @@ async def receive_company_name(message: Message, state: FSMContext):
     if len(name) < 2:
         await message.answer("Iltimos, to'liq kompaniya nomini kiriting.")
         return
-
     await state.update_data(company_name=name)
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
@@ -79,8 +165,8 @@ async def receive_company_name(message: Message, state: FSMContext):
         one_time_keyboard=True,
     )
     await message.answer(
-        "Bog'lanish uchun telefon raqamingizni yuboring. Raqam faqat Janob HR "
-        "asoschisiga ko'rinadi.",
+        "Siz bilan bog'lanishimiz uchun telefon raqamingizni yuboring. "
+        "Raqam faqat Janob HR asoschisiga ko'rinadi.",
         reply_markup=keyboard,
     )
     await state.set_state(CreateBotForm.waiting_contact)
@@ -93,14 +179,37 @@ async def receive_contact(message: Message, state: FSMContext):
         contact_phone=message.contact.phone_number,
         contact_username=message.from_user.username or "",
     )
+    data = await state.get_data()
     await message.answer(
-        "Endi 1️⃣-botingiz uchun — @BotFather orqali yaratgan "
+        "✅ <b>Rahmat, ma'lumotlar qabul qilindi.</b>\n\n"
+        f"Kompaniya: <b>{escape(data['company_name'])}</b>\n"
+        f"Kerakli natija: {escape(data['desired_result'])}\n\n"
+        "Endi botlaringizni ulaymiz. 1️⃣-botingiz uchun — @BotFather orqali yaratgan "
         "<b>NOMZOD-BOT</b>ning TOKENINI yuboring.\n\n"
         "Agar hali bo'lmasa: @BotFather ga o'ting, <code>/newbot</code> yuboring, "
         "ism va username bering — sizga token beradi.",
         reply_markup=ReplyKeyboardRemove(),
     )
     await state.set_state(CreateBotForm.waiting_candidate_token)
+
+    if FOUNDER_USER_IDS:
+        notice = (
+            "🔥 <b>Yangi biznes lead!</b>\n\n"
+            f"Kompaniya: <b>{escape(data['company_name'])}</b>\n"
+            f"Muammo: {escape(data['hiring_problem'])}\n"
+            f"Hozirgi jarayon: {escape(data['current_process'])}\n"
+            f"Kerakli natija: {escape(data['desired_result'])}\n"
+            f"Kontakt: {escape(message.from_user.full_name)}\n"
+            f"Telefon: <code>{escape(message.contact.phone_number)}</code>\n"
+            f"Telegram: @{escape(message.from_user.username or '—')}"
+        )
+        for founder_id in FOUNDER_USER_IDS:
+            try:
+                await message.bot.send_message(founder_id, notice)
+            except Exception:
+                logger.exception(
+                    "Biznes leadni asoschiga yuborib bo'lmadi: %s", founder_id
+                )
 
 
 @router.message(CreateBotForm.waiting_contact)

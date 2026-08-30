@@ -443,3 +443,25 @@ async def complete_application(message: Message, state: FSMContext):
         )
     except Exception:
         logger.exception("Sell xabarini yuborib bo'lmadi (app_id=%s).", app_id)
+
+    # Botning o'zi B2B mahsulotni sotadi: anketa topshirgan biznes egasiga
+    # majburlamasdan, alohida HR botini yaratish yo'lini taklif qilamiz.
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="🏢 Да, для моего бизнеса", callback_data="business:start")
+        builder.button(text="Не сейчас", callback_data="business:skip")
+        prompt = (
+            "🏢 <b>Хотите такой же HR-бот для своей компании?</b>\n\n"
+            "Он принимает заявки, оценивает кандидатов и передаёт лучших вам. "
+            "Пройдите короткую диагностику — это займёт около минуты."
+        )
+    else:
+        builder.button(text="🏢 Ha, biznesim uchun", callback_data="business:start")
+        builder.button(text="Hozir emas", callback_data="business:skip")
+        prompt = (
+            "🏢 <b>Biznesingiz uchun ham shunday HR bot kerakmi?</b>\n\n"
+            "U arizalarni qabul qiladi, nomzodlarni baholaydi va eng yaxshilarini "
+            "sizga yuboradi. Qisqa diagnostika — taxminan 1 daqiqa."
+        )
+    builder.adjust(1)
+    await message.answer(prompt, reply_markup=builder.as_markup())

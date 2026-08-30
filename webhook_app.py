@@ -50,7 +50,16 @@ def _build_dispatcher() -> Dispatcher:
         handlers_vacancy_edit,
         handlers_vacancy_list,
     )
-    from handlers import contact, files, questions, resume_upfront, sell, start, vacancy
+    from handlers import (
+        contact,
+        create_bot,
+        files,
+        questions,
+        resume_upfront,
+        sell,
+        start,
+        vacancy,
+    )
     from services.tenant_middleware import IsAdminBot, IsCandidateBot, IsFounderBot
 
     fsm_storage = SQLiteStorage(db_path=database.SQLITE_PATH)
@@ -62,6 +71,7 @@ def _build_dispatcher() -> Dispatcher:
     candidate_root.callback_query.filter(IsCandidateBot())
     for r in (
         sell.router,
+        create_bot.router,
         start.router,
         vacancy.router,
         resume_upfront.router,

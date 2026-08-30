@@ -11,46 +11,50 @@ from services import database
 router = Router(name="admin_menu")
 
 
-def _main_menu_keyboard():
+def _main_menu_keyboard(overall: dict):
     builder = InlineKeyboardBuilder()
-    builder.button(text="📥 Yangi arizalar", callback_data="apps:list:pending:0")
+    builder.button(
+        text=f"📥 Yangi arizalar · {overall['pending']}",
+        callback_data="apps:list:pending:0",
+    )
     builder.button(text="👥 Barcha nomzodlar", callback_data="apps:list:all:0")
     builder.button(text="💼 Vakansiyalar", callback_data="menu:vacancies")
     builder.button(text="📅 Suhbatlar", callback_data="menu:interview")
-    builder.button(text="📊 Natijalar", callback_data="menu:stats")
+    builder.button(text="📊 Hisobot", callback_data="menu:stats")
     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
     builder.adjust(1, 1, 2, 2)
     return builder.as_markup()
 
 
-async def show_main_menu(message: Message):
-    await message.answer(
-        "👔 <b>Janob HR</b>\n\n"
-        "Nomzodlarni saralash, suhbatlarni rejalash va natijalarni boshqarish.\n\n"
-        "Kerakli bo'limni tanlang:",
-        reply_markup=_main_menu_keyboard(),
+async def show_main_menu(message: Message, tenant_id: int, *, edit: bool = False):
+    overall = await database.get_overall_stats(tenant_id)
+    text = (
+        "👔 <b>Janob HR · Ishga qabul</b>\n\n"
+        f"Yangi: <b>{overall['pending']}</b>   ·   "
+        f"Suhbatga: <b>{overall['accepted']}</b>   ·   "
+        f"Jami: <b>{overall['total']}</b>\n\n"
+        "Bugungi ishni qayerdan boshlaysiz?"
     )
+    method = message.edit_text if edit else message.answer
+    await method(text, reply_markup=_main_menu_keyboard(overall))
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext):
+async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
     await state.clear()
-    await show_main_menu(message)
+    await show_main_menu(message, tenant_id)
 
 
 @router.message(Command("cancel"))
-async def cmd_cancel(message: Message, state: FSMContext):
+async def cmd_cancel(message: Message, state: FSMContext, tenant_id: int):
     await state.clear()
-    await show_main_menu(message)
+    await show_main_menu(message, tenant_id)
 
 
 @router.callback_query(F.data == "menu:main")
-async def back_to_main(callback: CallbackQuery, state: FSMContext):
+async def back_to_main(callback: CallbackQuery, state: FSMContext, tenant_id: int):
     await state.clear()
-    await callback.message.edit_text(
-        "👔 <b>Janob HR — Admin panel</b>\n\nQuyidagilardan birini tanlang:",
-        reply_markup=_main_menu_keyboard(),
-    )
+    await show_main_menu(callback.message, tenant_id, edit=True)
     await callback.answer()
 
 

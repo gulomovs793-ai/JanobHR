@@ -27,14 +27,23 @@ router = Router(name="founder_panel")
 def _tenant_summary(t: dict) -> str:
     username = t.get("contact_username")
     telegram_contact = f"@{username}" if username else "—"
+    status_label = {
+        "pending": "🔥 Yangi lead",
+        "active": "🟢 Faol mijoz",
+        "inactive": "⏸ To'xtatilgan",
+    }.get(t["status"], t["status"])
+    candidate_bot = f"@{t['bot_username']}" if t.get("bot_username") else "sozlanmoqda"
+    admin_bot = (
+        f"@{t['admin_bot_username']}" if t.get("admin_bot_username") else "sozlanmoqda"
+    )
     return (
         f"🏢 <b>№{t['id']} — {t['company_name']}</b>\n\n"
         f"👤 Mas'ul: {t.get('contact_name') or '—'}\n"
         f"📱 Telefon: <code>{t.get('contact_phone') or '—'}</code>\n"
         f"💬 Telegram: {telegram_contact}\n"
-        f"📌 Holat: {t['status']}\n\n"
-        f"Nomzod-bot: {t.get('bot_username') or t['bot_token'][:12] + '...'}\n"
-        f"Admin-bot: {t.get('admin_bot_username') or (t.get('admin_bot_token') or '—')[:12] + '...'}\n"
+        f"📌 Holat: {status_label}\n\n"
+        f"Nomzod-bot: {candidate_bot}\n"
+        f"Admin-bot: {admin_bot}\n"
         f"🗓 Ro'yxatdan o'tgan: {t['created_at'][:16].replace('T', ' ')}"
     )
 
@@ -50,9 +59,15 @@ async def show_main_menu(message: Message):
     stats = await database.get_founder_stats()
 
     builder = InlineKeyboardBuilder()
-    builder.button(text=f"🔥 Yangi leadlar ({stats['pending']})", callback_data="fp:pending")
-    builder.button(text=f"💼 Faol mijozlar ({stats['active']})", callback_data="fp:active")
-    builder.button(text=f"⏸ To'xtatilgan ({stats['inactive']})", callback_data="fp:inactive")
+    builder.button(
+        text=f"🔥 Yangi leadlar ({stats['pending']})", callback_data="fp:pending"
+    )
+    builder.button(
+        text=f"💼 Faol mijozlar ({stats['active']})", callback_data="fp:active"
+    )
+    builder.button(
+        text=f"⏸ To'xtatilgan ({stats['inactive']})", callback_data="fp:inactive"
+    )
     builder.button(text="📊 Biznes ko'rsatkichlari", callback_data="fp:stats")
     builder.adjust(2, 1, 1)
 
@@ -172,6 +187,11 @@ async def view_tenant(callback: CallbackQuery):
         return
 
     builder = InlineKeyboardBuilder()
+    if tenant.get("contact_username"):
+        builder.button(
+            text="💬 Telegram'da yozish",
+            url=f"https://t.me/{tenant['contact_username']}",
+        )
     if tenant["status"] == "pending":
         builder.button(
             text="✅ Faollashtirish", callback_data=f"fp:activate:{tenant_id}"

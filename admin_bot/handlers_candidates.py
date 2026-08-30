@@ -70,7 +70,9 @@ async def view_candidate(callback: CallbackQuery, tenant_id: int):
         f"📌 {_STATUS.get(app['status'], app['status'])}",
     ]
     if score:
-        lines.append(f"🧠 AI baho: <b>{score['avg_score']}/100</b> · {score['verdict']}")
+        lines.append(
+            f"🧠 AI baho: <b>{score['avg_score']}/100</b> · {score['verdict']}"
+        )
     answers = list((app.get("answers") or {}).values())
     if answers:
         preview = "\n".join(f"• {str(answer)[:180]}" for answer in answers[:3])

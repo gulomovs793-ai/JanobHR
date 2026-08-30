@@ -605,6 +605,18 @@ async def get_pending_application_for_user(tenant_id: int, user_id: int) -> dict
     return _parse_app_row(row) if row else None
 
 
+async def get_latest_application_for_user(tenant_id: int, user_id: int) -> dict | None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM applications WHERE tenant_id = ? AND user_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (tenant_id, user_id),
+        )
+        row = await cursor.fetchone()
+    return _parse_app_row(row) if row else None
+
+
 async def add_admin_message(tenant_id: int, app_id: int, chat_id: int, message_id: int):
     app = await get_application(tenant_id, app_id)
     messages = app["admin_messages"] if app else []

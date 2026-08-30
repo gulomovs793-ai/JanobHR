@@ -72,7 +72,9 @@ async def receive_company_name(message: Message, state: FSMContext):
 
     await state.update_data(company_name=name)
     keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]],
+        keyboard=[
+            [KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]
+        ],
         resize_keyboard=True,
         one_time_keyboard=True,
     )

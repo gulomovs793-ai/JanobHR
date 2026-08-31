@@ -135,6 +135,25 @@ CREATE TABLE IF NOT EXISTS payment_notifications_seen (
 );
 """
 
+_CREATE_BUSINESS_LEADS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS business_leads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_user_id INTEGER NOT NULL,
+    contact_name TEXT,
+    contact_phone TEXT NOT NULL,
+    contact_username TEXT,
+    company_name TEXT,
+    hiring_problem TEXT,
+    current_process TEXT,
+    desired_result TEXT,
+    tenant_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'new',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(telegram_user_id, contact_phone)
+);
+"""
+
 # Yangi mijoz qo'shilganda, unga boshlang'ich nuqta sifatida urug'lanadigan
 # 3 ta namunaviy vakansiya (avvalgi bir-mijozli tizimdan meros).
 _DEFAULT_VACANCIES = [
@@ -347,6 +366,7 @@ async def init_db():
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL)
+        await db.execute(_CREATE_BUSINESS_LEADS_TABLE_SQL)
         # Mavjud Render diskidagi eski bazalarni ma'lumot yo'qotmasdan
         # yangilaymiz. SQLite `ADD COLUMN` uchun IF NOT EXISTS bermaydi.
         cursor = await db.execute("PRAGMA table_info(tenants)")
@@ -362,17 +382,27 @@ async def init_db():
         plan_was_missing = "plan_code" not in tenant_columns
         for column, definition in tenant_migrations.items():
             if column not in tenant_columns:
-                await db.execute(f"ALTER TABLE tenants ADD COLUMN {column} {definition}")
+                await db.execute(
+                    f"ALTER TABLE tenants ADD COLUMN {column} {definition}"
+                )
         if plan_was_missing:
-            await db.execute("UPDATE tenants SET plan_code = 'legacy' WHERE status = 'active'")
+            await db.execute(
+                "UPDATE tenants SET plan_code = 'legacy' WHERE status = 'active'"
+            )
         cursor = await db.execute("PRAGMA table_info(payment_orders)")
         payment_columns = {row[1] for row in await cursor.fetchall()}
         if "plan_code" not in payment_columns:
-            await db.execute("ALTER TABLE payment_orders ADD COLUMN plan_code TEXT NOT NULL DEFAULT 'start'")
+            await db.execute(
+                "ALTER TABLE payment_orders ADD COLUMN plan_code TEXT NOT NULL DEFAULT 'start'"
+            )
         if "billing_months" not in payment_columns:
-            await db.execute("ALTER TABLE payment_orders ADD COLUMN billing_months INTEGER NOT NULL DEFAULT 1")
+            await db.execute(
+                "ALTER TABLE payment_orders ADD COLUMN billing_months INTEGER NOT NULL DEFAULT 1"
+            )
         if "customer_notified_at" not in payment_columns:
-            await db.execute("ALTER TABLE payment_orders ADD COLUMN customer_notified_at TEXT")
+            await db.execute(
+                "ALTER TABLE payment_orders ADD COLUMN customer_notified_at TEXT"
+            )
         await db.commit()
     logger.info("Ma'lumotlar bazasi (ko'p mijozli) tayyor: %s", SQLITE_PATH)
 
@@ -509,13 +539,76 @@ async def get_founder_stats() -> dict:
             ((datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),),
         )
         monthly_applications = (await cursor.fetchone())[0]
+        cursor = await db.execute("SELECT COUNT(*) FROM business_leads")
+        business_leads = (await cursor.fetchone())[0]
     return {
         "pending": tenant_counts.get("pending", 0),
         "active": tenant_counts.get("active", 0),
         "inactive": tenant_counts.get("inactive", 0),
         "total_applications": total_applications,
         "monthly_applications": monthly_applications,
+        "business_leads": business_leads,
     }
+
+
+async def save_business_lead(**lead) -> int:
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "INSERT INTO business_leads (telegram_user_id, contact_name, contact_phone, "
+            "contact_username, company_name, hiring_problem, current_process, desired_result, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(telegram_user_id, contact_phone) DO UPDATE SET "
+            "contact_name=excluded.contact_name, contact_username=excluded.contact_username, "
+            "company_name=excluded.company_name, hiring_problem=excluded.hiring_problem, "
+            "current_process=excluded.current_process, desired_result=excluded.desired_result, "
+            "updated_at=excluded.updated_at",
+            (
+                lead["telegram_user_id"],
+                lead.get("contact_name", ""),
+                lead["contact_phone"],
+                lead.get("contact_username", ""),
+                lead.get("company_name", ""),
+                lead.get("hiring_problem", ""),
+                lead.get("current_process", ""),
+                lead.get("desired_result", ""),
+                now,
+                now,
+            ),
+        )
+        cursor = await db.execute(
+            "SELECT id FROM business_leads WHERE telegram_user_id=? AND contact_phone=?",
+            (lead["telegram_user_id"], lead["contact_phone"]),
+        )
+        row = await cursor.fetchone()
+        await db.commit()
+    return row[0]
+
+
+async def attach_business_lead_to_tenant(lead_id: int, tenant_id: int) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE business_leads SET tenant_id=?, status='bot_created', updated_at=? WHERE id=?",
+            (tenant_id, datetime.now(timezone.utc).isoformat(), lead_id),
+        )
+        await db.commit()
+
+
+async def list_business_leads() -> list[dict]:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM business_leads ORDER BY updated_at DESC"
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_business_lead(lead_id: int) -> dict | None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM business_leads WHERE id=?", (lead_id,))
+        row = await cursor.fetchone()
+    return dict(row) if row else None
 
 
 async def update_tenant_status(
@@ -573,17 +666,19 @@ async def get_subscription_usage(tenant_id: int) -> dict:
         "applications_used": applications_used,
         "vacancies_used": vacancies_used,
         "expired": expired,
-        "applications_available": not expired and (
+        "applications_available": not expired
+        and (
             plan.application_limit is None or applications_used < plan.application_limit
         ),
-        "vacancies_available": not expired and (
-            plan.vacancy_limit is None or vacancies_used < plan.vacancy_limit
-        ),
+        "vacancies_available": not expired
+        and (plan.vacancy_limit is None or vacancies_used < plan.vacancy_limit),
         "expires_at": expires_at,
     }
 
 
-async def activate_subscription(tenant_id: int, plan_code: str, months: int = 1) -> None:
+async def activate_subscription(
+    tenant_id: int, plan_code: str, months: int = 1
+) -> None:
     from services.plans import PUBLIC_PLAN_CODES
 
     if plan_code not in PUBLIC_PLAN_CODES:
@@ -591,7 +686,9 @@ async def activate_subscription(tenant_id: int, plan_code: str, months: int = 1)
     tenant = await get_tenant(tenant_id)
     now = datetime.now(timezone.utc)
     try:
-        current_expiry = datetime.fromisoformat(tenant.get("subscription_expires_at") or "")
+        current_expiry = datetime.fromisoformat(
+            tenant.get("subscription_expires_at") or ""
+        )
     except (AttributeError, TypeError, ValueError):
         current_expiry = now
     expires = max(now, current_expiry) + timedelta(days=30 * max(1, months))
@@ -1176,7 +1273,16 @@ async def create_payment_order(
             "INSERT INTO payment_orders (tenant_id, order_code, base_amount, amount, plan_code, "
             "billing_months, status, created_at, expires_at) "
             "VALUES (?, ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?)",
-            (tenant_id, order_code, base_amount, amount, plan_code, billing_months, created_at, expires_at),
+            (
+                tenant_id,
+                order_code,
+                base_amount,
+                amount,
+                plan_code,
+                billing_months,
+                created_at,
+                expires_at,
+            ),
         )
         await db.commit()
         return cursor.lastrowid
@@ -1245,6 +1351,28 @@ async def try_approve_payment_order(order_id: int) -> bool:
             "UPDATE payment_orders SET status = 'approved', decided_at = ? "
             "WHERE id = ? AND status = 'awaiting_payment'",
             (decided_at, order_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def get_payment_order_by_code(order_code: str) -> dict | None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM payment_orders WHERE UPPER(order_code)=UPPER(?) LIMIT 1",
+            (order_code.strip(),),
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def approve_payment_order_manually(order_id: int) -> bool:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE payment_orders SET status='approved', decided_at=? "
+            "WHERE id=? AND status IN ('awaiting_payment', 'needs_review')",
+            (datetime.now(timezone.utc).isoformat(), order_id),
         )
         await db.commit()
         return cursor.rowcount > 0

@@ -154,6 +154,19 @@ async def main():
     await candidate_bot.delete_webhook(drop_pending_updates=True)
     polling_tasks = [candidate_dp.start_polling(candidate_bot)]
 
+    # Polling deploymentda to'lov kuzatuvchisi alohida process sifatida
+    # ishga tushmaydi. Shu worker ichida parallel yoqamiz — aks holda bank
+    # bildirishnomalarini faqat boshqa loyiha ko'rib, Janob HR tarifi yonmaydi.
+    from userbot import is_userbot_configured, start_userbot
+
+    if is_userbot_configured():
+        logger.info("Janob HR to'lov kuzatuvchisi ishga tushmoqda ✅")
+        polling_tasks.append(start_userbot())
+    else:
+        logger.warning(
+            "To'lov kuzatuvchisi sozlanmagan — TELEGRAM_API_ID/HASH/USERBOT_SESSION ni tekshiring."
+        )
+
     if ADMIN_BOT_TOKEN:
         if not ADMIN_USER_IDS:
             logger.warning(

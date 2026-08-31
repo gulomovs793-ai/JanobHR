@@ -30,6 +30,16 @@ async def activate_tenant(tenant_id: int) -> dict:
     if not tenant:
         return {"ok": False, "error": "Mijoz topilmadi."}
 
+    # Amaldagi mijoz tarifini uzaytirayotganda botlar allaqachon ishlayapti.
+    # Polling rejimida WEBHOOK_BASE_URL bo'lmaydi; webhookni qayta o'rnatishga
+    # urinish to'g'ri to'lovni xato deb belgilab qo'yardi.
+    if tenant["status"] == "active":
+        return {
+            "ok": True,
+            "candidate_username": tenant.get("bot_username") or "",
+            "admin_username": tenant.get("admin_bot_username") or "",
+        }
+
     try:
         cand_username = await register_new_tenant_webhook(tenant["bot_token"])
         admin_username = await register_new_tenant_webhook(tenant["admin_bot_token"])

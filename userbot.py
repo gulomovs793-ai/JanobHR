@@ -65,6 +65,7 @@ async def _activate_tenant_wrapper(tenant_id: int):
     result = await activate_tenant(tenant_id)
     if not result["ok"]:
         raise RuntimeError(result["error"])
+    return result
 
 
 async def start_userbot():
@@ -89,15 +90,14 @@ async def start_userbot():
     expected = CARD_BOT_USERNAME.lower()
     logger.info("[userbot] Ulandi: %s. Kuzatilayotgan bot: @%s", uname, expected)
 
-    @client.on(events.NewMessage())
-    async def handler(event):
+    async def process_message(message):
         try:
-            text = (event.message.message or "").strip()
+            text = (message.message or "").strip()
             if not text:
                 return
 
             # --- ENG MUHIM HIMOYA: faqat aynan shu botdan kelgan xabar qabul qilinadi ---
-            sender = await event.get_sender()
+            sender = await message.get_sender()
             sender_username = (getattr(sender, "username", "") or "").lower()
             if not sender_username or sender_username != expected:
                 return
@@ -116,6 +116,19 @@ async def start_userbot():
             logger.info("[userbot] Natija: %s", result.get("status"))
         except Exception:
             logger.exception("[userbot] Xabarni qayta ishlashda xatolik.")
+
+    @client.on(events.NewMessage())
+    async def handler(event):
+        await process_message(event.message)
+
+    # Deploy paytida yoki kuzatuvchi vaqtincha o'chib qolganida kelgan to'lov
+    # yo'qolib ketmasin. Deduplikatsiya bir xabarni ikki marta tasdiqlashga yo'l
+    # qo'ymaydi; faqat oxirgi 20 ta xabar tekshiriladi.
+    try:
+        async for old_message in client.iter_messages(CARD_BOT_USERNAME, limit=20):
+            await process_message(old_message)
+    except Exception:
+        logger.exception("[userbot] Oxirgi to'lov xabarlarini tekshirib bo'lmadi.")
 
     logger.info("[userbot] Tinglashni boshladi.")
     await client.run_until_disconnected()

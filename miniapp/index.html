@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>Janob HR — Boshqaruv paneli</title>
+  <link rel="stylesheet" href="/miniapp-assets/app.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body data-tenant="__TENANT_ID__">
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">J</span><span>Janob HR</span></div>
+      <button class="icon-btn" id="refresh" aria-label="Yangilash">↻</button>
+    </header>
+
+    <main>
+      <section id="dashboard" class="view active">
+        <div class="hero">
+          <p class="eyebrow">ISHGA QABUL BOSHQARUVI</p>
+          <h1 id="company">Kompaniya paneli</h1>
+          <p>Bugungi muhim ishlar bir joyda.</p>
+        </div>
+        <div class="urgent" id="urgent" hidden>
+          <span class="urgent-icon">!</span>
+          <div><b id="urgent-count">0 ta yangi nomzod</b><small>Ko‘rib chiqishingizni kutmoqda</small></div>
+          <button data-go="candidates">Ko‘rish</button>
+        </div>
+        <div class="metrics">
+          <article><span>Yangi</span><strong id="m-pending">—</strong><small>nomzod</small></article>
+          <article><span>Suhbatga</span><strong id="m-accepted">—</strong><small>chaqirilgan</small></article>
+          <article><span>Vakansiya</span><strong id="m-vacancies">—</strong><small>faol</small></article>
+          <article><span>Jami</span><strong id="m-total">—</strong><small>ariza</small></article>
+        </div>
+        <div class="section-head"><div><small>SO‘NGGI ARIZALAR</small><h2>Yangi nomzodlar</h2></div><button class="link-btn" data-go="candidates">Barchasi</button></div>
+        <div id="recent-list" class="stack skeleton-list"></div>
+        <div class="plan-card">
+          <div><small>JORIY TARIF</small><h3 id="plan-name">—</h3><p id="plan-usage">Yuklanmoqda…</p></div>
+          <button data-go="billing">Boshqarish</button>
+        </div>
+      </section>
+
+      <section id="candidates" class="view">
+        <div class="page-title"><div><small>NOMZODLAR</small><h1>Saralash markazi</h1></div></div>
+        <div class="filters" id="candidate-filters">
+          <button class="active" data-status="all">Barchasi</button><button data-status="pending">Yangi</button>
+          <button data-status="saved">Keyin</button><button data-status="accepted">Suhbat</button><button data-status="declined">Rad</button>
+        </div>
+        <div id="candidate-list" class="stack"></div>
+      </section>
+
+      <section id="vacancies" class="view">
+        <div class="page-title"><div><small>VAKANSIYALAR</small><h1>Ochiq lavozimlar</h1></div></div>
+        <p class="intro">Nomzodlar ko‘radigan vakansiyalarni boshqaring.</p>
+        <div id="vacancy-list" class="stack"></div>
+      </section>
+
+      <section id="billing" class="view">
+        <div class="page-title"><div><small>TARIF VA LIMITLAR</small><h1>Hisob</h1></div></div>
+        <div id="current-plan" class="current-plan"></div>
+        <h2 class="subheading">Tariflar</h2>
+        <div id="plans" class="stack"></div>
+        <p class="support">To‘lov bo‘yicha yordam: <a href="https://t.me/F45746">@F45746</a></p>
+      </section>
+
+      <section id="detail" class="view">
+        <button class="back" data-go="candidates">← Nomzodlar</button>
+        <div id="candidate-detail"></div>
+      </section>
+
+      <section id="error-view" class="view error-state">
+        <div class="error-icon">!</div><h2>Panel ochilmadi</h2><p id="error-message">Mini Appni admin bot ichidan qayta oching.</p>
+        <button id="retry">Qayta urinish</button>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="active" data-go="dashboard"><span>⌂</span>Bosh sahifa</button>
+      <button data-go="candidates"><span>♙</span>Nomzodlar</button>
+      <button data-go="vacancies"><span>▣</span>Vakansiyalar</button>
+      <button data-go="billing"><span>◇</span>Tarif</button>
+    </nav>
+    <div id="toast" role="status"></div>
+  </div>
+  <script src="/miniapp-assets/app.js" defer></script>
+</body>
+</html>

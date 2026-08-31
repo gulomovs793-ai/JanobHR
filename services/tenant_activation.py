@@ -24,7 +24,7 @@ async def activate_tenant(tenant_id: int) -> dict:
     Muvaffaqiyatli bo'lsa {"ok": True, "candidate_username": ..., "admin_username": ...}
     qaytaradi, aks holda {"ok": False, "error": ...}.
     """
-    from webhook_app import register_new_tenant_webhook
+    from webhook_app import configure_admin_miniapp, register_new_tenant_webhook
 
     tenant = await database.get_tenant(tenant_id)
     if not tenant:
@@ -52,6 +52,8 @@ async def activate_tenant(tenant_id: int) -> dict:
 
     await database.update_tenant_status(tenant_id, "active", bot_username=cand_username)
     await database.set_admin_bot_username(tenant_id, admin_username)
+    tenant["id"] = tenant_id
+    await configure_admin_miniapp(tenant)
 
     if tenant["admin_user_ids"]:
         notify_bot = Bot(token=tenant["admin_bot_token"])

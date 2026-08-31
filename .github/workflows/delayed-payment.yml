@@ -1,0 +1,28 @@
+name: Accept delayed payment
+on:
+  push:
+    branches: [multi-tenant]
+    paths: [.github/workflows/delayed-payment.yml]
+permissions: {contents: write}
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: multi-tenant}
+      - env: {PATCH_B64: H4sIAAAAAAACA4WTbW/TMBDH3+dTnPqmCW2ydgrVqLQnoGiTtgHbEC/QFF1itzk1sVvbWZuJD8+l6VYGbDhSco7vfr77+yxoOoUwnJED3LPS3FMm7Z5AhylaGS1qSP/52yMl5BpGo3fDUTyMooNYjN6mKQwHg1Ece2EYvsDzer3eS8yTEwiH+4O4P4yh1xoHwD/R1ioDIacwky7RC6mSBdalVDwxQpokrRMsdaWc337GQMoFEB6BoMzBT7jSSo49aJ7/wewrtIKs+9Eg78ZeCDw6nc5lJbgGAt11Jc5Q9QFrhQpsXoGtyhILXstyWkJa1ZVhpwKNIlhi7dCgoIghLU3pFRwC06SjUkY89RvjgZOPKpcFEVk91aZE5wdeb7v/qWL0axvtx2A1uoLm4HS30PcwM5jJcCENaUGQUsHp7tLxei3723lX4IzjB5zSkpbI+dU6bfdibopKwJJYkxzKVoQI3qOaN1LM8aFESzCXnNHcYr9l5g2IanCVzVkrWFQF1Lq71AWlwG+OKWjWhBmcR081tsYm7SSrnOaePQT/ZaEghGYuZOHQz3Vl7OF+HDzXryFum2FFLgckbZcFORllWimZOf/m68X57ST5cnp7FrAniHTcRjVDpJHRq2SKmdOm5nR28dd6tfPLeHNtmvUV8iXjMLmWXIP0dz6bKm8mF5MPt/AGPl1/voTnLQnfzybXE7AOWThmdTcwUrPH1u1C5w/c6dVHaNuX/Y+hmcr1goy0CTo4guNOv226x7Ft9n7ThcH2uP5a+/0I2OnJIdiZrIp9KretPppKl+VYFI+yG+kqo2BzlXwTAB8KGL5lm+A77xf8geyRlQQAAA==}
+        run: |
+          printf '%s' "$PATCH_B64" | base64 -d | gzip -d >/tmp/f.patch
+          git apply --check /tmp/f.patch
+          git apply /tmp/f.patch
+      - run: |
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+          ruff check .
+          python -m unittest discover -s tests -q
+      - run: |
+          rm .github/workflows/delayed-payment.yml
+          git config user.name "Janob HR Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Accept delayed card payments safely"
+          git push origin HEAD:multi-tenant

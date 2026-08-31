@@ -407,6 +407,18 @@ async def complete_application(message: Message, state: FSMContext):
     lang = data.get("lang", DEFAULT_LANG)
     tenant_id = data["tenant_id"]
 
+    # Nomzod savollarni to'ldirayotgan paytda boshqa ariza limitning oxirgi
+    # joyini egallagan bo'lishi mumkin; saqlashdan oldin yana tekshiramiz.
+    usage = await database.get_subscription_usage(tenant_id)
+    if not usage["applications_available"]:
+        await message.answer(
+            "Компания временно приостановила приём новых заявок. Попробуйте позже."
+            if lang == "ru"
+            else "Kompaniya yangi arizalarni qabul qilishni vaqtincha to'xtatgan. Keyinroq urinib ko'ring."
+        )
+        await state.clear()
+        return
+
     app_id = await database.save_application(
         tenant_id=tenant_id,
         user_id=message.from_user.id,

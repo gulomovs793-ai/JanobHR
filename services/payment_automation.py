@@ -144,7 +144,13 @@ async def _pick_unique_amount(base_price: int) -> int:
     return base_price + random.randint(1, 200)
 
 
-async def create_payment_order(tenant_id: int, base_amount: int | None = None) -> dict:
+async def create_payment_order(
+    tenant_id: int,
+    base_amount: int | None = None,
+    *,
+    plan_code: str = "start",
+    billing_months: int = 1,
+) -> dict:
     """Mijoz uchun yangi to'lov buyurtmasi yaratadi (avvalgi ochiq
     buyurtmalarini bekor qilib). Noyob summa va tugash muddati bilan."""
     base_amount = base_amount or MONTHLY_PRICE_SOM
@@ -163,12 +169,15 @@ async def create_payment_order(tenant_id: int, base_amount: int | None = None) -
         base_amount=base_amount,
         amount=amount,
         expires_at=expires_at,
+        plan_code=plan_code,
+        billing_months=billing_months,
     )
     return {
         "id": order_id,
         "order_code": order_code,
         "amount": amount,
         "expires_at": expires_at,
+        "plan_code": plan_code,
     }
 
 
@@ -248,6 +257,11 @@ async def handle_payment_notification(
         if not activation or not activation.get("ok"):
             error = (activation or {}).get("error", "Noma'lum faollashtirish xatosi")
             raise RuntimeError(error)
+        await database.activate_subscription(
+            order["tenant_id"],
+            order.get("plan_code", "start"),
+            order.get("billing_months", 1),
+        )
     except Exception:
         logger.exception(
             "Tolov aniqlandi, lekin tenantni faollashtirishda xato (order=%s).",

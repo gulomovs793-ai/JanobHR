@@ -194,8 +194,8 @@ async def receive_admin_token(message: Message, state: FSMContext):
         f"Nomzod-bot: <b>@{data['candidate_bot_username']}</b>\n"
         f"Admin-bot: <b>@{admin_me.username}</b>\n\n"
         f"Mijoz raqamingiz: <code>{tenant_id}</code>\n\n"
-        "To'lovni amalga oshirgach, botingiz bir necha daqiqada avtomatik ishga tushadi — "
-        "sizga shu yerda xabar beramiz."
+        "Birinchi 5 ta ariza bepul. Bot faollashgach tarif va limitlarni "
+        f"@{admin_me.username} ichidagi <b>💳 Tarif va limitlar</b> bo'limidan boshqarasiz."
     )
     await state.clear()
 

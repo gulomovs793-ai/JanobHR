@@ -21,8 +21,9 @@ def _main_menu_keyboard(overall: dict):
     builder.button(text="💼 Vakansiyalar", callback_data="menu:vacancies")
     builder.button(text="📅 Suhbatlar", callback_data="menu:interview")
     builder.button(text="📊 Hisobot", callback_data="menu:stats")
+    builder.button(text="💳 Tarif va limitlar", callback_data="menu:billing")
     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
-    builder.adjust(1, 1, 2, 2)
+    builder.adjust(1, 1, 2, 1, 1)
     return builder.as_markup()
 
 

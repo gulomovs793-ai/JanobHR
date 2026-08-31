@@ -42,6 +42,7 @@ def _build_dispatcher() -> Dispatcher:
 
     import founder_panel
     from admin_bot import (
+        handlers_billing,
         handlers_candidates,
         handlers_decisions,
         handlers_export,
@@ -87,6 +88,7 @@ def _build_dispatcher() -> Dispatcher:
     admin_root.callback_query.filter(IsAdminBot())
     for r in (
         handlers_menu.router,
+        handlers_billing.router,
         handlers_candidates.router,
         handlers_vacancy_list.router,
         handlers_vacancy_edit.router,

@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS tenants (
     contact_phone TEXT,
     contact_username TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
+    plan_code TEXT NOT NULL DEFAULT 'trial',
+    subscription_started_at TEXT,
+    subscription_expires_at TEXT,
     created_at TEXT NOT NULL
 );
 """
@@ -112,6 +115,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
     order_code TEXT NOT NULL UNIQUE,
     base_amount INTEGER NOT NULL,
     amount INTEGER NOT NULL,
+    plan_code TEXT NOT NULL DEFAULT 'start',
+    billing_months INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'awaiting_payment',
     notification_text TEXT,
     created_at TEXT NOT NULL,
@@ -348,6 +353,23 @@ async def init_db():
         for column in ("contact_name", "contact_phone", "contact_username"):
             if column not in tenant_columns:
                 await db.execute(f"ALTER TABLE tenants ADD COLUMN {column} TEXT")
+        tenant_migrations = {
+            "plan_code": "TEXT NOT NULL DEFAULT 'trial'",
+            "subscription_started_at": "TEXT",
+            "subscription_expires_at": "TEXT",
+        }
+        plan_was_missing = "plan_code" not in tenant_columns
+        for column, definition in tenant_migrations.items():
+            if column not in tenant_columns:
+                await db.execute(f"ALTER TABLE tenants ADD COLUMN {column} {definition}")
+        if plan_was_missing:
+            await db.execute("UPDATE tenants SET plan_code = 'legacy' WHERE status = 'active'")
+        cursor = await db.execute("PRAGMA table_info(payment_orders)")
+        payment_columns = {row[1] for row in await cursor.fetchall()}
+        if "plan_code" not in payment_columns:
+            await db.execute("ALTER TABLE payment_orders ADD COLUMN plan_code TEXT NOT NULL DEFAULT 'start'")
+        if "billing_months" not in payment_columns:
+            await db.execute("ALTER TABLE payment_orders ADD COLUMN billing_months INTEGER NOT NULL DEFAULT 1")
         await db.commit()
     logger.info("Ma'lumotlar bazasi (ko'p mijozli) tayyor: %s", SQLITE_PATH)
 
@@ -514,6 +536,67 @@ async def set_admin_bot_username(tenant_id: int, username: str) -> None:
         await db.execute(
             "UPDATE tenants SET admin_bot_username = ? WHERE id = ?",
             (username, tenant_id),
+        )
+        await db.commit()
+
+
+async def get_subscription_usage(tenant_id: int) -> dict:
+    """Tarif va joriy hisob davridagi real foydalanish."""
+    from services.plans import get_plan
+
+    tenant = await get_tenant(tenant_id)
+    if not tenant:
+        raise ValueError("Mijoz topilmadi")
+    plan = get_plan(tenant.get("plan_code"))
+    period_start = tenant.get("subscription_started_at") or tenant["created_at"]
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM applications WHERE tenant_id = ? AND created_at >= ?",
+            (tenant_id, period_start),
+        )
+        applications_used = (await cursor.fetchone())[0]
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM vacancies WHERE tenant_id = ? AND active = 1",
+            (tenant_id,),
+        )
+        vacancies_used = (await cursor.fetchone())[0]
+    expires_at = tenant.get("subscription_expires_at")
+    expired = bool(
+        plan.code not in {"trial", "legacy"}
+        and (not expires_at or expires_at <= datetime.now(timezone.utc).isoformat())
+    )
+    return {
+        "plan": plan,
+        "applications_used": applications_used,
+        "vacancies_used": vacancies_used,
+        "expired": expired,
+        "applications_available": not expired and (
+            plan.application_limit is None or applications_used < plan.application_limit
+        ),
+        "vacancies_available": not expired and (
+            plan.vacancy_limit is None or vacancies_used < plan.vacancy_limit
+        ),
+        "expires_at": expires_at,
+    }
+
+
+async def activate_subscription(tenant_id: int, plan_code: str, months: int = 1) -> None:
+    from services.plans import PUBLIC_PLAN_CODES
+
+    if plan_code not in PUBLIC_PLAN_CODES:
+        raise ValueError("Noto'g'ri tarif")
+    tenant = await get_tenant(tenant_id)
+    now = datetime.now(timezone.utc)
+    try:
+        current_expiry = datetime.fromisoformat(tenant.get("subscription_expires_at") or "")
+    except (AttributeError, TypeError, ValueError):
+        current_expiry = now
+    expires = max(now, current_expiry) + timedelta(days=30 * max(1, months))
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE tenants SET plan_code = ?, subscription_started_at = ?, "
+            "subscription_expires_at = ? WHERE id = ?",
+            (plan_code, now.isoformat(), expires.isoformat(), tenant_id),
         )
         await db.commit()
 
@@ -1081,13 +1164,16 @@ async def create_payment_order(
     base_amount: int,
     amount: int,
     expires_at: str,
+    plan_code: str = "start",
+    billing_months: int = 1,
 ) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
-            "INSERT INTO payment_orders (tenant_id, order_code, base_amount, amount, "
-            "status, created_at, expires_at) VALUES (?, ?, ?, ?, 'awaiting_payment', ?, ?)",
-            (tenant_id, order_code, base_amount, amount, created_at, expires_at),
+            "INSERT INTO payment_orders (tenant_id, order_code, base_amount, amount, plan_code, "
+            "billing_months, status, created_at, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?)",
+            (tenant_id, order_code, base_amount, amount, plan_code, billing_months, created_at, expires_at),
         )
         await db.commit()
         return cursor.lastrowid

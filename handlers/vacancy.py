@@ -18,6 +18,18 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: 
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
 
+    usage = await database.get_subscription_usage(tenant_id)
+    if not usage["applications_available"]:
+        text = (
+            "Компания временно приостановила приём новых заявок. Попробуйте позже."
+            if lang == "ru"
+            else "Kompaniya yangi arizalarni qabul qilishni vaqtincha to'xtatgan. Keyinroq urinib ko'ring."
+        )
+        await callback.message.edit_text(text)
+        await state.clear()
+        await callback.answer()
+        return
+
     # Rus tili tanlangan bo'lsa, savollar birinchi marta AI orqali tarjima
     # qilinadi va keyingi safarlar uchun bazada saqlanadi.
     vacancy = await database.get_vacancy_localized(tenant_id, key, lang)

@@ -37,7 +37,17 @@ _DEFAULT_REJECT_MESSAGE = (
 
 
 @router.callback_query(F.data == "menu:new")
-async def start_new_vacancy(callback: CallbackQuery, state: FSMContext):
+async def start_new_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+    usage = await database.get_subscription_usage(tenant_id)
+    if not usage["vacancies_available"]:
+        await callback.message.edit_text(
+            "🔒 <b>Vakansiya limiti tugagan</b>\n\nTarifni yangilang yoki mavjud vakansiyalardan birini o'chiring.",
+            reply_markup=InlineKeyboardBuilder().button(
+                text="💳 Tarifni yangilash", callback_data="menu:billing"
+            ).button(text="⬅️ Bosh menyu", callback_data="menu:main").adjust(1).as_markup(),
+        )
+        await callback.answer()
+        return
     await state.clear()  # editing_vacancy_key bo'lmasligi kerak — bu YANGI yaratish
     await callback.message.edit_text(
         '➕ <b>Yangi vakansiya</b>\n\nLavozim nomini yozing (masalan: "Quruvchi", "Buxgalter", "Haydovchi").'

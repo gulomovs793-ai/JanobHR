@@ -62,13 +62,17 @@ async def billing_buy(callback: CallbackQuery, tenant_id: int):
     builder.button(text="🔄 Boshqa tarif", callback_data="menu:billing")
     builder.button(text="🏠 Bosh menyu", callback_data="menu:main")
     builder.adjust(1)
-    holder = f"\nKarta egasi: <b>{PAYMENT_CARD_HOLDER}</b>" if PAYMENT_CARD_HOLDER else ""
+    holder = (
+        f"\nKarta egasi: <b>{PAYMENT_CARD_HOLDER}</b>" if PAYMENT_CARD_HOLDER else ""
+    )
     await callback.message.edit_text(
         f"✅ <b>{plan.name} tarifi</b>\n\n"
         f"Karta: <code>{PAYMENT_CARD_NUMBER}</code>{holder}\n"
         f"Aniq summa: <code>{format_som(order['amount'])}</code>\n"
         f"Buyurtma: <code>{order['order_code']}</code>\n\n"
-        "Muhim: aynan ko'rsatilgan summani yuboring. To'lov aniqlangach tarif avtomatik yoqiladi.",
+        "Muhim: aynan ko'rsatilgan summani yuboring. To'lov aniqlangach tarif avtomatik yoqiladi.\n\n"
+        "To'lovdan keyin tarif yoqilmasa yoki tushunarsiz holat bo'lsa, "
+        f"<b>@F45746</b> ga buyurtma raqamini yuboring: <code>{order['order_code']}</code>",
         reply_markup=builder.as_markup(),
     )
     await callback.answer()

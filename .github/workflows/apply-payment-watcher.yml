@@ -1,0 +1,36 @@
+name: Apply payment watcher fix
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/apply-payment-watcher.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+      - name: Apply fix
+        env:
+          PATCH_B64: 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
+        run: |
+          printf '%s' "$PATCH_B64" | base64 -d | gzip -d > /tmp/fix.patch
+          git apply --check /tmp/fix.patch
+          git apply /tmp/fix.patch
+      - name: Verify
+        run: |
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+          ruff check .
+          python -m compileall -q .
+          python -m unittest discover -s tests -v
+      - name: Publish
+        run: |
+          rm .github/workflows/apply-payment-watcher.yml
+          git config user.name "Janob HR Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Run payment watcher with polling bot"
+          git push origin HEAD:multi-tenant

@@ -11,7 +11,9 @@ import logging
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -22,6 +24,10 @@ from services import database
 logger = logging.getLogger("janob_hr_founder")
 
 router = Router(name="founder_panel")
+
+
+class FounderForm(StatesGroup):
+    waiting_order_code = State()
 
 
 def _tenant_summary(t: dict) -> str:
@@ -63,13 +69,17 @@ async def show_main_menu(message: Message):
         text=f"🔥 Yangi leadlar ({stats['pending']})", callback_data="fp:pending"
     )
     builder.button(
+        text=f"📞 Lidlar ({stats['business_leads']})", callback_data="fp:leads"
+    )
+    builder.button(
         text=f"💼 Faol mijozlar ({stats['active']})", callback_data="fp:active"
     )
     builder.button(
         text=f"⏸ To'xtatilgan ({stats['inactive']})", callback_data="fp:inactive"
     )
     builder.button(text="📊 Biznes ko'rsatkichlari", callback_data="fp:stats")
-    builder.adjust(2, 1, 1)
+    builder.button(text="🔑 Tarifni qo'lda yoqish", callback_data="fp:manual_payment")
+    builder.adjust(2, 2, 1)
 
     await message.answer(
         "👑 <b>Janob HR — Founder</b>\n\n"
@@ -111,6 +121,153 @@ async def list_pending(callback: CallbackQuery):
 
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()
+
+
+@router.callback_query(F.data == "fp:leads")
+async def list_leads(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    leads = await database.list_business_leads()
+    builder = InlineKeyboardBuilder()
+    text = (
+        "📞 <b>Biznes lidlar</b>\n\nRaqam va ma'lumotni ko'rish uchun lidni tanlang:"
+        if leads
+        else "Hozircha biznes lid yo'q."
+    )
+    for lead in leads[:50]:
+        builder.button(
+            text=f"#{lead['id']} · {lead.get('company_name') or 'Kompaniya'} · {lead['contact_phone']}",
+            callback_data=f"fp:lead:{lead['id']}",
+        )
+    builder.button(text="⬅️ Bosh menyu", callback_data="fp:main")
+    builder.adjust(1)
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fp:lead:"))
+async def view_lead(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    lead = await database.get_business_lead(int(callback.data.rsplit(":", 1)[1]))
+    if not lead:
+        await callback.answer("Lid topilmadi.", show_alert=True)
+        return
+    username = lead.get("contact_username") or ""
+    builder = InlineKeyboardBuilder()
+    if username:
+        builder.button(text="💬 Telegram'da yozish", url=f"https://t.me/{username}")
+    builder.button(text="⬅️ Lidlar", callback_data="fp:leads")
+    builder.adjust(1)
+    await callback.message.edit_text(
+        f"📞 <b>Lid #{lead['id']} — {lead.get('company_name') or '—'}</b>\n\n"
+        f"👤 {lead.get('contact_name') or '—'}\n"
+        f"📱 <code>{lead['contact_phone']}</code>\n"
+        f"💬 @{username or '—'}\n\n"
+        f"Muammo: {lead.get('hiring_problem') or '—'}\n"
+        f"Hozirgi jarayon: {lead.get('current_process') or '—'}\n"
+        f"Kerakli natija: {lead.get('desired_result') or '—'}\n\n"
+        f"Holat: <b>{lead['status']}</b>",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fp:manual_payment")
+async def manual_payment_help(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    await callback.message.edit_text(
+        "🔑 <b>Tarifni qo'lda yoqish</b>\n\n"
+        "Mijoz yuborgan buyurtma raqamini jo'nating. Masalan:\n"
+        "<code>JH-XXXXXX</code>\n\n"
+        "Bot buyurtmani topib, tegishli mijoz tarifini o'zi yoqadi."
+    )
+    await state.set_state(FounderForm.waiting_order_code)
+    await callback.answer()
+
+
+async def _activate_order(message: Message, code: str, state: FSMContext | None = None):
+    order = await database.get_payment_order_by_code(code)
+    if not order:
+        await message.answer(f"❌ <code>{code}</code> buyurtmasi topilmadi.")
+        return
+    if order["status"] == "approved":
+        await message.answer(
+            f"✅ <code>{code}</code> avval tasdiqlangan. Tarif qayta uzaytirilmadi."
+        )
+        return
+    if order["status"] not in {"awaiting_payment", "needs_review"}:
+        await message.answer(
+            f"⚠️ Bu buyurtmani yoqib bo'lmaydi. Holati: <b>{order['status']}</b>"
+        )
+        return
+    won = await database.approve_payment_order_manually(order["id"])
+    if not won:
+        await message.answer("Buyurtma holati o'zgargan. Qayta tekshiring.")
+        return
+    from services.tenant_activation import activate_tenant as do_activate
+
+    result = await do_activate(order["tenant_id"])
+    if not result.get("ok"):
+        await database.mark_payment_order_needs_review(
+            order["id"], "manual activation failed"
+        )
+        await message.answer(
+            f"⚠️ To'lov topildi, lekin botni yoqishda xato: {result.get('error')}"
+        )
+        return
+    await database.activate_subscription(
+        order["tenant_id"],
+        order.get("plan_code", "start"),
+        order.get("billing_months", 1),
+    )
+    tenant = await database.get_tenant(order["tenant_id"])
+    if tenant and tenant.get("admin_bot_token") and tenant.get("admin_user_ids"):
+        customer_bot = Bot(token=tenant["admin_bot_token"])
+        try:
+            await customer_bot.send_message(
+                tenant["admin_user_ids"][0],
+                "✅ <b>TO'LOV QABUL QILINDI</b>\n\n"
+                f"Buyurtma: <code>{code}</code>\n"
+                f"Summa: <b>{order['amount']:,} so'm</b>\n\n"
+                "Tarifingiz yoqildi. Janob HR'dan foydalanishingiz mumkin.",
+            )
+            await database.mark_customer_payment_notified(code)
+        except Exception:
+            logger.exception("Qo'lda yoqilgan tarif tasdig'i mijozga yuborilmadi: %s", code)
+        finally:
+            await customer_bot.session.close()
+    await message.answer(
+        f"✅ <b>Tarif qo'lda yoqildi</b>\n\n"
+        f"Buyurtma: <code>{code}</code>\n"
+        f"Mijoz №{order['tenant_id']}\n"
+        f"Summa: <b>{order['amount']:,} so'm</b>"
+    )
+    if state:
+        await state.clear()
+
+
+@router.message(FounderForm.waiting_order_code, F.text)
+async def manual_activate_from_button(message: Message, state: FSMContext):
+    if message.from_user.id not in FOUNDER_USER_IDS:
+        return
+    code = (message.text or "").strip().upper()
+    if not code.startswith("JH-"):
+        await message.answer("Buyurtma raqami <code>JH-</code> bilan boshlanadi. Qayta yuboring.")
+        return
+    await _activate_order(message, code, state)
+
+
+@router.message(Command("activate"))
+async def manual_activate_payment(message: Message, state: FSMContext):
+    if message.from_user.id not in FOUNDER_USER_IDS:
+        return
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        await message.answer("Buyurtma raqamini yozing: <code>/activate JH-XXXXXX</code>")
+        return
+    await _activate_order(message, parts[1].strip().upper(), state)
 
 
 @router.callback_query(F.data == "fp:active")

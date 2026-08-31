@@ -121,7 +121,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
     notification_text TEXT,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
-    decided_at TEXT
+    decided_at TEXT,
+    customer_notified_at TEXT
 );
 """
 
@@ -370,6 +371,8 @@ async def init_db():
             await db.execute("ALTER TABLE payment_orders ADD COLUMN plan_code TEXT NOT NULL DEFAULT 'start'")
         if "billing_months" not in payment_columns:
             await db.execute("ALTER TABLE payment_orders ADD COLUMN billing_months INTEGER NOT NULL DEFAULT 1")
+        if "customer_notified_at" not in payment_columns:
+            await db.execute("ALTER TABLE payment_orders ADD COLUMN customer_notified_at TEXT")
         await db.commit()
     logger.info("Ma'lumotlar bazasi (ko'p mijozli) tayyor: %s", SQLITE_PATH)
 
@@ -1254,6 +1257,28 @@ async def mark_payment_order_needs_review(
         await db.execute(
             "UPDATE payment_orders SET status = 'needs_review', notification_text = ? WHERE id = ?",
             (notification_text, order_id),
+        )
+        await db.commit()
+
+
+async def list_unnotified_approved_orders(hours: int = 24) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM payment_orders WHERE status = 'approved' "
+            "AND customer_notified_at IS NULL AND decided_at >= ? ORDER BY decided_at",
+            (cutoff,),
+        )
+        rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def mark_customer_payment_notified(order_code: str) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE payment_orders SET customer_notified_at = ? WHERE order_code = ?",
+            (datetime.now(timezone.utc).isoformat(), order_code),
         )
         await db.commit()
 

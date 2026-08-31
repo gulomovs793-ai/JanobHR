@@ -98,6 +98,11 @@ async def _notify_tenant_payment_approved(result: dict) -> None:
                 )
     finally:
         await bot.session.close()
+    await database.mark_customer_payment_notified(result["order_code"])
+    logger.info(
+        "[to'lov] Mijozga tasdiq yuborildi: %s",
+        result["order_code"],
+    )
 
 
 async def start_userbot():
@@ -122,6 +127,14 @@ async def start_userbot():
     expected = CARD_BOT_USERNAME.lower()
     logger.info("[userbot] Ulandi: %s. Kuzatilayotgan bot: @%s", uname, expected)
     await database.clear_recent_payment_notifications(minutes=60)
+    for approved_order in await database.list_unnotified_approved_orders(hours=24):
+        await _notify_tenant_payment_approved(
+            {
+                "tenant_id": approved_order["tenant_id"],
+                "amount": approved_order["amount"],
+                "order_code": approved_order["order_code"],
+            }
+        )
 
     async def process_message(message):
         try:

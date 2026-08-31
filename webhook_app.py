@@ -139,6 +139,9 @@ async def on_startup(app: web.Application):
     # kirmaydi. Uni alohida yaratmasak, yangi serverda birinchi /start so'rovi
     # "no such table: fsm_storage" bilan yiqiladi.
     await app["dispatcher"].storage.init()
+    from services.reminders import run_reminders_forever
+
+    asyncio.create_task(run_reminders_forever())
     tenants = await database.list_tenants(status="active")
     for tenant in tenants:
         try:

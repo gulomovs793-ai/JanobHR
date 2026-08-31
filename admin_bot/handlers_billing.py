@@ -60,6 +60,10 @@ async def billing_buy(callback: CallbackQuery, tenant_id: int):
     order = await create_payment_order(tenant_id, plan.price, plan_code=code)
     builder = InlineKeyboardBuilder()
     builder.button(text="🔄 Boshqa tarif", callback_data="menu:billing")
+    builder.button(
+        text="🔎 To'lovni tekshirish",
+        callback_data=f"billing:check:{order['order_code']}",
+    )
     builder.button(text="🏠 Bosh menyu", callback_data="menu:main")
     builder.adjust(1)
     holder = (
@@ -76,3 +80,19 @@ async def billing_buy(callback: CallbackQuery, tenant_id: int):
         reply_markup=builder.as_markup(),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("billing:check:"))
+async def billing_check(callback: CallbackQuery, tenant_id: int):
+    code = callback.data.rsplit(":", 1)[1]
+    order = await database.get_payment_order_for_tenant(tenant_id, code)
+    if not order:
+        await callback.answer("Buyurtma topilmadi.", show_alert=True)
+        return
+    labels = {
+        "awaiting_payment": "⏳ To'lov hali aniqlanmadi",
+        "approved": "✅ To'lov qabul qilindi, tarif yoqilgan",
+        "needs_review": "⚠️ To'lov qo'lda tekshirilmoqda",
+        "cancelled": "❌ Buyurtma bekor qilingan",
+    }
+    await callback.answer(labels.get(order["status"], order["status"]), show_alert=True)

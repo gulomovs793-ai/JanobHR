@@ -12,6 +12,7 @@ PAGE_SIZE = 5
 
 _STATUS = {
     "pending": "🆕 Yangi",
+    "saved": "🟡 Keyin ko'rish",
     "accepted": "📅 Suhbatga chaqirilgan",
     "declined": "❌ Rad etilgan",
     "rejected_hard_filter": "⛔ Filtrdan o'tmagan",
@@ -79,10 +80,11 @@ async def view_candidate(callback: CallbackQuery, tenant_id: int):
         lines.extend(["", "<b>Javoblardan qisqa parcha:</b>", preview])
 
     builder = InlineKeyboardBuilder()
-    if app["status"] == "pending":
+    if app["status"] in {"pending", "saved"}:
         builder.button(text="✅ Suhbatga", callback_data=f"decision:accept:{app_id}")
+        builder.button(text="🟡 Keyin ko'rish", callback_data=f"decision:save:{app_id}")
         builder.button(text="❌ Rad etish", callback_data=f"decision:reject:{app_id}")
     builder.button(text="⬅️ Ro'yxat", callback_data=f"apps:list:{status}:{page}")
-    builder.adjust(2, 1)
+    builder.adjust(2, 1, 1)
     await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
     await callback.answer()

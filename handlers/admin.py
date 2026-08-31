@@ -168,8 +168,9 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
     builder.button(
         text="✅ Suhbatga chaqirish", callback_data=f"decision:accept:{app_id}"
     )
+    builder.button(text="🟡 Keyin ko'rish", callback_data=f"decision:save:{app_id}")
     builder.button(text="❌ Rad etish", callback_data=f"decision:reject:{app_id}")
-    builder.adjust(2)
+    builder.adjust(2, 1)
 
     voice_answers = app.get("voice_answers") or {}
     voice_key_to_text: dict = {}

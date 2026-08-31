@@ -31,7 +31,7 @@ async def handle_decision(callback: CallbackQuery, tenant_id: int, tenant: dict)
         await callback.answer("Anketa topilmadi.", show_alert=True)
         return
 
-    if app["status"] != "pending":
+    if app["status"] not in {"pending", "saved"}:
         await callback.answer(
             "Bu anketa bo'yicha qaror allaqachon qabul qilingan.", show_alert=True
         )
@@ -39,6 +39,10 @@ async def handle_decision(callback: CallbackQuery, tenant_id: int, tenant: dict)
 
     lang = app.get("lang", DEFAULT_LANG)
 
+    if action == "save":
+        await database.update_status(tenant_id, app_id, "saved")
+        await callback.answer("🟡 Keyin ko'rish uchun saqlandi")
+        return
     if action == "accept":
         new_status = "accepted"
         result_label = "✅ Suhbatga chaqirildi"

@@ -30,6 +30,17 @@ class FounderForm(StatesGroup):
     waiting_order_code = State()
 
 
+_LEAD_STATUS = {
+    "new": "🆕 Yangi",
+    "contacted": "💬 Bog'lanildi",
+    "demo": "🎯 Demo",
+    "payment": "💳 To'lov kutilyapti",
+    "customer": "✅ Mijoz bo'ldi",
+    "lost": "❌ Rad etdi",
+    "bot_created": "🤖 Bot yaratildi",
+}
+
+
 def _tenant_summary(t: dict) -> str:
     username = t.get("contact_username")
     telegram_contact = f"@{username}" if username else "—"
@@ -85,6 +96,9 @@ async def show_main_menu(message: Message):
         "👑 <b>Janob HR — Founder</b>\n\n"
         f"Oxirgi 30 kun: <b>{stats['monthly_applications']} ta ariza</b>\n"
         f"Jami faol biznes: <b>{stats['active']} ta</b>\n\n"
+        f"To'lov kutilyapti: <b>{stats['awaiting_payments']} ta</b>   ·   "
+        f"5 kunda tugaydi: <b>{stats['expiring_soon']} ta</b>\n"
+        f"30 kunlik tushum: <b>{stats['monthly_revenue']:,} so'm</b>\n\n"
         "Kerakli bo'limni tanlang:",
         reply_markup=builder.as_markup(),
     )
@@ -157,6 +171,9 @@ async def view_lead(callback: CallbackQuery):
     builder = InlineKeyboardBuilder()
     if username:
         builder.button(text="💬 Telegram'da yozish", url=f"https://t.me/{username}")
+    builder.button(
+        text="🔄 Holatini o'zgartirish", callback_data=f"fp:leadstatus:{lead['id']}"
+    )
     builder.button(text="⬅️ Lidlar", callback_data="fp:leads")
     builder.adjust(1)
     await callback.message.edit_text(
@@ -167,7 +184,40 @@ async def view_lead(callback: CallbackQuery):
         f"Muammo: {lead.get('hiring_problem') or '—'}\n"
         f"Hozirgi jarayon: {lead.get('current_process') or '—'}\n"
         f"Kerakli natija: {lead.get('desired_result') or '—'}\n\n"
-        f"Holat: <b>{lead['status']}</b>",
+        f"Holat: <b>{_LEAD_STATUS.get(lead['status'], lead['status'])}</b>",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fp:leadstatus:"))
+async def choose_lead_status(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    lead_id = int(callback.data.rsplit(":", 1)[1])
+    builder = InlineKeyboardBuilder()
+    for code, label in _LEAD_STATUS.items():
+        builder.button(text=label, callback_data=f"fp:setlead:{lead_id}:{code}")
+    builder.button(text="⬅️ Lidga qaytish", callback_data=f"fp:lead:{lead_id}")
+    builder.adjust(2, 2, 2, 1, 1)
+    await callback.message.edit_text(
+        "Lidning yangi holatini tanlang:", reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fp:setlead:"))
+async def set_lead_status(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    _, _, lead_id, status = callback.data.split(":")
+    if not await database.update_business_lead_status(int(lead_id), status):
+        await callback.answer("Holatni saqlab bo'lmadi.", show_alert=True)
+        return
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⬅️ Lidga qaytish", callback_data=f"fp:lead:{lead_id}")
+    await callback.message.edit_text(
+        f"✅ Holat saqlandi: <b>{_LEAD_STATUS.get(status, status)}</b>",
         reply_markup=builder.as_markup(),
     )
     await callback.answer()
@@ -235,7 +285,9 @@ async def _activate_order(message: Message, code: str, state: FSMContext | None 
             )
             await database.mark_customer_payment_notified(code)
         except Exception:
-            logger.exception("Qo'lda yoqilgan tarif tasdig'i mijozga yuborilmadi: %s", code)
+            logger.exception(
+                "Qo'lda yoqilgan tarif tasdig'i mijozga yuborilmadi: %s", code
+            )
         finally:
             await customer_bot.session.close()
     await message.answer(
@@ -254,7 +306,9 @@ async def manual_activate_from_button(message: Message, state: FSMContext):
         return
     code = (message.text or "").strip().upper()
     if not code.startswith("JH-"):
-        await message.answer("Buyurtma raqami <code>JH-</code> bilan boshlanadi. Qayta yuboring.")
+        await message.answer(
+            "Buyurtma raqami <code>JH-</code> bilan boshlanadi. Qayta yuboring."
+        )
         return
     await _activate_order(message, code, state)
 
@@ -265,7 +319,9 @@ async def manual_activate_payment(message: Message, state: FSMContext):
         return
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) != 2:
-        await message.answer("Buyurtma raqamini yozing: <code>/activate JH-XXXXXX</code>")
+        await message.answer(
+            "Buyurtma raqamini yozing: <code>/activate JH-XXXXXX</code>"
+        )
         return
     await _activate_order(message, parts[1].strip().upper(), state)
 
@@ -325,6 +381,10 @@ async def show_business_stats(callback: CallbackQuery):
         f"🔥 Yangi leadlar: <b>{stats['pending']}</b>\n"
         f"💼 Faol mijozlar: <b>{stats['active']}</b>\n"
         f"⏸ To'xtatilgan: <b>{stats['inactive']}</b>\n\n"
+        f"📞 Jami biznes lidlar: <b>{stats['business_leads']}</b>\n"
+        f"💳 To'lov kutayotganlar: <b>{stats['awaiting_payments']}</b>\n"
+        f"⏰ 5 kunda tarifi tugaydi: <b>{stats['expiring_soon']}</b>\n"
+        f"💰 30 kunlik tushum: <b>{stats['monthly_revenue']:,} so'm</b>\n\n"
         f"📥 Oxirgi 30 kun arizalari: <b>{stats['monthly_applications']}</b>\n"
         f"🗂 Jami arizalar: <b>{stats['total_applications']}</b>",
         reply_markup=builder.as_markup(),

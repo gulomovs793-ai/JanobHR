@@ -150,7 +150,15 @@ CREATE TABLE IF NOT EXISTS business_leads (
     status TEXT NOT NULL DEFAULT 'new',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    last_reminded_at TEXT,
     UNIQUE(telegram_user_id, contact_phone)
+);
+"""
+
+_CREATE_SYSTEM_NOTIFICATIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS system_notifications (
+    notification_key TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL
 );
 """
 
@@ -367,6 +375,7 @@ async def init_db():
         await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL)
         await db.execute(_CREATE_BUSINESS_LEADS_TABLE_SQL)
+        await db.execute(_CREATE_SYSTEM_NOTIFICATIONS_TABLE_SQL)
         # Mavjud Render diskidagi eski bazalarni ma'lumot yo'qotmasdan
         # yangilaymiz. SQLite `ADD COLUMN` uchun IF NOT EXISTS bermaydi.
         cursor = await db.execute("PRAGMA table_info(tenants)")
@@ -402,6 +411,39 @@ async def init_db():
         if "customer_notified_at" not in payment_columns:
             await db.execute(
                 "ALTER TABLE payment_orders ADD COLUMN customer_notified_at TEXT"
+            )
+        cursor = await db.execute("PRAGMA table_info(business_leads)")
+        lead_columns = {row[1] for row in await cursor.fetchall()}
+        if "last_reminded_at" not in lead_columns:
+            await db.execute(
+                "ALTER TABLE business_leads ADD COLUMN last_reminded_at TEXT"
+            )
+        cursor = await db.execute(
+            "SELECT id, company_name, admin_user_ids, contact_name, contact_phone, "
+            "contact_username, created_at FROM tenants "
+            "WHERE contact_phone IS NOT NULL AND contact_phone != ''"
+        )
+        for tenant in await cursor.fetchall():
+            try:
+                admin_ids = json.loads(tenant[2] or "[]")
+                telegram_user_id = int(admin_ids[0]) if admin_ids else -int(tenant[0])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                telegram_user_id = -int(tenant[0])
+            await db.execute(
+                "INSERT OR IGNORE INTO business_leads "
+                "(telegram_user_id, contact_name, contact_phone, contact_username, "
+                "company_name, tenant_id, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'bot_created', ?, ?)",
+                (
+                    telegram_user_id,
+                    tenant[3] or "",
+                    tenant[4],
+                    tenant[5] or "",
+                    tenant[1],
+                    tenant[0],
+                    tenant[6],
+                    tenant[6],
+                ),
             )
         await db.commit()
     logger.info("Ma'lumotlar bazasi (ko'p mijozli) tayyor: %s", SQLITE_PATH)
@@ -541,6 +583,22 @@ async def get_founder_stats() -> dict:
         monthly_applications = (await cursor.fetchone())[0]
         cursor = await db.execute("SELECT COUNT(*) FROM business_leads")
         business_leads = (await cursor.fetchone())[0]
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM payment_orders WHERE status='awaiting_payment'"
+        )
+        awaiting_payments = (await cursor.fetchone())[0]
+        cursor = await db.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM payment_orders "
+            "WHERE status='approved' AND decided_at >= ?",
+            ((datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),),
+        )
+        monthly_revenue = (await cursor.fetchone())[0]
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM tenants WHERE status='active' "
+            "AND subscription_expires_at IS NOT NULL AND subscription_expires_at <= ?",
+            ((datetime.now(timezone.utc) + timedelta(days=5)).isoformat(),),
+        )
+        expiring_soon = (await cursor.fetchone())[0]
     return {
         "pending": tenant_counts.get("pending", 0),
         "active": tenant_counts.get("active", 0),
@@ -548,6 +606,9 @@ async def get_founder_stats() -> dict:
         "total_applications": total_applications,
         "monthly_applications": monthly_applications,
         "business_leads": business_leads,
+        "awaiting_payments": awaiting_payments,
+        "monthly_revenue": monthly_revenue,
+        "expiring_soon": expiring_soon,
     }
 
 
@@ -609,6 +670,98 @@ async def get_business_lead(lead_id: int) -> dict | None:
         cursor = await db.execute("SELECT * FROM business_leads WHERE id=?", (lead_id,))
         row = await cursor.fetchone()
     return dict(row) if row else None
+
+
+LEAD_STATUSES = {
+    "new",
+    "contacted",
+    "demo",
+    "payment",
+    "customer",
+    "lost",
+    "bot_created",
+}
+
+
+async def update_business_lead_status(lead_id: int, status: str) -> bool:
+    if status not in LEAD_STATUSES:
+        return False
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE business_leads SET status=?, updated_at=? WHERE id=?",
+            (status, datetime.now(timezone.utc).isoformat(), lead_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def get_payment_order_for_tenant(tenant_id: int, order_code: str) -> dict | None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM payment_orders WHERE tenant_id=? AND UPPER(order_code)=UPPER(?) LIMIT 1",
+            (tenant_id, order_code.strip()),
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def list_due_lead_reminders(hours: int = 24) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM business_leads WHERE status IN ('new','contacted','demo','payment') "
+            "AND updated_at <= ? AND (last_reminded_at IS NULL OR last_reminded_at <= ?) "
+            "ORDER BY updated_at LIMIT 50",
+            (cutoff, cutoff),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+
+async def mark_lead_reminded(lead_id: int) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE business_leads SET last_reminded_at=? WHERE id=?",
+            (datetime.now(timezone.utc).isoformat(), lead_id),
+        )
+        await db.commit()
+
+
+async def was_system_notification_sent(key: str) -> bool:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT 1 FROM system_notifications WHERE notification_key=?", (key,)
+        )
+        return bool(await cursor.fetchone())
+
+
+async def mark_system_notification_sent(key: str) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO system_notifications(notification_key, sent_at) VALUES (?, ?)",
+            (key, datetime.now(timezone.utc).isoformat()),
+        )
+        await db.commit()
+
+
+async def list_expiring_subscriptions(days: int) -> list[dict]:
+    now = datetime.now(timezone.utc)
+    end = now + timedelta(days=days + 1)
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM tenants WHERE status='active' AND plan_code NOT IN ('trial','legacy') "
+            "AND subscription_expires_at > ? AND subscription_expires_at <= ?",
+            (now.isoformat(), end.isoformat()),
+        )
+        rows = await cursor.fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["admin_user_ids"] = json.loads(item["admin_user_ids"])
+        result.append(item)
+    return result
 
 
 async def update_tenant_status(

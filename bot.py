@@ -153,6 +153,9 @@ async def main():
     logger.info("Janob HR (nomzod) bot ishga tushdi ✅")
     await candidate_bot.delete_webhook(drop_pending_updates=True)
     polling_tasks = [candidate_dp.start_polling(candidate_bot)]
+    from services.reminders import run_reminders_forever
+
+    polling_tasks.append(run_reminders_forever())
 
     # Polling deploymentda to'lov kuzatuvchisi alohida process sifatida
     # ishga tushmaydi. Shu worker ichida parallel yoqamiz — aks holda bank

@@ -21,7 +21,7 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import TokenBasedRequestHandler, setup_application
 from aiohttp import web
 
-from config import FOUNDER_BOT_TOKEN, WEBHOOK_BASE_URL
+from config import FOUNDER_BOT_TOKEN, MINI_APP_BASE_URL, WEBHOOK_BASE_URL
 from services import database
 from services.storage import SQLiteStorage
 from services.tenant_middleware import TenantMiddleware
@@ -133,6 +133,25 @@ async def register_new_tenant_webhook(bot_token: str) -> str:
         await bot.session.close()
 
 
+async def configure_admin_miniapp(tenant: dict) -> None:
+    """Tenant admin botiga Mini App menyu tugmasini o'rnatadi."""
+    if not tenant.get("admin_bot_token") or not WEBHOOK_BASE_URL:
+        return
+    from aiogram.types import MenuButtonWebApp, WebAppInfo
+
+    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
+    admin_bot = Bot(token=tenant["admin_bot_token"])
+    try:
+        await admin_bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="Boshqaruv paneli",
+                web_app=WebAppInfo(url=f"{miniapp_base}/{tenant['id']}"),
+            )
+        )
+    finally:
+        await admin_bot.session.close()
+
+
 async def on_startup(app: web.Application):
     await database.init_db()
     # Dispatcher ishlatadigan persistent FSM jadvali database.init_db() tarkibiga
@@ -148,6 +167,7 @@ async def on_startup(app: web.Application):
             await register_new_tenant_webhook(tenant["bot_token"])
             if tenant.get("admin_bot_token"):
                 await register_new_tenant_webhook(tenant["admin_bot_token"])
+                await configure_admin_miniapp(tenant)
         except Exception:
             logger.exception(
                 "Mijoz (id=%s) webhooklarini ornatib bolmadi.", tenant["id"]
@@ -193,6 +213,9 @@ def create_app() -> web.Application:
 
     handler = TokenBasedRequestHandler(dispatcher=dp)
     handler.register(app, path=WEBHOOK_PATH)
+    from miniapp_api import register_miniapp
+
+    register_miniapp(app)
     setup_application(app, dp)
 
     app.on_startup.append(on_startup)

@@ -94,6 +94,10 @@ python webhook_app.py
 - Render/Railway'da **bitta Web Service** oching va Start Command sifatida
   `python webhook_app.py` yozing.
 - `WEBHOOK_BASE_URL`ni servisning HTTPS manziliga qo'ying.
+- Telegram Mini App shu xizmatning `/miniapp/<tenant_id>` manzilida ishlaydi.
+  Har bir faol mijozning Admin botida **Boshqaruv paneli** menyu tugmasi server
+  ishga tushganda avtomatik o'rnatiladi. Alohida domen ishlatilsa
+  `MINI_APP_BASE_URL=https://panel.example.com/miniapp` qilib sozlang.
 - Shu tokenlar bilan ishlaydigan eski `python bot.py` yoki alohida Founder Bot
   servislarini to'xtating. Bir tokenni ikki polling/webhook jarayonida ishlatish
   Telegram `Too Many Requests` / `GetUpdates` xatosini chiqaradi.
@@ -165,6 +169,20 @@ qilinmaydi. Vakansiya admin tomonidan tahrirlansa, eski tarjima keshi
 avtomatik bekor qilinadi va keyingi safar qayta tarjima qilinadi.
 
 Admin bot ikki tillilikka ega emas — u faqat o'zbek tilida ishlaydi.
+
+## Telegram Mini App — ish beruvchi boshqaruv paneli
+
+Admin bot ichidagi **Boshqaruv paneli** tugmasi quyidagilarni ochadi:
+
+- bosh sahifa: yangi nomzodlar, suhbatlar, vakansiyalar va arizalar soni;
+- nomzodlar pipeline'i va AI tahlili bilan to'liq nomzod kartasi;
+- suhbatga chaqirish, keyin ko'rish va rad etish qarorlari;
+- vakansiyalarni ochish/yopish;
+- joriy tarif, limitlar va tarif variantlari.
+
+Kirish Telegram `initData` HMAC imzosi bilan serverda tekshiriladi. URLdagi
+`tenant_id`ning o'zi ruxsat bermaydi: Telegram user ID tenantning
+`admin_user_ids` ro'yxatida bo'lishi shart. Bot tokenlari frontendga berilmaydi.
 
 ## Admin bot — arizalarni ko'rib chiqish, vakansiyalarni boshqarish, statistika
 

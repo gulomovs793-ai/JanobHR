@@ -56,6 +56,10 @@ SQLITE_PATH = os.getenv("SQLITE_PATH", "data.db")
 # qaysi manzil orqali ko'rinishini bildiradi (masalan Render xizmat manzili).
 WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
 
+# Admin bot ichidan ochiladigan Telegram Mini App. Bo'sh qoldirilsa
+# WEBHOOK_BASE_URL/miniapp manzili ishlatiladi.
+MINI_APP_BASE_URL = os.getenv("MINI_APP_BASE_URL", "")
+
 # Yangi mijozlar o'zini ro'yxatdan o'tkazadigan alohida "sozlash boti".
 SETUP_BOT_TOKEN = os.getenv("SETUP_BOT_TOKEN", "")
 

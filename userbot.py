@@ -89,6 +89,7 @@ async def start_userbot():
     uname = f"@{me.username}" if getattr(me, "username", None) else "(username yo'q)"
     expected = CARD_BOT_USERNAME.lower()
     logger.info("[userbot] Ulandi: %s. Kuzatilayotgan bot: @%s", uname, expected)
+    await database.clear_recent_payment_notifications(minutes=60)
 
     async def process_message(message):
         try:

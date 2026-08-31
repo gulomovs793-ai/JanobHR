@@ -1277,3 +1277,21 @@ async def record_seen_notification(text_hash: str, amount: int) -> None:
             (text_hash, amount, received_at),
         )
         await db.commit()
+
+
+async def forget_payment_notification(text_hash: str) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "DELETE FROM payment_notifications_seen WHERE hash = ?", (text_hash,)
+        )
+        await db.commit()
+
+
+async def clear_recent_payment_notifications(minutes: int = 60) -> None:
+    """Uzilish paytida no_match bo'lgan xabarlarni xavfsiz qayta tekshirish."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "DELETE FROM payment_notifications_seen WHERE received_at >= ?", (cutoff,)
+        )
+        await db.commit()

@@ -236,6 +236,12 @@ async def handle_payment_notification(
             f"Matn: {text[:300]}\n\nJoriy ochiq buyurtmalar: {open_summary}\n\n"
             "Hech qanday ochiq buyurtmaga mos kelmadi."
         )
+        logger.warning(
+            "[to'lov] Mos kelmadi: amount=%s, ochiq buyurtmalar=%s",
+            amount,
+            open_summary,
+        )
+        await database.forget_payment_notification(text_hash)
         return {"status": "no_match", "amount": amount}
 
     if len(candidates) > 1:

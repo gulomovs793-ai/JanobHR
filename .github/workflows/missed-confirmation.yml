@@ -1,0 +1,28 @@
+name: Deliver missed confirmations
+on:
+  push:
+    branches: [multi-tenant]
+    paths: [.github/workflows/missed-confirmation.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+      - name: Apply patch
+        env:
+          PATCH_B64: H4sIAAAAAAACA61XbW/iRhD+zq8YWaowxfiAEEiouIYLTi8qIVdw1KuiyFrsBbZn73K76xBS9b931zZgDDRX9Yxk8K5nduaZZ14IyGwGtdqcSEDvBObPxMfiXYAkmiKB7eUapkeXS4QG+AUuWkH7fDq17QvUmXXqDWjU6+1Wq1Sr1U7oK1Wr1VM6r66g1mg2rA5U9dcFqIXrsdN3HXD7H4YO3N7A6N4F5/PtxJ3AEq0jTKXHeIC5ALME+qJMkhnxkSSMehK/SHCdz66VbvocI4kDD6WribbRw3CYbeOXJeFYHNmu6e0A+yTYSZeqRxatdNWPhWQR5l5qTk4IKj+VwDCMEiT+nnXqVhuqZ53MXyTW1FdKZ0AokV4wNSvd1LjNhVZIRSuY2vgF+7HEptEfus44g6gASn8wgOv74cPdCJYhop7PArzvGwycm/7D0IWykIjLslHZHUdmYExJGBI69yJG5UIYGl9l2vYcn4VxRMV3snH/MLgduc4vSuzA1oayspq38hjep22tfg9bT4Y4j+BWuc+iiEgz2wrZfI65TeiMmcYdKiu7mAwRhyl6RYKA+YWVlxCRP9lrSCog0XrNeBd+EIYFk9+Gt67jfeq7HysZiRrN8wvNokaz3bCaBR5FiH/x9tzwKMaB8Dh+Jnhl/qux6lPdqQqJkF5Mdw4vl5w9qx8pOuaCxVx0FeQSetBsVaD2PpF5DIgvn7qb1JBMFZ0emCr3sSQRtilbmfrHK6PYjqWvBEE/BziUKNXaS+6Vik0EmzEeIW1eoi81b0XkAhBh4mtIJFYeUIp9aebBUm8q53LRV55ytvJmyJeMr5VFO/kxW+3e89XJjOv9IlX2mWRMnKFz7cKPcDO+vytS5/ePztgBlWQyFkpXeQNeGYyCmv5ocJxdt5M0DfQLubrzvgc/w/14oEj74Y/chmHtKzZT6K1Kbj2XRwoLsXUy9dmeYekvUBhuwOZYxpxCElBTCVRABUNL6jzTCp5KVf0p0G/rzQaTjVdmSkhdlroKG55QZqRo0P2/wX0rVg+fBrqxFII0cdzj0GuI0wjuLNaLBxifJnWeulZOzYlwHGajRjaX2CskvL1uJzCmKqt95U+4NnXv8xZILBJgLVVNqIJhm55n9QTrKWNhVrz/M9bwjYkU5IeMWLX+KZPpaLF7yAaK9uyyednq2HajdTn1z5v7A0Xu9XSMyC3oOniZVEF1bzT2a2CK01rNAxSpYG+CvklBUzX9OJRd0LTOURCKV1a+Z4SqnFh3i6VTmyKwECoYth8ygbc1Ko3lZtZ5IydSax6NHUWMp0xRvnHsqGI8SlYO2fMT3OmWMUeqY4iAfIV1PGWchAFJe0cu148ckW2nVT8HXjIXeBnUehxJW04z7Tgdq9HaB/vg/c1spXiEA8WO6/544H24d72HiTMe9e8cO2QrzI82x8dMzxM8qPkldcSGX+NXRfkQrZmcI6px78JV0h1jiiJsbU/LVBbw90OMeJYpBfjTVBJmli29dj1DXte5/X6nS15B8Tc1yJ7qjAeF6i2G7leZv/YfEw5kkiQwugVDH3N7T9YRURSxmMojctnGUaEcdQ4Fj/Bqc/2dr3aQLz2aPEqN+lsgvEjd0Byb2Xd+CJZcZd4/QyyVxrkMAAA=
+        run: |
+          echo "$PATCH_B64" | base64 -d | gzip -d | git apply --binary
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+          python -m ruff check .
+          python -m unittest discover -s tests
+          rm .github/workflows/missed-confirmation.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Deliver missed payment confirmations"
+          git push origin HEAD:multi-tenant

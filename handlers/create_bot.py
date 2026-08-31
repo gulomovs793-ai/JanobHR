@@ -214,6 +214,17 @@ async def receive_contact(message: Message, state: FSMContext):
         contact_username=message.from_user.username or "",
     )
     data = await state.get_data()
+    lead_id = await database.save_business_lead(
+        telegram_user_id=message.from_user.id,
+        contact_name=message.from_user.full_name,
+        contact_phone=message.contact.phone_number,
+        contact_username=message.from_user.username or "",
+        company_name=data["company_name"],
+        hiring_problem=data["hiring_problem"],
+        current_process=data["current_process"],
+        desired_result=data["desired_result"],
+    )
+    await state.update_data(business_lead_id=lead_id)
     await message.answer(
         "✅ <b>Rahmat, ma'lumotlar qabul qilindi.</b>\n\n"
         f"Kompaniya: <b>{escape(data['company_name'])}</b>\n"
@@ -330,6 +341,10 @@ async def receive_admin_token(message: Message, state: FSMContext):
             contact_phone=data.get("contact_phone", ""),
             contact_username=data.get("contact_username", ""),
         )
+        if data.get("business_lead_id"):
+            await database.attach_business_lead_to_tenant(
+                data["business_lead_id"], tenant_id
+            )
     except Exception:
         logger.exception("Mijozni bazaga yozishda kutilmagan xato.")
         await wait_msg.edit_text(

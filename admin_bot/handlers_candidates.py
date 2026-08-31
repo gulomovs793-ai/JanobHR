@@ -4,6 +4,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from handlers.admin import format_application_full_text, format_candidate_card
 from services import database
 from services.ai_scoring import aggregate_scores
 
@@ -62,29 +63,35 @@ async def view_candidate(callback: CallbackQuery, tenant_id: int):
     if not app:
         await callback.answer("Nomzod topilmadi.", show_alert=True)
         return
-    score = aggregate_scores(app.get("ai_scores") or {})
-    lines = [
-        f"👤 <b>{app['full_name']}</b>",
-        f"💼 {app['vacancy_title']}",
-        f"📱 <code>{app.get('phone_number') or '—'}</code>",
-        f"💬 @{app.get('username') or '—'}",
-        f"📌 {_STATUS.get(app['status'], app['status'])}",
-    ]
-    if score:
-        lines.append(
-            f"🧠 AI baho: <b>{score['avg_score']}/100</b> · {score['verdict']}"
-        )
-    answers = list((app.get("answers") or {}).values())
-    if answers:
-        preview = "\n".join(f"• {str(answer)[:180]}" for answer in answers[:3])
-        lines.extend(["", "<b>Javoblardan qisqa parcha:</b>", preview])
+    text = format_candidate_card(app)
+    text += f"\n\n📌 {_STATUS.get(app['status'], app['status'])}"
 
     builder = InlineKeyboardBuilder()
     if app["status"] in {"pending", "saved"}:
         builder.button(text="✅ Suhbatga", callback_data=f"decision:accept:{app_id}")
         builder.button(text="🟡 Keyin ko'rish", callback_data=f"decision:save:{app_id}")
         builder.button(text="❌ Rad etish", callback_data=f"decision:reject:{app_id}")
+    builder.button(
+        text="📋 To'liq javoblar", callback_data=f"apps:full:{app_id}:{status}:{page}"
+    )
     builder.button(text="⬅️ Ro'yxat", callback_data=f"apps:list:{status}:{page}")
     builder.adjust(2, 1, 1)
-    await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("apps:full:"))
+async def view_full_answers(callback: CallbackQuery, tenant_id: int):
+    _, _, app_id, status, page = callback.data.split(":")
+    app = await database.get_application(tenant_id, int(app_id))
+    if not app:
+        await callback.answer("Nomzod topilmadi.", show_alert=True)
+        return
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="⬅️ Qisqa karta", callback_data=f"apps:view:{app_id}:{status}:{page}"
+    )
+    await callback.message.edit_text(
+        await format_application_full_text(app), reply_markup=builder.as_markup()
+    )
     await callback.answer()

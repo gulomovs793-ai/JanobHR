@@ -38,7 +38,35 @@ _RED_FLAG_LABELS = {
 _MAX_TEXT_LENGTH = 3800
 
 
-async def _format_application_text(app: dict) -> str:
+def format_candidate_card(app: dict) -> str:
+    aggregate = aggregate_scores(app.get("ai_scores") or {})
+    scored = [
+        value
+        for value in (app.get("ai_scores") or {}).values()
+        if isinstance(value, dict) and isinstance(value.get("score"), (int, float))
+    ]
+    strongest = max(scored, key=lambda value: value["score"], default=None)
+    weakest = min(scored, key=lambda value: value["score"], default=None)
+    strength = (strongest or {}).get("izoh") or "Javoblarini to'liq ko'rib chiqing."
+    risk = "Aniq xavf aniqlanmadi."
+    if aggregate and aggregate.get("red_flags"):
+        risk = _RED_FLAG_LABELS.get(
+            aggregate["red_flags"][0], aggregate["red_flags"][0]
+        )
+    elif weakest and weakest.get("score", 100) < 70:
+        risk = weakest.get("izoh") or "Ayrim javoblari yetarlicha aniq emas."
+    score = f"{aggregate['avg_score']}/100" if aggregate else "Baholanmagan"
+    return (
+        f"👤 <b>{escape(str(app['full_name']))}</b>\n"
+        f"💼 {escape(str(app['vacancy_title']))}\n"
+        f"🎯 Moslik: <b>{score}</b>\n"
+        f"📱 <code>{escape(str(app.get('phone_number') or '—'))}</code>\n\n"
+        f"<b>Kuchli tomoni:</b> {escape(str(strength))}\n"
+        f"<b>Xavf:</b> {escape(str(risk))}"
+    )
+
+
+async def format_application_full_text(app: dict) -> str:
     lines = [
         f"🆕 <b>Yangi anketa</b> — {escape(str(app['vacancy_title']))}",
         (
@@ -163,14 +191,15 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
     if not app:
         return
 
-    text = await _format_application_text(app)
+    text = format_candidate_card(app)
     builder = InlineKeyboardBuilder()
     builder.button(
         text="✅ Suhbatga chaqirish", callback_data=f"decision:accept:{app_id}"
     )
     builder.button(text="🟡 Keyin ko'rish", callback_data=f"decision:save:{app_id}")
     builder.button(text="❌ Rad etish", callback_data=f"decision:reject:{app_id}")
-    builder.adjust(2, 1)
+    builder.button(text="📋 To'liq javoblar", callback_data=f"apps:full:{app_id}:all:0")
+    builder.adjust(2, 1, 1)
 
     voice_answers = app.get("voice_answers") or {}
     voice_key_to_text: dict = {}

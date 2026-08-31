@@ -583,6 +583,12 @@ async def get_founder_stats() -> dict:
         monthly_applications = (await cursor.fetchone())[0]
         cursor = await db.execute("SELECT COUNT(*) FROM business_leads")
         business_leads = (await cursor.fetchone())[0]
+        today = datetime.now(timezone.utc).date().isoformat()
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM business_leads WHERE substr(created_at, 1, 10)=?",
+            (today,),
+        )
+        today_leads = (await cursor.fetchone())[0]
         cursor = await db.execute(
             "SELECT COUNT(*) FROM payment_orders WHERE status='awaiting_payment'"
         )
@@ -606,6 +612,7 @@ async def get_founder_stats() -> dict:
         "total_applications": total_applications,
         "monthly_applications": monthly_applications,
         "business_leads": business_leads,
+        "today_leads": today_leads,
         "awaiting_payments": awaiting_payments,
         "monthly_revenue": monthly_revenue,
         "expiring_soon": expiring_soon,
@@ -719,6 +726,32 @@ async def list_due_lead_reminders(hours: int = 24) -> list[dict]:
         return [dict(row) for row in await cursor.fetchall()]
 
 
+async def list_leads_older_than(minutes: int) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM business_leads WHERE status IN ('new','contacted') "
+            "AND created_at <= ? ORDER BY created_at LIMIT 100",
+            (cutoff,),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+
+async def list_unpaid_orders_older_than(minutes: int) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT p.*, t.company_name, t.contact_phone FROM payment_orders p "
+            "JOIN tenants t ON t.id=p.tenant_id "
+            "WHERE p.status='awaiting_payment' AND p.created_at <= ? "
+            "ORDER BY p.created_at LIMIT 100",
+            (cutoff,),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+
 async def mark_lead_reminded(lead_id: int) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
@@ -754,6 +787,26 @@ async def list_expiring_subscriptions(days: int) -> list[dict]:
             "SELECT * FROM tenants WHERE status='active' AND plan_code NOT IN ('trial','legacy') "
             "AND subscription_expires_at > ? AND subscription_expires_at <= ?",
             (now.isoformat(), end.isoformat()),
+        )
+        rows = await cursor.fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["admin_user_ids"] = json.loads(item["admin_user_ids"])
+        result.append(item)
+    return result
+
+
+async def list_subscription_reminder_candidates() -> list[dict]:
+    now = datetime.now(timezone.utc)
+    lower = now - timedelta(days=7)
+    upper = now + timedelta(days=6)
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM tenants WHERE status='active' AND plan_code NOT IN ('trial','legacy') "
+            "AND subscription_expires_at >= ? AND subscription_expires_at <= ?",
+            (lower.isoformat(), upper.isoformat()),
         )
         rows = await cursor.fetchall()
     result = []

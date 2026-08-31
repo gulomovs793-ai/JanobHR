@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from handlers.admin import format_candidate_card
 from services import database
 
 
@@ -48,6 +49,27 @@ class FounderCrmTests(unittest.IsolatedAsyncioTestCase):
         await database.mark_system_notification_sent("same")
         await database.mark_system_notification_sent("same")
         self.assertTrue(await database.was_system_notification_sent("same"))
+
+    async def test_candidate_card_is_short_and_escapes_html(self):
+        card = format_candidate_card(
+            {
+                "full_name": "Ali <script>",
+                "vacancy_title": "Sotuvchi",
+                "phone_number": "+998",
+                "ai_scores": {
+                    "one": {
+                        "score": 90,
+                        "izoh": "Aniq natija ko'rsatgan",
+                        "red_flags": [],
+                    },
+                    "two": {"score": 45, "izoh": "Rejasi umumiy", "red_flags": []},
+                },
+            }
+        )
+        self.assertIn("Kuchli tomoni", card)
+        self.assertIn("Xavf", card)
+        self.assertNotIn("<script>", card)
+        self.assertLess(len(card), 700)
 
 
 if __name__ == "__main__":

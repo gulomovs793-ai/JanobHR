@@ -30,6 +30,7 @@ from config import (
 )
 from services import database
 from services.payment_automation import handle_payment_notification
+from services.plans import format_som, get_plan
 from services.tenant_activation import activate_tenant
 
 logger = logging.getLogger("janob_hr_userbot")
@@ -66,6 +67,37 @@ async def _activate_tenant_wrapper(tenant_id: int):
     if not result["ok"]:
         raise RuntimeError(result["error"])
     return result
+
+
+async def _notify_tenant_payment_approved(result: dict) -> None:
+    """To'lov tasdiqlanganda mijozga aynan o'z Admin botidan chek yuboradi."""
+    from aiogram import Bot
+
+    tenant = await database.get_tenant(result["tenant_id"])
+    if not tenant or not tenant.get("admin_bot_token"):
+        logger.error("[to'lov] Mijozga tasdiq yuborilmadi: admin bot topilmadi.")
+        return
+    plan = get_plan(tenant.get("plan_code"))
+    expiry = (tenant.get("subscription_expires_at") or "")[:10]
+    text = (
+        "✅ TO'LOV QABUL QILINDI\n\n"
+        f"Tarif: {plan.name}\n"
+        f"Summa: {format_som(result['amount'])}\n"
+        f"Buyurtma: {result['order_code']}\n"
+        f"Amal qilish sanasi: {expiry}\n\n"
+        "Tarifingiz faol. Boshqarish uchun /start bosing."
+    )
+    bot = Bot(token=tenant["admin_bot_token"])
+    try:
+        for admin_id in tenant["admin_user_ids"]:
+            try:
+                await bot.send_message(admin_id, text)
+            except Exception:
+                logger.exception(
+                    "[to'lov] Mijoz adminiga tasdiq yuborilmadi (id=%s).", admin_id
+                )
+    finally:
+        await bot.session.close()
 
 
 async def start_userbot():
@@ -115,6 +147,8 @@ async def start_userbot():
                 text, _notify_founders, _activate_tenant_wrapper
             )
             logger.info("[userbot] Natija: %s", result.get("status"))
+            if result.get("status") == "approved":
+                await _notify_tenant_payment_approved(result)
         except Exception:
             logger.exception("[userbot] Xabarni qayta ishlashda xatolik.")
 

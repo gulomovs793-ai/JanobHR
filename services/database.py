@@ -1204,14 +1204,18 @@ async def get_open_payment_order_by_amount(amount: int) -> dict | None:
 
 
 async def get_open_payment_orders_by_amount(amount: int) -> list[dict]:
-    """Muddati o'tmagan, aynan shu summali ochiq buyurtmalarni qaytaradi."""
-    now = datetime.now(timezone.utc).isoformat()
+    """Aniq summali ochiq buyurtmalarni 24 soatlik to'lov grace-periodi bilan qaytaradi.
+
+    UI'dagi 20 daqiqa noyob summani band qilish muddati. Bank o'tkazmasi kechiksa,
+    haqiqiy tushgan pul yo'qolib qolmasligi kerak.
+    """
+    grace_cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "SELECT * FROM payment_orders WHERE status = 'awaiting_payment' "
             "AND amount = ? AND expires_at > ?",
-            (amount, now),
+            (amount, grace_cutoff),
         )
         rows = await cursor.fetchall()
     return [dict(r) for r in rows]

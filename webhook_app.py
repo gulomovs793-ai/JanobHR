@@ -211,7 +211,15 @@ def create_app() -> web.Application:
     app = web.Application()
     app["dispatcher"] = dp
 
-    handler = TokenBasedRequestHandler(dispatcher=dp)
+    # TokenBasedRequestHandler har bir tenant tokeni uchun Bot obyektini o'zi
+    # yaratadi. Default parse mode berilmasa, <b> kabi HTML teglar foydalanuvchiga
+    # oddiy matn bo'lib ko'rinadi.
+    handler = TokenBasedRequestHandler(
+        dispatcher=dp,
+        bot_settings={
+            "default": DefaultBotProperties(parse_mode=ParseMode.HTML),
+        },
+    )
     handler.register(app, path=WEBHOOK_PATH)
     from miniapp_api import register_miniapp
 

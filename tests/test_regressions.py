@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 from aiogram.fsm.storage.base import StorageKey
 
 import webhook_app
+from admin_bot.handlers_menu import _main_menu_keyboard
 from handlers import admin as admin_handlers
 from handlers import create_bot
 from services import database
@@ -29,6 +30,17 @@ class FakeAdminBot:
 
 
 class RegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_admin_menu_has_real_miniapp_button(self):
+        overall = {"pending": 2}
+        with (
+            patch("admin_bot.handlers_menu.WEBHOOK_BASE_URL", "https://example.test"),
+            patch("admin_bot.handlers_menu.MINI_APP_BASE_URL", ""),
+        ):
+            markup = _main_menu_keyboard(overall, 7)
+        button = markup.inline_keyboard[0][0]
+        self.assertEqual(button.text, "🖥 Boshqaruv paneli")
+        self.assertEqual(button.web_app.url, "https://example.test/miniapp/7")
+
     async def test_business_lead_is_sent_by_janob_hr_admin_bot(self):
         admin_bot = type("AdminBot", (), {"send_message": AsyncMock()})()
         with (

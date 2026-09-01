@@ -3,16 +3,23 @@
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from config import MINI_APP_BASE_URL, WEBHOOK_BASE_URL
 from services import database
 
 router = Router(name="admin_menu")
 
 
-def _main_menu_keyboard(overall: dict):
+def _main_menu_keyboard(overall: dict, tenant_id: int):
     builder = InlineKeyboardBuilder()
+    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
+    if WEBHOOK_BASE_URL:
+        builder.button(
+            text="🖥 Boshqaruv paneli",
+            web_app=WebAppInfo(url=f"{miniapp_base}/{tenant_id}"),
+        )
     builder.button(
         text=f"📥 Yangi arizalar · {overall['pending']}",
         callback_data="apps:list:pending:0",
@@ -23,7 +30,7 @@ def _main_menu_keyboard(overall: dict):
     builder.button(text="📊 Hisobot", callback_data="menu:stats")
     builder.button(text="💳 Tarif va limitlar", callback_data="menu:billing")
     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
-    builder.adjust(1, 1, 2, 1, 1)
+    builder.adjust(1, 1, 1, 2, 1, 1, 1)
     return builder.as_markup()
 
 
@@ -37,7 +44,7 @@ async def show_main_menu(message: Message, tenant_id: int, *, edit: bool = False
         "Bugungi ishni qayerdan boshlaysiz?"
     )
     method = message.edit_text if edit else message.answer
-    await method(text, reply_markup=_main_menu_keyboard(overall))
+    await method(text, reply_markup=_main_menu_keyboard(overall, tenant_id))
 
 
 @router.message(CommandStart())

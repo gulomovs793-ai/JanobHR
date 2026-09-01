@@ -22,10 +22,12 @@ from aiohttp import web
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
 from handlers.sell import send_slot_offer
 from i18n import DEFAULT_LANG, t
 from services import database
 from services.ai_scoring import aggregate_scores
+from services.payment_automation import create_payment_order as create_payment_order_for_plan
 from services.plans import PUBLIC_PLAN_CODES, get_plan
 
 logger = logging.getLogger("janob_hr_bot")
@@ -128,7 +130,10 @@ def _candidate_summary(app: dict) -> dict:
 
 
 async def index(request: web.Request):
-    tenant_id = request.match_info["tenant_id"]
+    try:
+        tenant_id = str(int(request.match_info["tenant_id"]))
+    except (KeyError, ValueError):
+        raise web.HTTPNotFound()
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     return web.Response(
         text=html.replace("__TENANT_ID__", tenant_id), content_type="text/html"
@@ -592,6 +597,55 @@ async def billing(request: web.Request):
     )
 
 
+async def create_billing_order(request: web.Request):
+    tenant, _ = await _authorize(request)
+    if not PAYMENT_CARD_NUMBER:
+        raise web.HTTPServiceUnavailable(text="To'lov rekvizitlari hali sozlanmagan.")
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, TypeError):
+        raise web.HTTPBadRequest(text="Tarif ma'lumoti noto'g'ri.")
+    plan_code = str(body.get("plan_code") or "").strip().lower()
+    if plan_code not in PUBLIC_PLAN_CODES:
+        raise web.HTTPBadRequest(text="Tarif topilmadi.")
+    plan = get_plan(plan_code)
+    order = await create_payment_order_for_plan(
+        tenant["id"], plan.price, plan_code=plan_code
+    )
+    return web.json_response(
+        {
+            "ok": True,
+            "order_code": order["order_code"],
+            "amount": order["amount"],
+            "expires_at": order["expires_at"],
+            "status": "awaiting_payment",
+            "plan": {"code": plan.code, "name": plan.name},
+            "card_number": PAYMENT_CARD_NUMBER,
+            "card_holder": PAYMENT_CARD_HOLDER,
+        },
+        status=201,
+    )
+
+
+async def billing_order_status(request: web.Request):
+    tenant, _ = await _authorize(request)
+    order_code = str(request.match_info.get("order_code") or "").strip()
+    if not order_code or len(order_code) > 40:
+        raise web.HTTPNotFound()
+    order = await database.get_payment_order_for_tenant(tenant["id"], order_code)
+    if not order:
+        raise web.HTTPNotFound(text="To'lov buyurtmasi topilmadi.")
+    return web.json_response(
+        {
+            "order_code": order["order_code"],
+            "status": order["status"],
+            "amount": order["amount"],
+            "plan_code": order.get("plan_code", "start"),
+            "expires_at": order["expires_at"],
+        }
+    )
+
+
 def register_miniapp(app: web.Application) -> None:
     app.middlewares.append(security_headers)
     app.router.add_get("/health", health)
@@ -623,6 +677,10 @@ def register_miniapp(app: web.Application) -> None:
         "/api/miniapp/{tenant_id}/vacancies/{vacancy_key}/toggle", toggle_vacancy
     )
     app.router.add_get("/api/miniapp/{tenant_id}/billing", billing)
+    app.router.add_post("/api/miniapp/{tenant_id}/billing/orders", create_billing_order)
+    app.router.add_get(
+        "/api/miniapp/{tenant_id}/billing/orders/{order_code}", billing_order_status
+    )
     app.router.add_get("/api/miniapp/{tenant_id}/interviews", interviews)
     app.router.add_post("/api/miniapp/{tenant_id}/interviews/slots", add_interview_slot)
     app.router.add_delete(

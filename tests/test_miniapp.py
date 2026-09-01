@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -10,8 +11,11 @@ from aiohttp import web
 
 from miniapp_api import (
     add_interview_slot,
+    billing_order_status,
     candidate_outcome,
+    create_billing_order,
     create_vacancy,
+    index,
     interviews,
     verify_init_data,
 )
@@ -48,6 +52,11 @@ class MiniAppSecurityTests(unittest.TestCase):
     def test_wrong_bot_token_is_rejected(self):
         with self.assertRaises(web.HTTPUnauthorized):
             verify_init_data(signed_init_data(777), TOKEN + "x")
+
+    def test_miniapp_index_rejects_non_numeric_tenant(self):
+        request = type("Request", (), {"match_info": {"tenant_id": '\" onload=alert(1)'}})()
+        with self.assertRaises(web.HTTPNotFound):
+            asyncio.run(index(request))
 
 
 class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
@@ -151,6 +160,43 @@ class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(web.HTTPPaymentRequired):
                 await create_vacancy(self.JsonRequest(payload))
+
+    async def test_create_billing_order_returns_exact_payment_details(self):
+        create_order = AsyncMock(
+            return_value={
+                "order_code": "JH-TEST12",
+                "amount": 599_117,
+                "expires_at": "2099-01-01T00:00:00+00:00",
+            }
+        )
+        with (
+            patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
+            patch("miniapp_api.PAYMENT_CARD_NUMBER", "8600123412341234"),
+            patch("miniapp_api.PAYMENT_CARD_HOLDER", "TEST USER"),
+            patch("miniapp_api.create_payment_order_for_plan", create_order),
+        ):
+            response = await create_billing_order(
+                self.JsonRequest({"plan_code": "growth"})
+            )
+        payload = json.loads(response.text)
+        self.assertEqual(response.status, 201)
+        self.assertEqual(payload["order_code"], "JH-TEST12")
+        self.assertEqual(payload["amount"], 599_117)
+        self.assertEqual(payload["card_number"], "8600123412341234")
+        create_order.assert_awaited_once_with(7, 599_000, plan_code="growth")
+
+    async def test_billing_order_status_is_tenant_scoped(self):
+        with (
+            patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
+            patch(
+                "miniapp_api.database.get_payment_order_for_tenant",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            with self.assertRaises(web.HTTPNotFound):
+                await billing_order_status(
+                    self.JsonRequest({}, order_code="JH-OTHER")
+                )
 
 
 if __name__ == "__main__":

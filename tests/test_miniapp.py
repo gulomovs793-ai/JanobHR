@@ -3,11 +3,18 @@ import hmac
 import json
 import time
 import unittest
+from unittest.mock import AsyncMock, patch
 from urllib.parse import urlencode
 
 from aiohttp import web
 
-from miniapp_api import verify_init_data
+from miniapp_api import (
+    add_interview_slot,
+    candidate_outcome,
+    create_vacancy,
+    interviews,
+    verify_init_data,
+)
 
 TOKEN = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi"
 
@@ -41,6 +48,109 @@ class MiniAppSecurityTests(unittest.TestCase):
     def test_wrong_bot_token_is_rejected(self):
         with self.assertRaises(web.HTTPUnauthorized):
             verify_init_data(signed_init_data(777), TOKEN + "x")
+
+
+class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
+    class JsonRequest:
+        def __init__(self, payload, **match_info):
+            self.payload = payload
+            self.match_info = match_info
+
+        async def json(self):
+            return self.payload
+
+    async def test_interviews_are_split_by_selected_slot(self):
+        apps = [
+            {
+                "id": 1,
+                "full_name": "Ali Test",
+                "username": None,
+                "phone_number": "+998900000000",
+                "vacancy_key": "sales",
+                "vacancy_title": "Sotuv menejeri",
+                "status": "accepted",
+                "ai_scores": {},
+                "selected_slot": "2026-09-02 10:30",
+                "created_at": "2026-09-01",
+            },
+            {
+                "id": 2,
+                "full_name": "Vali Test",
+                "username": None,
+                "phone_number": "+998911111111",
+                "vacancy_key": "smm",
+                "vacancy_title": "SMM mutaxassisi",
+                "status": "accepted",
+                "ai_scores": {},
+                "selected_slot": None,
+                "created_at": "2026-09-01",
+            },
+        ]
+        request = object()
+        with (
+            patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
+            patch("miniapp_api.database.list_applications", AsyncMock(return_value=(apps, 2))),
+            patch("miniapp_api.database.list_interview_slots", AsyncMock(return_value=[])),
+            patch("miniapp_api.database.get_interview_settings", AsyncMock(return_value={})),
+        ):
+            response = await interviews(request)
+        payload = json.loads(response.text)
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual([item["id"] for item in payload["scheduled"]], [1])
+        self.assertEqual([item["id"] for item in payload["awaiting_slot"]], [2])
+
+    async def test_add_interview_slot_validates_and_saves(self):
+        add_slot = AsyncMock(return_value=11)
+        with (
+            patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
+            patch("miniapp_api.database.list_interview_slots", AsyncMock(return_value=[])),
+            patch("miniapp_api.database.add_interview_slot", add_slot),
+        ):
+            response = await add_interview_slot(
+                self.JsonRequest({"label": "5-sentabr, 14:00", "capacity": 3})
+            )
+        payload = json.loads(response.text)
+        self.assertEqual(payload["slot"]["id"], 11)
+        add_slot.assert_awaited_once_with(7, "5-sentabr, 14:00", 3)
+
+    async def test_add_interview_slot_rejects_invalid_capacity(self):
+        with patch(
+            "miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))
+        ):
+            with self.assertRaises(web.HTTPBadRequest):
+                await add_interview_slot(
+                    self.JsonRequest({"label": "5-sentabr, 14:00", "capacity": 0})
+                )
+
+    async def test_outcome_only_closes_accepted_candidate(self):
+        app = {"id": 9, "status": "accepted"}
+        update = AsyncMock()
+        with (
+            patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
+            patch("miniapp_api.database.get_application", AsyncMock(return_value=app)),
+            patch("miniapp_api.database.update_status", update),
+        ):
+            response = await candidate_outcome(
+                self.JsonRequest({"outcome": "hired"}, app_id="9")
+            )
+        self.assertEqual(json.loads(response.text)["status"], "hired")
+        update.assert_awaited_once_with(7, 9, "hired")
+
+    async def test_create_vacancy_checks_plan_limit(self):
+        payload = {
+            "title": "Sotuv menejeri",
+            "questions": ["Tajribangiz?", "Natijangiz?", "Rejangiz?"],
+            "reject_message": "Arizangiz uchun rahmat.",
+        }
+        with (
+            patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
+            patch(
+                "miniapp_api.database.get_subscription_usage",
+                AsyncMock(return_value={"vacancies_available": False}),
+            ),
+        ):
+            with self.assertRaises(web.HTTPPaymentRequired):
+                await create_vacancy(self.JsonRequest(payload))
 
 
 if __name__ == "__main__":

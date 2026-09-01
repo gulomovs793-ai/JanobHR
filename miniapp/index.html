@@ -5,55 +5,103 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light">
   <title>Janob HR — Boshqaruv paneli</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=Space+Mono:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/miniapp-assets/app.css">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body data-tenant="__TENANT_ID__">
   <div id="app">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark">J</span><span>Janob HR</span></div>
-      <button class="icon-btn" id="refresh" aria-label="Yangilash">↻</button>
+      <div class="brand"><span class="brand-mark"><img src="/miniapp-assets/logo.png" alt="Janob HR"></span><span><b>Janob HR</b><small>Hiring workspace</small></span></div>
+      <div class="top-actions"><span class="live-dot">Tizim faol</span><button class="icon-btn" id="refresh" aria-label="Yangilash"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button></div>
     </header>
 
     <main>
       <section id="dashboard" class="view active">
         <div class="hero">
-          <p class="eyebrow">ISHGA QABUL BOSHQARUVI</p>
-          <h1 id="company">Kompaniya paneli</h1>
-          <p>Bugungi muhim ishlar bir joyda.</p>
+          <div class="hero-copy"><p class="eyebrow"><span></span> BUGUNGI ISH JARAYONI</p><h1 id="company">Kompaniya paneli</h1><p>Eng kuchli nomzodlar e’tiboringizni kutmoqda.</p><div class="hero-meta"><span id="hero-vacancies">— faol vakansiya</span><span id="hero-interviews">— ta suhbat</span></div></div>
+          <div class="health"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="health-track" cx="50" cy="50" r="42"/><circle class="health-value" cx="50" cy="50" r="42"/></svg><div><span><b>86</b><small>/100</small></span><p>Yollash holati</p></div></div>
         </div>
+        <div class="workflow-grid">
+        <div class="insight-strip"><span class="insight-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.4 4.1L17.5 9l-4.1 1.9L12 15l-1.4-4.1L6.5 9l4.1-1.9L12 3Z"/><path d="m18.5 14 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></svg></span><div><b>Janob HR tavsiyasi</b><p>3 ta kuchli nomzod 24 soatdan beri javob kutmoqda.</p></div><button data-go="candidates">Ko‘rish <span>→</span></button></div>
         <div class="urgent" id="urgent" hidden>
           <span class="urgent-icon">!</span>
           <div><b id="urgent-count">0 ta yangi nomzod</b><small>Ko‘rib chiqishingizni kutmoqda</small></div>
-          <button data-go="candidates">Ko‘rish</button>
+          <button data-go="candidates">Ko‘rish <span>→</span></button>
+        </div>
         </div>
         <div class="metrics">
-          <article><span>Yangi</span><strong id="m-pending">—</strong><small>nomzod</small></article>
-          <article><span>Suhbatga</span><strong id="m-accepted">—</strong><small>chaqirilgan</small></article>
-          <article><span>Vakansiya</span><strong id="m-vacancies">—</strong><small>faol</small></article>
-          <article><span>Jami</span><strong id="m-total">—</strong><small>ariza</small></article>
+          <article class="metric-new"><span class="metric-label">Yangi nomzod</span><strong id="m-pending">—</strong><small><i>+3</i> bugun</small></article>
+          <article class="metric-interview metric-action" data-go="interviews" role="button" tabindex="0"><span class="metric-label">Suhbatga</span><strong id="m-accepted">—</strong><small>jadvalni ko‘rish →</small></article>
+          <article class="metric-vacancy"><span class="metric-label">Vakansiya</span><strong id="m-vacancies">—</strong><small>hozir faol</small></article>
+          <article class="metric-total"><span class="metric-label">Jami ariza</span><strong id="m-total">—</strong><small>shu oyda</small></article>
         </div>
-        <div class="section-head"><div><small>SO‘NGGI ARIZALAR</small><h2>Yangi nomzodlar</h2></div><button class="link-btn" data-go="candidates">Barchasi</button></div>
+        <div class="section-head"><div><small>USTUVOR NOMZODLAR</small><h2>Bugun ko‘rib chiqing</h2></div><button class="link-btn" data-go="candidates">Barchasi →</button></div>
         <div id="recent-list" class="stack skeleton-list"></div>
         <div class="plan-card">
-          <div><small>JORIY TARIF</small><h3 id="plan-name">—</h3><p id="plan-usage">Yuklanmoqda…</p></div>
+          <div class="plan-copy"><small>JORIY TARIF</small><h3 id="plan-name">—</h3><p id="plan-usage">Yuklanmoqda…</p><div class="plan-progress"><span></span></div></div>
           <button data-go="billing">Boshqarish</button>
         </div>
       </section>
 
       <section id="candidates" class="view">
         <div class="page-title"><div><small>NOMZODLAR</small><h1>Saralash markazi</h1></div></div>
+        <label class="search-box" for="candidate-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input id="candidate-search" type="search" maxlength="80" autocomplete="off" placeholder="Ism, telefon yoki vakansiya…"><button id="clear-search" type="button" aria-label="Qidiruvni tozalash">×</button></label>
         <div class="filters" id="candidate-filters">
           <button class="active" data-status="all">Barchasi</button><button data-status="pending">Yangi</button>
           <button data-status="saved">Keyin</button><button data-status="accepted">Suhbat</button><button data-status="declined">Rad</button>
         </div>
         <div id="candidate-list" class="stack"></div>
+        <button id="load-more" class="load-more" type="button" hidden>Ko‘proq ko‘rsatish</button>
+      </section>
+
+      <section id="interviews" class="view">
+        <div class="page-title page-title-row"><div><small>SUHBATLAR</small><h1>Suhbat jadvali</h1></div><button class="settings-link" data-go="interview-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4a1.7 1.7 0 0 0 1-1.6v-.2h4v.2A1.7 1.7 0 0 0 15 4a1.7 1.7 0 0 0 1.9.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>Sozlash</button></div>
+        <div class="interview-summary"><div><span id="i-total">—</span><small>jami suhbat</small></div><div><span id="i-scheduled">—</span><small>vaqti belgilangan</small></div><div><span id="i-waiting">—</span><small>vaqt tanlamagan</small></div></div>
+        <div class="section-head compact"><div><small>YAQIN SUHBATLAR</small><h2>Rejalashtirilgan</h2></div></div>
+        <div id="scheduled-list" class="stack"></div>
+        <div class="section-head compact"><div><small>JAVOB KUTILMOQDA</small><h2>Vaqt tanlamaganlar</h2></div></div>
+        <div id="awaiting-list" class="stack"></div>
+      </section>
+
+      <section id="interview-settings" class="view">
+        <button class="back" data-go="interviews">← Suhbatlar</button>
+        <div class="page-title"><div><small>SUHBAT SOZLAMALARI</small><h1>Jarayonni sozlash</h1></div></div>
+        <article class="settings-card">
+          <div class="settings-heading"><div><small>SUHBAT VAQTLARI</small><h2>Nomzod tanlaydigan vaqtlar</h2></div></div>
+          <form id="slot-form" class="slot-form"><label><span>Sana va vaqt</span><input id="slot-label" maxlength="80" required placeholder="Masalan: 5-sentabr, 14:00"></label><label class="capacity-field"><span>Sig‘im</span><input id="slot-capacity" type="number" min="1" max="100" value="1" required></label><button type="submit">Vaqt qo‘shish</button></form>
+          <div id="slot-list" class="slot-list"></div>
+        </article>
+        <article class="settings-card">
+          <div class="settings-heading"><div><small>NOMZODGA YUBORILADI</small><h2>Uchrashuv ma’lumotlari</h2></div></div>
+          <form id="interview-settings-form" class="settings-form">
+            <label><span>Uchrashuv manzili</span><input id="setting-location" maxlength="240" placeholder="Toshkent shahri, Chilonzor…"></label>
+            <div class="form-grid"><label><span>Mas’ul xodim</span><input id="setting-name" maxlength="80" placeholder="Ism va familiya"></label><label><span>Telefon raqami</span><input id="setting-phone" maxlength="32" inputmode="tel" placeholder="+998 90 000 00 00"></label></div>
+            <label><span>Nomzod uchun eslatma</span><textarea id="setting-notes" maxlength="500" rows="3" placeholder="Belgilangan vaqtdan 10 daqiqa oldin keling…"></textarea></label>
+            <button type="submit" class="primary-action">Sozlamalarni saqlash</button>
+          </form>
+        </article>
       </section>
 
       <section id="vacancies" class="view">
-        <div class="page-title"><div><small>VAKANSIYALAR</small><h1>Ochiq lavozimlar</h1></div></div>
+        <div class="page-title page-title-row"><div><small>VAKANSIYALAR</small><h1>Ochiq lavozimlar</h1></div><button class="settings-link primary-mini" id="new-vacancy">+ Yangi</button></div>
         <p class="intro">Nomzodlar ko‘radigan vakansiyalarni boshqaring.</p>
         <div id="vacancy-list" class="stack"></div>
+      </section>
+
+      <section id="vacancy-editor" class="view">
+        <button class="back" data-go="vacancies">← Vakansiyalar</button>
+        <div class="page-title"><div><small>VAKANSIYA KONSTRUKTORI</small><h1 id="vacancy-editor-title">Yangi vakansiya</h1></div></div>
+        <form id="vacancy-form" class="settings-card settings-form vacancy-form">
+          <input id="vacancy-key" type="hidden">
+          <label><span>Lavozim nomi</span><input id="vacancy-title" maxlength="100" required placeholder="Masalan: Sotuv menejeri"></label>
+          <label><span>Saralash savollari</span><textarea id="vacancy-questions" rows="9" required placeholder="Har bir savolni yangi qatordan yozing"></textarea><small class="field-help">Kamida 3 ta, ko‘pi bilan 20 ta savol. Har bir savol yangi qatorda.</small></label>
+          <label><span>Rad javobi</span><textarea id="vacancy-reject" maxlength="500" rows="3" required>Arizangiz uchun rahmat. Hozircha keyingi bosqichga o‘tmadingiz. Sizga muvaffaqiyat tilaymiz!</textarea></label>
+          <label class="check-row"><input id="vacancy-resume" type="checkbox"><span><b>Rezyume majburiy</b><small>Nomzod PDF rezyume yubormasdan davom eta olmaydi.</small></span></label>
+          <button type="submit" class="primary-action">Vakansiyani saqlash</button>
+        </form>
       </section>
 
       <section id="billing" class="view">
@@ -65,7 +113,7 @@
       </section>
 
       <section id="detail" class="view">
-        <button class="back" data-go="candidates">← Nomzodlar</button>
+        <button class="back" id="detail-back" data-go="candidates">← Nomzodlar</button>
         <div id="candidate-detail"></div>
       </section>
 
@@ -76,12 +124,38 @@
     </main>
 
     <nav class="bottom-nav">
-      <button class="active" data-go="dashboard"><span>⌂</span>Bosh sahifa</button>
-      <button data-go="candidates"><span>♙</span>Nomzodlar</button>
-      <button data-go="vacancies"><span>▣</span>Vakansiyalar</button>
-      <button data-go="billing"><span>◇</span>Tarif</button>
+      <button class="active" data-go="dashboard">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.7 12 3.8l8.5 6.9"/><path d="M5.7 9.2v10.2h12.6V9.2M9.5 19.4v-5.7h5v5.7"/></svg></span>
+        <span class="nav-label">Bosh sahifa</span>
+      </button>
+      <button data-go="candidates">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.7 19c.3-3.6 2.2-5.5 5.3-5.5s5 1.9 5.3 5.5"/><path d="M15.1 5.2a3 3 0 0 1 0 5.7M16.2 13.6c2.5.4 3.9 2.2 4.1 5.4"/></svg></span>
+        <span class="nav-label">Nomzodlar</span>
+      </button>
+      <button data-go="interviews">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M7 3v4M17 3v4M3 10h18M7.5 14h3M7.5 17h6"/></svg></span>
+        <span class="nav-label">Suhbatlar</span>
+      </button>
+      <button data-go="vacancies">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7.2" width="18" height="12.7" rx="2.4"/><path d="M8.2 7.2V5.8c0-1 .8-1.8 1.8-1.8h4c1 0 1.8.8 1.8 1.8v1.4M3 12.1c5.5 2.4 12.5 2.4 18 0M10.3 13.8h3.4"/></svg></span>
+        <span class="nav-label">Vakansiyalar</span>
+      </button>
+      <button data-go="billing">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.2h13.6A2.4 2.4 0 0 1 20 8.6v9A2.4 2.4 0 0 1 17.6 20H4.4A2.4 2.4 0 0 1 2 17.6V6.8A2.8 2.8 0 0 1 4.8 4H17"/><path d="M15.4 11.2H22v5.1h-6.6a2.6 2.6 0 1 1 0-5.1Z"/><circle cx="16" cy="13.7" r=".6" fill="currentColor" stroke="none"/></svg></span>
+        <span class="nav-label">Tarif</span>
+      </button>
     </nav>
     <div id="toast" role="status"></div>
+    <div id="action-modal" class="modal" hidden>
+      <button class="modal-backdrop" data-modal-close aria-label="Yopish"></button>
+      <section class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-handle"></div>
+        <div class="modal-icon" id="modal-icon">?</div>
+        <h2 id="modal-title">Tasdiqlash</h2>
+        <p id="modal-text"></p>
+        <div class="modal-actions"><button class="modal-cancel" data-modal-close>Bekor qilish</button><button class="modal-confirm" id="modal-confirm">Tasdiqlash</button></div>
+      </section>
+    </div>
   </div>
   <script src="/miniapp-assets/app.js" defer></script>
 </body>

@@ -1019,6 +1019,20 @@ async def add_admin_message(tenant_id: int, app_id: int, chat_id: int, message_i
 
 
 async def update_status(tenant_id: int, app_id: int, status: str):
+    allowed_statuses = {
+        "pending",
+        "saved",
+        "accepted",
+        "declined",
+        "rejected_hard_filter",
+        "rejected_irrelevant",
+        "rejected_ai_generated",
+        "hired",
+        "not_hired",
+        "no_show",
+    }
+    if status not in allowed_statuses:
+        raise ValueError("Noto'g'ri nomzod holati.")
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
             "UPDATE applications SET status = ? WHERE id = ? AND tenant_id = ?",
@@ -1071,6 +1085,7 @@ async def list_applications(
     tenant_id: int,
     *,
     status: str | None = None,
+    search: str | None = None,
     limit: int = 5,
     offset: int = 0,
 ) -> tuple[list[dict], int]:
@@ -1080,6 +1095,14 @@ async def list_applications(
     if status:
         where += " AND status = ?"
         params.append(status)
+    if search:
+        term = f"%{search.strip()}%"
+        where += (
+            " AND (full_name LIKE ? COLLATE NOCASE"
+            " OR phone_number LIKE ? COLLATE NOCASE"
+            " OR vacancy_title LIKE ? COLLATE NOCASE)"
+        )
+        params.extend([term, term, term])
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -1268,6 +1291,16 @@ async def create_vacancy(
 async def update_vacancy(tenant_id: int, key: str, **fields) -> None:
     if not fields:
         return
+    allowed_fields = {
+        "title",
+        "reject_message",
+        "questions",
+        "resume_required",
+        "active",
+    }
+    unknown_fields = set(fields) - allowed_fields
+    if unknown_fields:
+        raise ValueError("Noto'g'ri vakansiya maydoni.")
     set_clauses, values = [], []
     for field, value in fields.items():
         if field == "questions":

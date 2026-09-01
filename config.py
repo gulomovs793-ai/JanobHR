@@ -54,7 +54,10 @@ SQLITE_PATH = os.getenv("SQLITE_PATH", "data.db")
 
 # Ko'p mijozli (multi-tenant) webhook rejimi uchun — bu server tashqi dunyoga
 # qaysi manzil orqali ko'rinishini bildiradi (masalan Render xizmat manzili).
-WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
+_render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "").strip() or (
+    f"https://{_render_hostname}" if _render_hostname else ""
+)
 
 # Admin bot ichidan ochiladigan Telegram Mini App. Bo'sh qoldirilsa
 # WEBHOOK_BASE_URL/miniapp manzili ishlatiladi.

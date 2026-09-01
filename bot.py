@@ -47,6 +47,10 @@ logging.basicConfig(
 logger = logging.getLogger("janob_hr_bot")
 
 
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _build_session():
     """
     Ba'zi muhitlarda (masalan korporativ proksi yoki sandbox) chiquvchi HTTPS
@@ -136,15 +140,9 @@ def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
 
 
 async def main():
-    from services.render_migration import env_enabled, send_migration_bundle
-
-    if env_enabled("MIGRATION_SEND"):
-        result = await send_migration_bundle()
-        logger.info("Render migration completed: %s", result.get("counts", {}))
-
-    if env_enabled("POLLING_DISABLED"):
+    if _env_enabled("POLLING_DISABLED"):
         logger.warning(
-            "Legacy polling is disabled after migration; service and disk are preserved."
+            "Legacy polling is disabled; service and disk are preserved."
         )
         await asyncio.Event().wait()
         return

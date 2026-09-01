@@ -3,10 +3,35 @@ Janob HR Bot — konfiguratsiya.
 Barcha maxfiy qiymatlar .env faylidan o'qiladi (repo'ga .env qo'shilmasin!).
 """
 
+import json
+import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
+
+def _load_migrated_runtime_settings() -> None:
+    """Load the settings bundle stored on the destination persistent disk.
+
+    Explicit Render environment values keep precedence over migrated values.
+    """
+    path = Path(os.getenv("MIGRATED_ENV_PATH", "/data/migrated_env.json"))
+    if not path.is_file():
+        return
+    try:
+        values = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(values, dict):
+            raise ValueError("settings bundle must be an object")
+        for key, value in values.items():
+            if isinstance(key, str) and isinstance(value, str):
+                os.environ.setdefault(key, value)
+    except Exception:
+        logging.getLogger("janob_hr_bot").exception(
+            "Migrated runtime settings could not be loaded."
+        )
+
+_load_migrated_runtime_settings()
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")

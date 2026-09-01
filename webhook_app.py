@@ -208,14 +208,16 @@ async def on_startup(app: web.Application):
 
 def create_app() -> web.Application:
     dp = _build_dispatcher()
-    app = web.Application()
+    app = web.Application(client_max_size=512 * 1024**2)
     app["dispatcher"] = dp
 
     handler = TokenBasedRequestHandler(dispatcher=dp)
     handler.register(app, path=WEBHOOK_PATH)
     from miniapp_api import register_miniapp
+    from services.render_migration import register_receiver
 
     register_miniapp(app)
+    register_receiver(app)
     setup_application(app, dp)
 
     app.on_startup.append(on_startup)

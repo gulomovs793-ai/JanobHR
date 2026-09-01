@@ -136,6 +136,19 @@ def _build_admin_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
 
 
 async def main():
+    from services.render_migration import env_enabled, send_migration_bundle
+
+    if env_enabled("MIGRATION_SEND"):
+        result = await send_migration_bundle()
+        logger.info("Render migration completed: %s", result.get("counts", {}))
+
+    if env_enabled("POLLING_DISABLED"):
+        logger.warning(
+            "Legacy polling is disabled after migration; service and disk are preserved."
+        )
+        await asyncio.Event().wait()
+        return
+
     if WEBHOOK_BASE_URL:
         raise RuntimeError(
             "WEBHOOK_BASE_URL sozlangan: multi-tenant serverda python bot.py ni "

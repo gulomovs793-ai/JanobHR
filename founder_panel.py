@@ -20,6 +20,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, WEBHOOK_BASE_URL
 from services import database
+from services.plans import get_plan_transition
 
 logger = logging.getLogger("janob_hr_founder")
 
@@ -251,6 +252,18 @@ async def _activate_order(message: Message, code: str, state: FSMContext | None 
     if order["status"] not in {"awaiting_payment", "needs_review"}:
         await message.answer(
             f"⚠️ Bu buyurtmani yoqib bo'lmaydi. Holati: <b>{order['status']}</b>"
+        )
+        return
+    usage = await database.get_subscription_usage(order["tenant_id"])
+    if get_plan_transition(
+        usage["plan"].code,
+        order.get("plan_code", "start"),
+        current_expired=usage["expired"],
+    ) == "blocked":
+        await message.answer(
+            f"⛔ <b>Past tarifni yoqib bo'lmaydi.</b>\n\n"
+            f"Mijozda <b>{usage['plan'].name}</b> tarifi hali faol. "
+            "Muddati tugagach past tarifni tanlash mumkin. To'lovni qo'lda tekshiring."
         )
         return
     won = await database.approve_payment_order_manually(order["id"])

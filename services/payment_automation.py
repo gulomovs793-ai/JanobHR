@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone
 
 from config import MONTHLY_PRICE_SOM, ORDER_TTL_MINUTES, PAYMENT_CARD_NUMBER
 from services import database
+from services.plans import get_plan_transition
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -252,6 +253,23 @@ async def handle_payment_notification(
         return {"status": "ambiguous", "amount": amount}
 
     order = candidates[0]
+
+    usage = await database.get_subscription_usage(order["tenant_id"])
+    transition = get_plan_transition(
+        usage["plan"].code,
+        order.get("plan_code", "start"),
+        current_expired=usage["expired"],
+    )
+    if transition == "blocked":
+        await database.mark_payment_order_needs_review(
+            order["id"], "Faol yuqori tarif sabab past tarif avtomatik yoqilmadi"
+        )
+        await notify_founders(
+            f"⚠️ {order['order_code']} to'lovi aniqlandi, lekin mijozda "
+            f"{usage['plan'].name} tarifi hali faol. Past tarif avtomatik yoqilmadi; "
+            "to'lovni qo'lda tekshiring yoki qaytaring."
+        )
+        return {"status": "needs_review", "amount": amount}
 
     # --- Atomik tasdiqlash (parallel bildirishnoma ikki marta faollashtirmasligi uchun) ---
     won = await database.try_approve_payment_order(order["id"])

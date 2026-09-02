@@ -21,10 +21,35 @@ PLANS = {
     "legacy": Plan("legacy", "Amaldagi tarif", 0, None, None, "Cheklanmagan"),
 }
 PUBLIC_PLAN_CODES = ("start", "growth", "business")
+PLAN_LEVELS = {code: level for level, code in enumerate(PUBLIC_PLAN_CODES, 1)}
 
 
 def get_plan(code: str | None) -> Plan:
     return PLANS.get(code or "trial", PLANS["trial"])
+
+
+def get_plan_transition(
+    current_code: str | None,
+    target_code: str,
+    *,
+    current_expired: bool,
+) -> str:
+    """Return the only valid UI/backend transition for a tariff purchase.
+
+    Paid plans may be renewed or upgraded while active. A downgrade becomes
+    available only after the current paid period has expired.
+    """
+    if target_code not in PUBLIC_PLAN_CODES:
+        raise ValueError("Noto'g'ri tarif")
+    if current_code not in PUBLIC_PLAN_CODES or current_expired:
+        return "select"
+    current_level = PLAN_LEVELS[current_code]
+    target_level = PLAN_LEVELS[target_code]
+    if target_level < current_level:
+        return "blocked"
+    if target_level == current_level:
+        return "renew"
+    return "upgrade"
 
 
 def format_som(amount: int) -> str:

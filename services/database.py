@@ -885,11 +885,20 @@ async def get_subscription_usage(tenant_id: int) -> dict:
 async def activate_subscription(
     tenant_id: int, plan_code: str, months: int = 1
 ) -> None:
-    from services.plans import PUBLIC_PLAN_CODES
+    from services.plans import PUBLIC_PLAN_CODES, get_plan_transition
 
     if plan_code not in PUBLIC_PLAN_CODES:
         raise ValueError("Noto'g'ri tarif")
     tenant = await get_tenant(tenant_id)
+    usage = await get_subscription_usage(tenant_id)
+    if get_plan_transition(
+        usage["plan"].code,
+        plan_code,
+        current_expired=usage["expired"],
+    ) == "blocked":
+        raise ValueError(
+            "Faol tarif muddati tugamaguncha past tarifga o'tib bo'lmaydi"
+        )
     now = datetime.now(timezone.utc)
     try:
         current_expiry = datetime.fromisoformat(

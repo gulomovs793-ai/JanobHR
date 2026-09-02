@@ -97,6 +97,16 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(return_value=[order]),
             ),
             patch.object(
+                database,
+                "get_subscription_usage",
+                AsyncMock(
+                    return_value={
+                        "plan": type("Plan", (), {"code": "trial"})(),
+                        "expired": False,
+                    }
+                ),
+            ),
+            patch.object(
                 database, "try_approve_payment_order", AsyncMock(return_value=True)
             ),
             patch.object(

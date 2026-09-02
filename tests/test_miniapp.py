@@ -19,6 +19,7 @@ from miniapp_api import (
     interviews,
     verify_init_data,
 )
+from services.plans import get_plan
 
 TOKEN = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi"
 
@@ -173,6 +174,16 @@ class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
             patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
             patch("miniapp_api.PAYMENT_CARD_NUMBER", "8600123412341234"),
             patch("miniapp_api.PAYMENT_CARD_HOLDER", "TEST USER"),
+            patch(
+                "miniapp_api.database.get_subscription_usage",
+                AsyncMock(
+                    return_value={
+                        "plan": get_plan("start"),
+                        "expired": False,
+                        "expires_at": "2099-01-01T00:00:00+00:00",
+                    }
+                ),
+            ),
             patch("miniapp_api.create_payment_order_for_plan", create_order),
         ):
             response = await create_billing_order(
@@ -184,6 +195,27 @@ class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["amount"], 599_117)
         self.assertEqual(payload["card_number"], "8600123412341234")
         create_order.assert_awaited_once_with(7, 599_000, plan_code="growth")
+
+    async def test_create_billing_order_blocks_lower_active_plan(self):
+        create_order = AsyncMock()
+        with (
+            patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
+            patch("miniapp_api.PAYMENT_CARD_NUMBER", "8600123412341234"),
+            patch(
+                "miniapp_api.database.get_subscription_usage",
+                AsyncMock(
+                    return_value={
+                        "plan": get_plan("business"),
+                        "expired": False,
+                        "expires_at": "2099-01-01T00:00:00+00:00",
+                    }
+                ),
+            ),
+            patch("miniapp_api.create_payment_order_for_plan", create_order),
+        ):
+            with self.assertRaises(web.HTTPConflict):
+                await create_billing_order(self.JsonRequest({"plan_code": "start"}))
+        create_order.assert_not_awaited()
 
     async def test_billing_order_status_is_tenant_scoped(self):
         with (

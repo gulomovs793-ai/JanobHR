@@ -28,7 +28,7 @@ from i18n import DEFAULT_LANG, t
 from services import database
 from services.ai_scoring import aggregate_scores
 from services.payment_automation import create_payment_order as create_payment_order_for_plan
-from services.plans import PUBLIC_PLAN_CODES, get_plan
+from services.plans import PUBLIC_PLAN_CODES, get_plan, get_plan_transition
 
 logger = logging.getLogger("janob_hr_bot")
 STATIC_DIR = Path(__file__).with_name("miniapp")
@@ -582,6 +582,7 @@ async def billing(request: web.Request):
                 "code": usage["plan"].code,
                 "name": usage["plan"].name,
                 "expires_at": usage["expires_at"],
+                "expired": usage["expired"],
             },
             "plans": [
                 {
@@ -590,6 +591,11 @@ async def billing(request: web.Request):
                     "price": get_plan(code).price,
                     "applications": get_plan(code).application_limit,
                     "vacancies": get_plan(code).vacancy_limit,
+                    "purchase_state": get_plan_transition(
+                        usage["plan"].code,
+                        code,
+                        current_expired=usage["expired"],
+                    ),
                 }
                 for code in PUBLIC_PLAN_CODES
             ],
@@ -608,6 +614,21 @@ async def create_billing_order(request: web.Request):
     plan_code = str(body.get("plan_code") or "").strip().lower()
     if plan_code not in PUBLIC_PLAN_CODES:
         raise web.HTTPBadRequest(text="Tarif topilmadi.")
+    usage = await database.get_subscription_usage(tenant["id"])
+    transition = get_plan_transition(
+        usage["plan"].code,
+        plan_code,
+        current_expired=usage["expired"],
+    )
+    if transition == "blocked":
+        expiry = (usage.get("expires_at") or "")[:10]
+        suffix = f" ({expiry} gacha)" if expiry else ""
+        raise web.HTTPConflict(
+            text=(
+                f"{usage['plan'].name} tarifi{suffix} faol. "
+                "Past tarifni joriy muddat tugagach tanlashingiz mumkin."
+            )
+        )
     plan = get_plan(plan_code)
     order = await create_payment_order_for_plan(
         tenant["id"], plan.price, plan_code=plan_code

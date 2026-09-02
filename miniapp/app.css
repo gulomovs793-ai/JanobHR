@@ -1404,6 +1404,23 @@ a:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.plan-rule {
+  min-height: 32px;
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.plan-rule.blocked {
+  color: var(--amber);
+}
+
+.price-card.purchase-renew {
+  border-color: rgba(8, 124, 255, .4);
+  background: linear-gradient(180deg, rgba(8, 124, 255, .045), var(--surface));
+}
+
 .price-card button,
 .decision-actions button,
 #retry {
@@ -1416,6 +1433,13 @@ a:focus-visible {
   color: #fff;
   font-size: 12px;
   font-weight: 700;
+}
+
+.price-card button:disabled {
+  background: #e8e8ed;
+  color: var(--muted-2);
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .support {

@@ -12,6 +12,7 @@ from handlers import admin as admin_handlers
 from handlers import create_bot
 from services import database
 from services.payment_automation import handle_payment_notification
+from services.plans import get_plan
 from services.storage import SQLiteStorage
 
 
@@ -120,6 +121,69 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(result["status"], "approved")
         mark_review.assert_awaited_once()
         self.assertIn("xatosi", notify.await_args.args[0])
+
+    async def test_manual_payment_confirmation_uses_html_parse_mode(self):
+        from aiogram.enums import ParseMode
+        from founder_panel import _activate_order
+
+        order = {
+            "id": 10,
+            "tenant_id": 20,
+            "order_code": "JH-HTML",
+            "status": "awaiting_payment",
+            "plan_code": "start",
+            "billing_months": 1,
+            "amount": 299_123,
+        }
+        tenant = {
+            "admin_bot_token": "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi",
+            "admin_user_ids": [777],
+        }
+        customer_bot = type(
+            "CustomerBot",
+            (),
+            {
+                "send_message": AsyncMock(),
+                "session": type("Session", (), {"close": AsyncMock()})(),
+            },
+        )()
+        message = type("Message", (), {"answer": AsyncMock()})()
+        with (
+            patch(
+                "founder_panel.database.get_payment_order_by_code",
+                AsyncMock(return_value=order),
+            ),
+            patch(
+                "founder_panel.database.get_subscription_usage",
+                AsyncMock(
+                    return_value={"plan": get_plan("trial"), "expired": False}
+                ),
+            ),
+            patch(
+                "founder_panel.database.approve_payment_order_manually",
+                AsyncMock(return_value=True),
+            ),
+            patch(
+                "services.tenant_activation.activate_tenant",
+                AsyncMock(return_value={"ok": True}),
+            ),
+            patch("founder_panel.database.activate_subscription", AsyncMock()),
+            patch(
+                "founder_panel.database.get_tenant",
+                AsyncMock(return_value=tenant),
+            ),
+            patch(
+                "founder_panel.database.mark_customer_payment_notified",
+                AsyncMock(),
+            ),
+            patch("founder_panel.Bot", return_value=customer_bot),
+        ):
+            await _activate_order(message, "JH-HTML")
+
+        self.assertEqual(
+            customer_bot.send_message.await_args.kwargs["parse_mode"],
+            ParseMode.HTML,
+        )
 
     async def test_application_is_sent_by_admin_bot(self):
         tenant = {

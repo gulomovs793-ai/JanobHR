@@ -296,6 +296,7 @@ async def _activate_order(message: Message, code: str, state: FSMContext | None 
                 f"Buyurtma: <code>{code}</code>\n"
                 f"Summa: <b>{order['amount']:,} so'm</b>\n\n"
                 "Tarifingiz yoqildi. Janob HR'dan foydalanishingiz mumkin.",
+                parse_mode=ParseMode.HTML,
             )
             await database.mark_customer_payment_notified(code)
         except Exception:

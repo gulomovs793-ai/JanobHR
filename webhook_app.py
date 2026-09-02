@@ -152,6 +152,24 @@ async def configure_admin_miniapp(tenant: dict) -> None:
         await admin_bot.session.close()
 
 
+async def configure_founder_miniapp() -> None:
+    """Founder bot menyusiga xavfsiz boshqaruv Mini Appini ulaydi."""
+    if not FOUNDER_BOT_TOKEN or not WEBHOOK_BASE_URL:
+        return
+    from aiogram.types import MenuButtonWebApp, WebAppInfo
+
+    founder_bot = Bot(token=FOUNDER_BOT_TOKEN)
+    try:
+        await founder_bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="Founder panel",
+                web_app=WebAppInfo(url=f"{WEBHOOK_BASE_URL.rstrip('/')}/founder"),
+            )
+        )
+    finally:
+        await founder_bot.session.close()
+
+
 async def on_startup(app: web.Application):
     await database.init_db()
     # Dispatcher ishlatadigan persistent FSM jadvali database.init_db() tarkibiga
@@ -176,6 +194,7 @@ async def on_startup(app: web.Application):
     if FOUNDER_BOT_TOKEN:
         try:
             await register_new_tenant_webhook(FOUNDER_BOT_TOKEN)
+            await configure_founder_miniapp()
             logger.info("Founder Bot webhooki ornatildi.")
         except Exception:
             logger.exception("Founder Bot webhookini ornatib bolmadi.")
@@ -222,8 +241,10 @@ def create_app() -> web.Application:
     )
     handler.register(app, path=WEBHOOK_PATH)
     from miniapp_api import register_miniapp
+    from founder_miniapp_api import register_founder_miniapp
 
     register_miniapp(app)
+    register_founder_miniapp(app)
     setup_application(app, dp)
 
     app.on_startup.append(on_startup)

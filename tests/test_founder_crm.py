@@ -44,6 +44,29 @@ class FounderCrmTests(unittest.IsolatedAsyncioTestCase):
             await database.get_payment_order_for_tenant(self.tenant_b, "JH-PRIVATE")
         )
 
+    async def test_founder_dashboard_reports_plans_revenue_and_customers(self):
+        await database.update_tenant_status(self.tenant_a, "active")
+        await database.activate_subscription(self.tenant_a, "growth")
+        order_id = await database.create_payment_order(
+            self.tenant_a,
+            "JH-DASH",
+            599_000,
+            599_111,
+            "2099-01-01T00:00:00+00:00",
+            plan_code="growth",
+        )
+        self.assertTrue(await database.try_approve_payment_order(order_id))
+
+        result = await database.get_founder_dashboard_data()
+
+        self.assertEqual(result["tenants"]["active"], 1)
+        self.assertEqual(result["revenue"]["month"], 599_111)
+        self.assertEqual(result["plans"], [{"plan_code": "growth", "count": 1}])
+        self.assertEqual(result["customers"][0]["company_name"], "B")
+        customer_a = next(item for item in result["customers"] if item["id"] == self.tenant_a)
+        self.assertEqual(customer_a["plan_code"], "growth")
+        self.assertNotIn("bot_token", customer_a)
+
     async def test_notification_key_is_idempotent(self):
         self.assertFalse(await database.was_system_notification_sent("same"))
         await database.mark_system_notification_sent("same")

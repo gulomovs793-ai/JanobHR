@@ -619,6 +619,130 @@ async def get_founder_stats() -> dict:
     }
 
 
+async def get_founder_dashboard_data() -> dict:
+    """Founder Mini App uchun platformadagi jonli biznes ma'lumotlari.
+
+    Barcha hisoblar bir xil SQLite snapshotidan olinadi. Bot tokenlari va boshqa
+    maxfiy maydonlar javobga umuman kiritilmaydi.
+    """
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    day_ago = (now - timedelta(days=1)).isoformat()
+    week_ago = (now - timedelta(days=7)).isoformat()
+    month_ago = (now - timedelta(days=30)).isoformat()
+    renewal_cutoff = (now + timedelta(days=7)).isoformat()
+
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT status, COUNT(*) AS count FROM tenants GROUP BY status"
+        )
+        tenant_counts = {row["status"]: row["count"] for row in await cursor.fetchall()}
+
+        cursor = await db.execute(
+            "SELECT plan_code, COUNT(*) AS count FROM tenants "
+            "WHERE status='active' GROUP BY plan_code ORDER BY count DESC"
+        )
+        plan_counts = [dict(row) for row in await cursor.fetchall()]
+
+        async def scalar(sql: str, params: tuple = ()) -> int:
+            item = await (await db.execute(sql, params)).fetchone()
+            return int(item[0] or 0)
+
+        revenue = {
+            "today": await scalar(
+                "SELECT SUM(amount) FROM payment_orders WHERE status='approved' AND decided_at>=?",
+                (day_ago,),
+            ),
+            "week": await scalar(
+                "SELECT SUM(amount) FROM payment_orders WHERE status='approved' AND decided_at>=?",
+                (week_ago,),
+            ),
+            "month": await scalar(
+                "SELECT SUM(amount) FROM payment_orders WHERE status='approved' AND decided_at>=?",
+                (month_ago,),
+            ),
+            "all": await scalar(
+                "SELECT SUM(amount) FROM payment_orders WHERE status='approved'"
+            ),
+        }
+        payment_statuses = {
+            "awaiting_payment": await scalar(
+                "SELECT COUNT(*) FROM payment_orders WHERE status='awaiting_payment'"
+            ),
+            "needs_review": await scalar(
+                "SELECT COUNT(*) FROM payment_orders WHERE status='needs_review'"
+            ),
+            "approved_30d": await scalar(
+                "SELECT COUNT(*) FROM payment_orders WHERE status='approved' AND decided_at>=?",
+                (month_ago,),
+            ),
+        }
+        applications = {
+            "today": await scalar(
+                "SELECT COUNT(*) FROM applications WHERE created_at>=?", (day_ago,)
+            ),
+            "month": await scalar(
+                "SELECT COUNT(*) FROM applications WHERE created_at>=?", (month_ago,)
+            ),
+            "all": await scalar("SELECT COUNT(*) FROM applications"),
+        }
+        leads = {
+            "new": await scalar("SELECT COUNT(*) FROM business_leads WHERE status='new'"),
+            "all": await scalar("SELECT COUNT(*) FROM business_leads"),
+        }
+
+        cursor = await db.execute(
+            "SELECT t.id, t.company_name, t.contact_name, t.contact_phone, "
+            "t.contact_username, t.status, t.plan_code, t.subscription_expires_at, "
+            "t.created_at, COUNT(DISTINCT a.id) AS applications, "
+            "COUNT(DISTINCT CASE WHEN v.active=1 THEN v.id END) AS active_vacancies "
+            "FROM tenants t "
+            "LEFT JOIN applications a ON a.tenant_id=t.id "
+            "LEFT JOIN vacancies v ON v.tenant_id=t.id "
+            "GROUP BY t.id ORDER BY t.created_at DESC"
+        )
+        customers = [dict(row) for row in await cursor.fetchall()]
+
+        cursor = await db.execute(
+            "SELECT p.id, p.order_code, p.amount, p.plan_code, p.status, p.created_at, "
+            "p.expires_at, p.decided_at, t.id AS tenant_id, t.company_name, t.contact_phone "
+            "FROM payment_orders p JOIN tenants t ON t.id=p.tenant_id "
+            "ORDER BY p.created_at DESC LIMIT 100"
+        )
+        payments = [dict(row) for row in await cursor.fetchall()]
+
+    renewals = [
+        item for item in customers
+        if item["status"] == "active"
+        and item.get("subscription_expires_at")
+        and item["subscription_expires_at"] <= renewal_cutoff
+    ]
+    for item in renewals:
+        expires = datetime.fromisoformat(item["subscription_expires_at"])
+        item["days_left"] = max(-999, (expires.date() - now.date()).days)
+    renewals.sort(key=lambda item: item.get("subscription_expires_at") or "")
+
+    return {
+        "generated_at": now_iso,
+        "tenants": {
+            "total": sum(tenant_counts.values()),
+            "active": tenant_counts.get("active", 0),
+            "pending": tenant_counts.get("pending", 0),
+            "inactive": tenant_counts.get("inactive", 0),
+        },
+        "plans": plan_counts,
+        "revenue": revenue,
+        "payments": payment_statuses,
+        "applications": applications,
+        "leads": leads,
+        "renewals": renewals,
+        "customers": customers,
+        "recent_payments": payments,
+    }
+
+
 async def save_business_lead(**lead) -> int:
     now = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:

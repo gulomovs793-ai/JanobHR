@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>Janob HR — Founder</title>
+  <link rel="stylesheet" href="/founder-assets/app.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="/miniapp-assets/logo.png" alt=""><div><b>Janob <span>HR</span></b><small>FOUNDER COMMAND</small></div></div>
+    <button id="refresh" class="refresh" aria-label="Yangilash"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg></button>
+  </header>
+
+  <main>
+    <section id="overview" class="page active">
+      <div class="hero">
+        <div><p class="live"><i></i> JONLI MA'LUMOT</p><h1>Biznes nazorati</h1><p id="updated">Ma'lumot yuklanmoqda...</p></div>
+        <div class="hero-number"><small>30 KUNLIK TUSHUM</small><strong id="revenue-month">—</strong><span>so'm</span></div>
+      </div>
+
+      <div class="metrics">
+        <article><span class="metric-icon blue">↗</span><small>Faol biznes</small><strong id="active-count">—</strong><p id="total-count">Jami —</p></article>
+        <article><span class="metric-icon green">₸</span><small>Bugungi tushum</small><strong id="revenue-today">—</strong><p>so'm</p></article>
+        <article data-go="renewals"><span class="metric-icon amber">!</span><small>Uzaytirish kerak</small><strong id="renewal-count">—</strong><p>7 kun ichida</p></article>
+        <article data-go="payments"><span class="metric-icon red">×</span><small>To'lov muammosi</small><strong id="review-count">—</strong><p>Tekshirish kerak</p></article>
+      </div>
+
+      <section class="card">
+        <div class="section-head"><div><small>TARIFLAR</small><h2>Kim qaysi tarifda?</h2></div><span id="paid-total" class="pill">0 mijoz</span></div>
+        <div id="plan-list" class="plan-list"><div class="skeleton"></div></div>
+      </section>
+
+      <section class="card revenue-card">
+        <div class="section-head"><div><small>MOLIYA</small><h2>Tushumlar</h2></div></div>
+        <div class="revenue-grid">
+          <div><small>7 kun</small><b id="revenue-week">—</b></div>
+          <div><small>30 kun</small><b id="revenue-30">—</b></div>
+          <div><small>Jami</small><b id="revenue-all">—</b></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><div><small>PLATFORMA</small><h2>Faollik</h2></div></div>
+        <div class="activity-grid">
+          <div><b id="apps-today">—</b><span>Bugungi ariza</span></div>
+          <div><b id="apps-month">—</b><span>30 kunlik ariza</span></div>
+          <div><b id="new-leads">—</b><span>Yangi lid</span></div>
+          <div><b id="waiting-payments">—</b><span>To'lov kutilyapti</span></div>
+        </div>
+      </section>
+    </section>
+
+    <section id="renewals" class="page">
+      <div class="page-title"><p>OBUNALAR</p><h1>Uzaytirish kerak</h1><span>7 kun ichida tugaydigan va muddati o'tgan tariflar</span></div>
+      <div id="renewal-list" class="stack"></div>
+    </section>
+
+    <section id="customers" class="page">
+      <div class="page-title"><p>MIJOZLAR</p><h1>Barcha bizneslar</h1><span>Tarif, status va real foydalanish</span></div>
+      <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="customer-search" placeholder="Kompaniya yoki telefon..."></label>
+      <div id="customer-filters" class="filters"><button class="active" data-filter="all">Barchasi</button><button data-filter="active">Faol</button><button data-filter="pending">Yangi</button><button data-filter="inactive">To'xtagan</button></div>
+      <div id="customer-list" class="stack"></div>
+    </section>
+
+    <section id="payments" class="page">
+      <div class="page-title"><p>TO'LOVLAR</p><h1>To'lov nazorati</h1><span>Oxirgi 100 ta buyurtma va xatolar</span></div>
+      <div id="payment-filters" class="filters"><button class="active" data-payment-filter="all">Barchasi</button><button data-payment-filter="needs_review">Muammo</button><button data-payment-filter="awaiting_payment">Kutilmoqda</button><button data-payment-filter="approved">To'langan</button></div>
+      <div id="payment-list" class="stack"></div>
+    </section>
+
+    <section id="error" class="page error-page"><div><b>!</b><h2>Ma'lumot ochilmadi</h2><p id="error-text">Founder bot ichidan qayta oching.</p><button id="retry">Qayta urinish</button></div></section>
+  </main>
+
+  <nav>
+    <button class="active" data-go="overview"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4zm10 7h6V11h-6zM4 20h6v-3H4zm10-13h6V4h-6z"/></svg><span>Asosiy</span></button>
+    <button data-go="renewals"><svg viewBox="0 0 24 24"><path d="M12 8v5l3 2M4.9 4.9A10 10 0 1 0 12 2M2 2v6h6"/></svg><span>Uzaytirish</span><i id="renewal-badge" hidden></i></button>
+    <button data-go="customers"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Mijozlar</span></button>
+    <button data-go="payments"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20M7 15h2"/></svg><span>To'lovlar</span><i id="payment-badge" hidden></i></button>
+  </nav>
+  <div id="toast" role="status"></div>
+  <script src="/founder-assets/app.js"></script>
+</body>
+</html>

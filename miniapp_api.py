@@ -73,8 +73,8 @@ async def security_headers(request: web.Request, handler):
             "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
             "Content-Security-Policy": (
                 "default-src 'self'; script-src 'self' https://telegram.org; "
-                "style-src 'self' https://fonts.googleapis.com; "
-                "font-src 'self' https://fonts.gstatic.com; "
+                "style-src 'self' 'unsafe-inline'; "
+                "font-src 'self' data:; "
                 "img-src 'self' data:; connect-src 'self'; "
                 "frame-ancestors https://web.telegram.org https://*.telegram.org"
             ),

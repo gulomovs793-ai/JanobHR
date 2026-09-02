@@ -126,7 +126,7 @@ async def start_userbot():
     uname = f"@{me.username}" if getattr(me, "username", None) else "(username yo'q)"
     expected = CARD_BOT_USERNAME.lower()
     logger.info("[userbot] Ulandi: %s. Kuzatilayotgan bot: @%s", uname, expected)
-    await database.clear_recent_payment_notifications(minutes=60)
+    await database.clear_old_payment_notifications(days=7)
     for approved_order in await database.list_unnotified_approved_orders(hours=24):
         await _notify_tenant_payment_approved(
             {

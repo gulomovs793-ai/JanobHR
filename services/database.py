@@ -1816,11 +1816,11 @@ async def forget_payment_notification(text_hash: str) -> None:
         await db.commit()
 
 
-async def clear_recent_payment_notifications(minutes: int = 60) -> None:
-    """Uzilish paytida no_match bo'lgan xabarlarni xavfsiz qayta tekshirish."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+async def clear_old_payment_notifications(days: int = 7) -> None:
+    """Deduplikatsiyani saqlab, faqat eskirgan notification hashlarini tozalash."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            "DELETE FROM payment_notifications_seen WHERE received_at >= ?", (cutoff,)
+            "DELETE FROM payment_notifications_seen WHERE received_at < ?", (cutoff,)
         )
         await db.commit()

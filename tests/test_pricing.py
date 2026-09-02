@@ -133,6 +133,16 @@ class PricingTests(unittest.IsolatedAsyncioTestCase):
         notify.assert_awaited_once()
         activate.assert_not_awaited()
 
+    async def test_startup_cleanup_keeps_recent_payment_hashes(self):
+        text_hash = "recent-payment-hash"
+        await database.record_seen_notification(text_hash, 777_123)
+
+        await database.clear_old_payment_notifications(days=7)
+
+        self.assertTrue(
+            await database.was_notification_seen_recently(text_hash, minutes=30)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

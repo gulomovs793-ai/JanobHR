@@ -117,6 +117,22 @@ class PricingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(order["id"], order_id)
         self.assertEqual(order["status"], "needs_review")
 
+    async def test_unmatched_payment_is_not_replayed_after_restart(self):
+        notify = AsyncMock()
+        activate = AsyncMock(return_value={"ok": True})
+        text = "+ 777 123 so'm karta **1234"
+        with patch(
+            "services.payment_automation.PAYMENT_CARD_NUMBER",
+            "8600123412341234",
+        ):
+            first = await handle_payment_notification(text, notify, activate)
+            replay = await handle_payment_notification(text, notify, activate)
+
+        self.assertEqual(first["status"], "no_match")
+        self.assertEqual(replay["status"], "duplicate")
+        notify.assert_awaited_once()
+        activate.assert_not_awaited()
+
 
 if __name__ == "__main__":
     unittest.main()

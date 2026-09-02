@@ -242,7 +242,6 @@ async def handle_payment_notification(
             amount,
             open_summary,
         )
-        await database.forget_payment_notification(text_hash)
         return {"status": "no_match", "amount": amount}
 
     if len(candidates) > 1:

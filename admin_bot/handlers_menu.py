@@ -3,13 +3,46 @@
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message, WebAppInfo
+from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import MINI_APP_BASE_URL, WEBHOOK_BASE_URL
 from services import database
 
 router = Router(name="admin_menu")
+
+ADMIN_MENU = {
+    "panel": "🖥 Boshqaruv paneli",
+    "new": "📥 Yangi arizalar",
+    "candidates": "👥 Nomzodlar",
+    "vacancies": "💼 Vakansiyalar",
+    "interviews": "📅 Suhbatlar",
+    "stats": "📊 Statistika",
+    "billing": "💳 Tarif va to'lov",
+    "help": "☎️ Yordam",
+}
+
+
+def _service_keyboard(tenant_id: int) -> ReplyKeyboardMarkup:
+    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
+    panel = KeyboardButton(text=ADMIN_MENU["panel"])
+    if WEBHOOK_BASE_URL:
+        panel = KeyboardButton(
+            text=ADMIN_MENU["panel"],
+            web_app=WebAppInfo(url=f"{miniapp_base}/{tenant_id}"),
+        )
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [panel],
+            [KeyboardButton(text=ADMIN_MENU["new"]), KeyboardButton(text=ADMIN_MENU["candidates"])],
+            [KeyboardButton(text=ADMIN_MENU["vacancies"]), KeyboardButton(text=ADMIN_MENU["interviews"])],
+            [KeyboardButton(text=ADMIN_MENU["stats"]), KeyboardButton(text=ADMIN_MENU["billing"])],
+            [KeyboardButton(text=ADMIN_MENU["help"])],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Kerakli xizmatni tanlang",
+    )
 
 
 def _main_menu_keyboard(overall: dict, tenant_id: int):
@@ -43,8 +76,10 @@ async def show_main_menu(message: Message, tenant_id: int, *, edit: bool = False
         f"Jami: <b>{overall['total']}</b>\n\n"
         "Bugungi ishni qayerdan boshlaysiz?"
     )
-    method = message.edit_text if edit else message.answer
-    await method(text, reply_markup=_main_menu_keyboard(overall, tenant_id))
+    if edit:
+        await message.edit_text(text, reply_markup=_main_menu_keyboard(overall, tenant_id))
+    else:
+        await message.answer(text, reply_markup=_service_keyboard(tenant_id))
 
 
 @router.message(CommandStart())
@@ -99,3 +134,56 @@ async def show_stats(callback: CallbackQuery, tenant_id: int):
 
     await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
     await callback.answer()
+
+
+async def _send_stats(message: Message, tenant_id: int):
+    overall = await database.get_overall_stats(tenant_id)
+    await message.answer(
+        "📊 <b>Statistika</b>\n\n"
+        f"Jami ariza: <b>{overall['total']}</b>\n"
+        f"Yangi: <b>{overall['pending']}</b>\n"
+        f"Suhbatga chaqirilgan: <b>{overall['accepted']}</b>\n"
+        f"Rad etilgan: <b>{overall['rejected_total']}</b>"
+    )
+
+
+@router.message(F.text == ADMIN_MENU["new"])
+async def service_new_applications(message: Message, tenant_id: int):
+    from admin_bot.handlers_candidates import show_list_message
+    await show_list_message(message, tenant_id, "pending", 0)
+
+
+@router.message(F.text == ADMIN_MENU["candidates"])
+async def service_candidates(message: Message, tenant_id: int):
+    from admin_bot.handlers_candidates import show_list_message
+    await show_list_message(message, tenant_id, "all", 0)
+
+
+@router.message(F.text == ADMIN_MENU["vacancies"])
+async def service_vacancies(message: Message, tenant_id: int):
+    from admin_bot.handlers_vacancy_list import list_vacancies_message
+    await list_vacancies_message(message, tenant_id)
+
+
+@router.message(F.text == ADMIN_MENU["interviews"])
+async def service_interviews(message: Message, state: FSMContext, tenant_id: int):
+    from admin_bot.handlers_interview import _show_menu
+    await _show_menu(message, state, tenant_id)
+
+
+@router.message(F.text == ADMIN_MENU["billing"])
+async def service_billing(message: Message, tenant_id: int):
+    from admin_bot.handlers_billing import show_billing_message
+    await show_billing_message(message, tenant_id)
+
+
+@router.message(F.text == ADMIN_MENU["stats"])
+async def service_stats(message: Message, tenant_id: int):
+    await _send_stats(message, tenant_id)
+
+
+@router.message(F.text == ADMIN_MENU["help"])
+async def service_help(message: Message):
+    await message.answer(
+        "☎️ <b>Yordam</b>\n\nSavol yoki muammo bo'lsa, <b>@F45746</b> ga yozing."
+    )

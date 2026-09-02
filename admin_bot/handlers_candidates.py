@@ -1,7 +1,7 @@
 """Admin bot — yangi va barcha nomzodlarni sahifalab ko'rish."""
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.admin import format_application_full_text, format_candidate_card
@@ -48,6 +48,27 @@ async def _show_list(callback: CallbackQuery, tenant_id: int, status: str, page:
         text += "\n\nHozircha bu bo'limda nomzod yo'q."
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()
+
+
+async def show_list_message(message: Message, tenant_id: int, status: str, page: int):
+    db_status = None if status == "all" else status
+    apps, total = await database.list_applications(
+        tenant_id, status=db_status, limit=PAGE_SIZE, offset=page * PAGE_SIZE
+    )
+    title = "📥 Yangi arizalar" if status == "pending" else "👥 Barcha nomzodlar"
+    builder = InlineKeyboardBuilder()
+    for app in apps:
+        score = aggregate_scores(app.get("ai_scores") or {})
+        score_text = f" · {score['avg_score']}/100" if score else ""
+        builder.button(
+            text=f"{app['full_name']} · {app['vacancy_title']}{score_text}",
+            callback_data=f"apps:view:{app['id']}:{status}:{page}",
+        )
+    builder.adjust(1)
+    text = f"{title}\n\nJami: <b>{total}</b>"
+    if not apps:
+        text += "\n\nHozircha bu bo'limda nomzod yo'q."
+    await message.answer(text, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("apps:list:"))

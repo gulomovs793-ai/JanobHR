@@ -8,7 +8,7 @@ admin ro'yxatida bo'lsa — Admin menyu, aks holda — nomzod oqimi ko'rsatiladi
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from i18n import CHOOSE_LANGUAGE_PROMPT, DEFAULT_LANG, LANGUAGES, t
@@ -87,9 +87,28 @@ def _home_keyboard(lang: str):
     return builder.as_markup()
 
 
+def _services_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    copy = _COPY[lang]
+    language = "🌐 Tilni o'zgartirish" if lang == "uz" else "🌐 Сменить язык"
+    help_label = "☎️ Yordam" if lang == "uz" else "☎️ Помощь"
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=copy["jobs"]), KeyboardButton(text=copy["status"])],
+            [KeyboardButton(text=copy["about"]), KeyboardButton(text=language)],
+            [KeyboardButton(text=help_label)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder=(
+            "Kerakli xizmatni tanlang" if lang == "uz" else "Выберите нужный раздел"
+        ),
+    )
+
+
 async def _show_home(message: Message, lang: str, *, edit: bool = False):
-    method = message.edit_text if edit else message.answer
-    await method(_COPY[lang]["home"], reply_markup=_home_keyboard(lang))
+    if edit:
+        await message.delete()
+    await message.answer(_COPY[lang]["home"], reply_markup=_services_keyboard(lang))
 
 
 async def _show_vacancy_menu(
@@ -242,3 +261,59 @@ async def cmd_help(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", DEFAULT_LANG)
     await message.answer(t("help_text", lang))
+
+
+@router.message(F.text.in_({_COPY["uz"]["jobs"], _COPY["ru"]["jobs"]}))
+async def service_jobs(message: Message, state: FSMContext, tenant_id: int):
+    data = await state.get_data()
+    lang = data.get("lang", "ru" if message.text == _COPY["ru"]["jobs"] else "uz")
+    pending = await database.get_pending_application_for_user(tenant_id, message.from_user.id)
+    if pending:
+        await message.answer(
+            "Arizangiz hozir ko'rib chiqilmoqda."
+            if lang == "uz" else "Ваша заявка сейчас рассматривается."
+        )
+        return
+    await state.update_data(lang=lang)
+    await _show_vacancy_menu(message, state, lang, tenant_id)
+
+
+@router.message(F.text.in_({_COPY["uz"]["status"], _COPY["ru"]["status"]}))
+async def service_status(message: Message, state: FSMContext, tenant_id: int):
+    data = await state.get_data()
+    lang = data.get("lang", "ru" if message.text == _COPY["ru"]["status"] else "uz")
+    app = await database.get_latest_application_for_user(tenant_id, message.from_user.id)
+    if not app:
+        await message.answer(_COPY[lang]["none"])
+        return
+    icon, uz_status, ru_status = _APPLICATION_STATUS.get(
+        app["status"], ("•", app["status"], app["status"])
+    )
+    await message.answer(
+        f"📄 <b>{app['vacancy_title']}</b>\n\n"
+        f"{icon} {uz_status if lang == 'uz' else ru_status}\n"
+        f"🗓 {(app.get('created_at') or '')[:10]}"
+    )
+
+
+@router.message(F.text.in_({_COPY["uz"]["about"], _COPY["ru"]["about"]}))
+async def service_about(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru" if message.text == _COPY["ru"]["about"] else "uz")
+    await message.answer(_COPY[lang]["about_text"])
+
+
+@router.message(F.text.in_({"🌐 Tilni o'zgartirish", "🌐 Сменить язык"}))
+async def service_language(message: Message, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+    for code, label in LANGUAGES.items():
+        builder.button(text=label, callback_data=f"lang:{code}")
+    builder.adjust(1)
+    await state.set_state(ApplyForm.choosing_language)
+    await message.answer(CHOOSE_LANGUAGE_PROMPT, reply_markup=builder.as_markup())
+
+
+@router.message(F.text.in_({"☎️ Yordam", "☎️ Помощь"}))
+async def service_help(message: Message, state: FSMContext):
+    data = await state.get_data()
+    await message.answer(t("help_text", data.get("lang", DEFAULT_LANG)))

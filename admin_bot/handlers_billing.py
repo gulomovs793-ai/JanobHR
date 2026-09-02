@@ -1,7 +1,7 @@
 """Admin bot ichidagi tarif, limit va to'lov oynasi."""
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
@@ -14,6 +14,28 @@ router = Router(name="admin_billing")
 
 def _usage(value: int, limit: int | None) -> str:
     return f"{value} / {limit}" if limit is not None else f"{value} / ∞"
+
+
+async def show_billing_message(message: Message, tenant_id: int) -> None:
+    usage = await database.get_subscription_usage(tenant_id)
+    plan = usage["plan"]
+    expiry = (usage["expires_at"] or "—")[:10]
+    builder = InlineKeyboardBuilder()
+    for code in PUBLIC_PLAN_CODES:
+        item = get_plan(code)
+        builder.button(
+            text=f"{item.name} — {format_som(item.price)}",
+            callback_data=f"billing:buy:{code}",
+        )
+    builder.adjust(1)
+    await message.answer(
+        "💳 <b>Tarif va to'lov</b>\n\n"
+        f"Joriy tarif: <b>{plan.name}</b>\n"
+        f"Arizalar: <b>{_usage(usage['applications_used'], plan.application_limit)}</b>\n"
+        f"Faol vakansiyalar: <b>{_usage(usage['vacancies_used'], plan.vacancy_limit)}</b>\n"
+        f"Amal qilish sanasi: <b>{expiry}</b>\n\nTarifni tanlang:",
+        reply_markup=builder.as_markup(),
+    )
 
 
 async def _show(callback: CallbackQuery, tenant_id: int) -> None:

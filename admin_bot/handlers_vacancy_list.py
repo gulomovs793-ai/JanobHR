@@ -1,7 +1,7 @@
 """Admin bot — vakansiyalar ro'yxati, tafsilotlari, faollashtirish/o'chirish."""
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from admin_bot.parsing import format_questions_preview
@@ -9,6 +9,20 @@ from services import database
 from services.ai_scoring import aggregate_scores
 
 router = Router(name="admin_vacancy_list")
+
+
+async def list_vacancies_message(message: Message, tenant_id: int):
+    vacancies = await database.list_vacancies(tenant_id, active_only=False)
+    builder = InlineKeyboardBuilder()
+    for vacancy in vacancies:
+        status = "🟢" if vacancy["active"] else "🔴"
+        builder.button(
+            text=f"{status} {vacancy['title']}", callback_data=f"vac:{vacancy['key']}"
+        )
+    builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
+    builder.adjust(1)
+    text = "📋 <b>Vakansiyalar</b>\n\nBiror birini tanlang:" if vacancies else "Hozircha vakansiya yo'q."
+    await message.answer(text, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "menu:vacancies")

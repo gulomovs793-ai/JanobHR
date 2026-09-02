@@ -15,7 +15,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, WEBHOOK_BASE_URL
@@ -25,6 +25,36 @@ from services.plans import get_plan_transition
 logger = logging.getLogger("janob_hr_founder")
 
 router = Router(name="founder_panel")
+
+FOUNDER_MENU = {
+    "panel": "👑 Founder panel",
+    "customers": "🏢 Mijozlar",
+    "leads": "📞 Lidlar",
+    "payments": "💳 To'lovlar",
+    "renewals": "⏰ Uzaytirishlar",
+    "stats": "📊 Statistika",
+    "activate": "🔑 Tarifni qo'lda yoqish",
+}
+
+
+def _founder_services_keyboard() -> ReplyKeyboardMarkup:
+    panel = KeyboardButton(text=FOUNDER_MENU["panel"])
+    if WEBHOOK_BASE_URL:
+        panel = KeyboardButton(
+            text=FOUNDER_MENU["panel"],
+            web_app=WebAppInfo(url=f"{WEBHOOK_BASE_URL.rstrip('/')}/founder"),
+        )
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [panel],
+            [KeyboardButton(text=FOUNDER_MENU["customers"]), KeyboardButton(text=FOUNDER_MENU["leads"])],
+            [KeyboardButton(text=FOUNDER_MENU["payments"]), KeyboardButton(text=FOUNDER_MENU["renewals"])],
+            [KeyboardButton(text=FOUNDER_MENU["stats"]), KeyboardButton(text=FOUNDER_MENU["activate"])],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Founder xizmatini tanlang",
+    )
 
 
 class FounderForm(StatesGroup):
@@ -76,23 +106,6 @@ async def cmd_start(message: Message):
 async def show_main_menu(message: Message):
     stats = await database.get_founder_stats()
 
-    builder = InlineKeyboardBuilder()
-    builder.button(
-        text=f"🔥 Yangi leadlar ({stats['pending']})", callback_data="fp:pending"
-    )
-    builder.button(
-        text=f"📞 Lidlar ({stats['business_leads']})", callback_data="fp:leads"
-    )
-    builder.button(
-        text=f"💼 Faol mijozlar ({stats['active']})", callback_data="fp:active"
-    )
-    builder.button(
-        text=f"⏸ To'xtatilgan ({stats['inactive']})", callback_data="fp:inactive"
-    )
-    builder.button(text="📊 Biznes ko'rsatkichlari", callback_data="fp:stats")
-    builder.button(text="🔑 Tarifni qo'lda yoqish", callback_data="fp:manual_payment")
-    builder.adjust(2, 2, 1)
-
     await message.answer(
         "👑 <b>Janob HR — Founder</b>\n\n"
         f"Oxirgi 30 kun: <b>{stats['monthly_applications']} ta ariza</b>\n"
@@ -102,8 +115,85 @@ async def show_main_menu(message: Message):
         f"5 kunda tugaydi: <b>{stats['expiring_soon']} ta</b>\n"
         f"30 kunlik tushum: <b>{stats['monthly_revenue']:,} so'm</b>\n\n"
         "Kerakli bo'limni tanlang:",
+        reply_markup=_founder_services_keyboard(),
+    )
+
+
+async def _send_founder_tenants(message: Message):
+    tenants = await database.list_tenants()
+    builder = InlineKeyboardBuilder()
+    for tenant in tenants[:50]:
+        marker = {"active": "🟢", "pending": "🟠", "inactive": "🔴"}.get(tenant["status"], "•")
+        builder.button(
+            text=f"{marker} {tenant['company_name']}", callback_data=f"fp:view:{tenant['id']}"
+        )
+    builder.adjust(1)
+    await message.answer(
+        f"🏢 <b>Barcha mijozlar</b>\n\nJami: <b>{len(tenants)}</b>",
         reply_markup=builder.as_markup(),
     )
+
+
+@router.message(F.text == FOUNDER_MENU["customers"])
+async def service_founder_customers(message: Message):
+    if message.from_user.id in FOUNDER_USER_IDS:
+        await _send_founder_tenants(message)
+
+
+@router.message(F.text == FOUNDER_MENU["leads"])
+async def service_founder_leads(message: Message):
+    if message.from_user.id not in FOUNDER_USER_IDS:
+        return
+    leads = await database.list_business_leads()
+    builder = InlineKeyboardBuilder()
+    for lead in leads[:50]:
+        builder.button(
+            text=f"{lead.get('company_name') or 'Kompaniya'} · {lead['contact_phone']}",
+            callback_data=f"fp:lead:{lead['id']}",
+        )
+    builder.adjust(1)
+    await message.answer(f"📞 <b>Lidlar</b>\n\nJami: <b>{len(leads)}</b>", reply_markup=builder.as_markup())
+
+
+@router.message(F.text.in_({FOUNDER_MENU["payments"], FOUNDER_MENU["renewals"]}))
+async def service_founder_live_section(message: Message):
+    if message.from_user.id not in FOUNDER_USER_IDS:
+        return
+    builder = InlineKeyboardBuilder()
+    if WEBHOOK_BASE_URL:
+        builder.button(
+            text="👑 Founder panelni ochish",
+            web_app=WebAppInfo(url=f"{WEBHOOK_BASE_URL.rstrip('/')}/founder"),
+        )
+    await message.answer(
+        "To'lovlar va uzaytirishlar jonli Founder panelda ko'rsatiladi.",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.message(F.text == FOUNDER_MENU["stats"])
+async def service_founder_stats(message: Message):
+    if message.from_user.id not in FOUNDER_USER_IDS:
+        return
+    stats = await database.get_founder_stats()
+    await message.answer(
+        "📊 <b>Janob HR statistikasi</b>\n\n"
+        f"Faol mijozlar: <b>{stats['active']}</b>\n"
+        f"Yangi lidlar: <b>{stats['business_leads']}</b>\n"
+        f"To'lov kutilyapti: <b>{stats['awaiting_payments']}</b>\n"
+        f"Uzaytirish kerak: <b>{stats['expiring_soon']}</b>\n"
+        f"30 kunlik tushum: <b>{stats['monthly_revenue']:,} so'm</b>"
+    )
+
+
+@router.message(F.text == FOUNDER_MENU["activate"])
+async def service_founder_activate(message: Message, state: FSMContext):
+    if message.from_user.id not in FOUNDER_USER_IDS:
+        return
+    await message.answer(
+        "Mijoz yuborgan buyurtma raqamini jo'nating. Masalan: <code>JH-XXXXXX</code>"
+    )
+    await state.set_state(FounderForm.waiting_order_code)
 
 
 @router.callback_query(F.data == "fp:main")

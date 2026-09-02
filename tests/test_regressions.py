@@ -14,6 +14,9 @@ from services import database
 from services.payment_automation import handle_payment_notification
 from services.plans import get_plan
 from services.storage import SQLiteStorage
+from admin_bot.handlers_menu import ADMIN_MENU, _service_keyboard
+from founder_panel import FOUNDER_MENU, _founder_services_keyboard
+from handlers.start import _services_keyboard
 
 
 class FakeAdminBot:
@@ -31,6 +34,27 @@ class FakeAdminBot:
 
 
 class RegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_all_three_bots_have_persistent_service_menus(self):
+        admin = _service_keyboard(7)
+        candidate = _services_keyboard("uz")
+        founder = _founder_services_keyboard()
+
+        self.assertTrue(admin.is_persistent)
+        self.assertTrue(candidate.is_persistent)
+        self.assertTrue(founder.is_persistent)
+        self.assertIn(
+            ADMIN_MENU["vacancies"],
+            [button.text for row in admin.keyboard for button in row],
+        )
+        self.assertIn(
+            "💼 Ochiq vakansiyalar",
+            [button.text for row in candidate.keyboard for button in row],
+        )
+        self.assertIn(
+            FOUNDER_MENU["customers"],
+            [button.text for row in founder.keyboard for button in row],
+        )
+
     async def test_admin_menu_has_real_miniapp_button(self):
         overall = {"pending": 2}
         with (

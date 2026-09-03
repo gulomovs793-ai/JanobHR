@@ -29,6 +29,11 @@ _RED_FLAG_LABELS = {
     "abstrakt_javob": "Abstrakt javob (aniq raqam/qadam yo'q)",
     "narsissizm": 'Ortiqcha "men"chilik (jamoa hissasini tan olmaydi)',
     "ai_yozgan": "⚠️ AI/ChatGPT orqali yozilgan bo'lishi shubhali",
+    "natija_isbotsiz": "Natija aniq dalil yoki raqam bilan tasdiqlanmagan",
+    "tajriba_shubhali": "Amaliy tajriba bo'yicha aniqlashtirish kerak",
+    "tez_tez_ish_almashtirish": "Ish joylarini tez-tez almashtirish signali",
+    "javob_zid": "Javob ichida bir-biriga zid ma'lumot bor",
+    "maosh_budgetdan_yuqori": "Kutilayotgan maosh vakansiya budjetidan yuqori",
 }
 
 # Telegram oddiy matnli xabarlar uchun 4096 belgigacha ruxsat beradi (rasm/fayl/video
@@ -47,7 +52,7 @@ def format_candidate_card(app: dict) -> str:
     ]
     strongest = max(scored, key=lambda value: value["score"], default=None)
     weakest = min(scored, key=lambda value: value["score"], default=None)
-    strength = (strongest or {}).get("izoh") or "Javoblarini to'liq ko'rib chiqing."
+    strength = (strongest or {}).get("evidence") or (strongest or {}).get("izoh") or "Javoblarini to'liq ko'rib chiqing."
     risk = "Aniq xavf aniqlanmadi."
     if aggregate and aggregate.get("red_flags"):
         risk = _RED_FLAG_LABELS.get(
@@ -97,6 +102,9 @@ async def format_application_full_text(app: dict) -> str:
                 score = result.get("score")
                 score_part = f"{score}/100 — " if score is not None else ""
                 lines.append(f"   ↳ {emoji} <i>{score_part}{escape(izoh)}</i>")
+                evidence = str(result.get("evidence") or "").strip()
+                if evidence:
+                    lines.append(f"      <b>Dalil:</b> {escape(evidence)}")
 
     aggregate = aggregate_scores(ai_scores)
 

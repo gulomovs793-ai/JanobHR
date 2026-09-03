@@ -45,7 +45,7 @@ async def notify_candidate_outcome(tenant_id: int, app_id: int, outcome: str) ->
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
         await bot.send_message(app["user_id"], "\n".join(lines))
-    except Exception:  # noqa: BLE001 - follow-up asosiy hiring transactionni buzmasligi shart
+    except Exception:
         logger.exception("Ishga olingan nomzodga onboarding xabari yuborilmadi: app=%s", app_id)
     finally:
         if bot is not None:

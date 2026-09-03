@@ -150,6 +150,7 @@ class ScoreResult(TypedDict):
     relevant: bool  # javob savolga/kasbga umuman aloqadormi
     red_flags: list[str]
     izoh: str  # 1 gapli qisqa xulosa
+    evidence: str  # bahoni asoslaydigan nomzod javobidagi aniq dalil
 
 
 _SYSTEM_PROMPT = """Sen Google va Apple kompaniyalarida ishlagan 15 yillik tajribaga ega, \
@@ -169,6 +170,10 @@ Javob relevant bo'lsa, uni 3 ta qat'iy mezon bo'yicha 0 dan 100 gacha bahola:
 3. aniqlik — Savolga to'g'ridan-to'g'ri va tushunarli javob berdimi, yoki chalg'itib,
    umumiy gapirdimi?
 
+Har bir bahoga "evidence" ham yoz: nomzodning AYNAN shu javobidan bahoni asoslaydigan
+eng kuchli fakt, raqam, qadam yoki da'voni 25 so'zdan oshirmay qayta ifodala. Hech qachon
+nomzod aytmagan faktni o'ylab topma. Dalil bo'lmasa "Dalil yetarli emas" deb yoz.
+
 Quyidagi "qizil bayroqlarni" alohida qidir va topilganlarini ro'yxatga qo'sh (topilmasa bo'sh qoldir):
 - "qurbon_sindromi" — nomzod muvaffaqiyatsizlikni doim tashqi omillarga (bozor, rahbar,
   hamkasblar) yozadi, o'z aybini hech qachon tan olmaydi.
@@ -186,6 +191,16 @@ Quyidagi "qizil bayroqlarni" alohida qidir va topilganlarini ro'yxatga qo'sh (to
   va "universal" javob. DIQQAT: bu faqat kuchli shubha bo'lsa qo'shilsin — puxta va
   bilimdon odam ham yaxshi yoza olishi mumkin, shuning uchun faqat bir nechta belgi
   birga uchraganda ushbu bayroqni qo'sh, yolg'iz "yaxshi yozilgan" bo'lgani uchun emas.
+- "natija_isbotsiz" — nomzod katta natija da'vo qiladi, lekin raqam, vaziyat yoki o'z hissasini
+  tushuntiradigan dalil bermaydi.
+- "tajriba_shubhali" — amaliy tajriba da'vosi bor, lekin sohaga xos oddiy tafsilotni ham
+  tushuntira olmaydi yoki javob yodlangan umumiy ta'rifga o'xshaydi.
+- "tez_tez_ish_almashtirish" — aynan ish barqarorligi haqida javobda bir necha qisqa muddatli
+  ish joyi va asoslanmagan tez ketishlar ko'rinadi.
+- "javob_zid" — bitta javobning o'zida bir-biriga zid fakt yoki raqamlar bor.
+
+MUHIM: bu bayroqlar admin uchun SIGNAL, avtomatik rad hukmi emas. Faqat relevant=false yoki
+jiddiy sifatsiz javob yakuniy qizil verdictga sabab bo'lishi mumkin.
 
 Uchala mezon o'rtachasi asosida yakuniy "verdict" tanla:
 - "yashil" — o'rtacha ball 75 dan yuqori va jiddiy qizil bayroq yo'q
@@ -195,13 +210,14 @@ Uchala mezon o'rtachasi asosida yakuniy "verdict" tanla:
 FAQAT quyidagi JSON formatida javob ber, boshqa hech qanday matn, izoh yoki markdown yozma:
 {"relevant": <true yoki false>, "natijadorlik": <son>, "masuliyat": <son>, "aniqlik": <son>, \
 "verdict": "<yashil|sariq|qizil>", "red_flags": [<satrlar ro'yxati>], \
-"izoh": "<15 so'zdan oshmagan, o'zbek tilida qisqa xulosa>"}
+"izoh": "<15 so'zdan oshmagan, o'zbek tilida qisqa xulosa>", \
+"evidence": "<nomzod javobidagi 25 so'zgacha aniq dalil>"}
 """
 
 
 async def score_answer(question: str, answer: str) -> ScoreResult | None:
     content = await _call_ai(
-        _SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=260
+        _SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=320
     )
     if content is None:
         return None
@@ -230,6 +246,7 @@ async def score_answer(question: str, answer: str) -> ScoreResult | None:
             red_flags = []
 
         izoh = str(parsed.get("izoh", "")).strip()[:200]
+        evidence = str(parsed.get("evidence") or parsed.get("dalil") or "").strip()[:300]
 
         return ScoreResult(
             score=avg,
@@ -240,6 +257,7 @@ async def score_answer(question: str, answer: str) -> ScoreResult | None:
             relevant=relevant,
             red_flags=[str(f) for f in red_flags],
             izoh=izoh,
+            evidence=evidence,
         )
     except Exception:
         logger.exception("AI javobini o'qib bo'lmadi: %s", content)
@@ -312,6 +330,9 @@ Talablar:
    AI orqali baholanmaydi — audio fayl to'g'ridan-to'g'ri ish beruvchiga (adminga)
    yuboriladi, u shaxsan tinglab baholaydi. Maqsad — tayyorlab, ChatGPT yordamida
    yozib olingan javoblarni emas, jonli va tabiiy javobni olish.
+9. Bitta savol ish barqarorligini tekshirsin: oxirgi 2-3 ish joyida qancha ishlagani va
+   nima sabab ketganini so'ra. Bu savolga "ai_score": true qo'y.
+10. Bitta qisqa savol nomzodning kutilayotgan oylik maoshini taxminiy raqamda so'rasin.
 
 FAQAT quyidagi JSON massiv formatida javob ber, boshqa hech qanday matn yozma:
 [{{"key": "...", "text": "...", "hard_filter": true}}, {{"key": "...", "text": "...", "ai_score": true}}, \

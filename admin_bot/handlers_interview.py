@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from services import database
+from services.candidate_followup import notify_candidate_outcome
 
 router = Router(name="admin_interview")
 
@@ -216,3 +217,30 @@ async def receive_notes(message: Message, state: FSMContext, tenant_id: int):
     await database.update_interview_settings(tenant_id, notes=message.text.strip())
     await message.answer("✅ Saqlandi.")
     await _show_menu(message, state, tenant_id)
+
+
+@router.callback_query(F.data.startswith("ivoutcome:"))
+async def interview_outcome(callback: CallbackQuery, tenant_id: int):
+    try:
+        _, app_id_raw, outcome = callback.data.split(":", 2)
+        app_id = int(app_id_raw)
+    except (TypeError, ValueError):
+        await callback.answer("Noto'g'ri amal.", show_alert=True)
+        return
+    if outcome not in {"hired", "not_hired", "no_show"}:
+        await callback.answer("Noto'g'ri natija.", show_alert=True)
+        return
+    changed = await database.transition_application_status(
+        tenant_id, app_id, outcome, {"accepted"}
+    )
+    if not changed:
+        await callback.answer("Bu suhbat natijasi allaqachon belgilangan.", show_alert=True)
+        return
+    await notify_candidate_outcome(tenant_id, app_id, outcome)
+    labels = {"hired": "Ishga olindi", "not_hired": "Ishga olinmadi", "no_show": "Suhbatga kelmadi"}
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:  # noqa: BLE001 - natija DBda saqlangan; eski xabarni edit qilish kritik emas
+        await callback.answer(f"✅ {labels[outcome]}")
+        return
+    await callback.answer(f"✅ {labels[outcome]}")

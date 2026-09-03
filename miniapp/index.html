@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#f5f5f7">
   <title>Janob HR — Boshqaruv paneli</title>
   <link rel="stylesheet" href="/miniapp-assets/app.css">
+  <link rel="stylesheet" href="/miniapp-assets/janobhr2.css">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body data-tenant="__TENANT_ID__">
@@ -69,7 +70,7 @@
         <div class="page-title"><div><small>SUHBAT SOZLAMALARI</small><h1>Jarayonni sozlash</h1></div></div>
         <article class="settings-card">
           <div class="settings-heading"><div><small>SUHBAT VAQTLARI</small><h2>Nomzod tanlaydigan vaqtlar</h2></div></div>
-          <form id="slot-form" class="slot-form"><label><span>Sana va vaqt</span><input id="slot-label" maxlength="80" required placeholder="Masalan: 5-sentabr, 14:00"></label><label class="capacity-field"><span>Sig‘im</span><input id="slot-capacity" type="number" min="1" max="100" value="1" required></label><button type="submit">Vaqt qo‘shish</button></form>
+          <form id="slot-form" class="slot-form"><label><span>Sana va vaqt</span><input id="slot-label" type="datetime-local" maxlength="80" required></label><label class="capacity-field"><span>Sig‘im</span><input id="slot-capacity" type="number" min="1" max="100" value="1" required></label><button type="submit">Vaqt qo‘shish</button></form>
           <div id="slot-list" class="slot-list"></div>
         </article>
         <article class="settings-card">
@@ -157,5 +158,6 @@
     </div>
   </div>
   <script src="/miniapp-assets/app.js" defer></script>
+  <script src="/miniapp-assets/janobhr2.js" defer></script>
 </body>
 </html>

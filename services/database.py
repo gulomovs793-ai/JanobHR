@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS tenants (
     plan_code TEXT NOT NULL DEFAULT 'trial',
     subscription_started_at TEXT,
     subscription_expires_at TEXT,
+    industry TEXT,
+    onboarding_profile TEXT NOT NULL DEFAULT '{}',
+    onboarding_completed_at TEXT,
     created_at TEXT NOT NULL
 );
 """
@@ -81,6 +84,7 @@ CREATE TABLE IF NOT EXISTS vacancies (
     questions_ru TEXT,
     resume_required INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1,
+    profile_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     UNIQUE(tenant_id, key)
 );
@@ -92,6 +96,7 @@ CREATE TABLE IF NOT EXISTS interview_slots (
     tenant_id INTEGER NOT NULL,
     label TEXT NOT NULL,
     capacity INTEGER NOT NULL DEFAULT 1,
+    starts_at TEXT,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
 );
@@ -411,6 +416,9 @@ async def init_db():
             "plan_code": "TEXT NOT NULL DEFAULT 'trial'",
             "subscription_started_at": "TEXT",
             "subscription_expires_at": "TEXT",
+            "industry": "TEXT",
+            "onboarding_profile": "TEXT NOT NULL DEFAULT '{}'",
+            "onboarding_completed_at": "TEXT",
         }
         plan_was_missing = "plan_code" not in tenant_columns
         for column, definition in tenant_migrations.items():
@@ -422,6 +430,16 @@ async def init_db():
             await db.execute(
                 "UPDATE tenants SET plan_code = 'legacy' WHERE status = 'active'"
             )
+        cursor = await db.execute("PRAGMA table_info(vacancies)")
+        vacancy_columns = {row[1] for row in await cursor.fetchall()}
+        if "profile_json" not in vacancy_columns:
+            await db.execute("ALTER TABLE vacancies ADD COLUMN profile_json TEXT NOT NULL DEFAULT '{}'")
+
+        cursor = await db.execute("PRAGMA table_info(interview_slots)")
+        slot_columns = {row[1] for row in await cursor.fetchall()}
+        if "starts_at" not in slot_columns:
+            await db.execute("ALTER TABLE interview_slots ADD COLUMN starts_at TEXT")
+
         cursor = await db.execute("PRAGMA table_info(payment_orders)")
         payment_columns = {row[1] for row in await cursor.fetchall()}
         if "plan_code" not in payment_columns:
@@ -548,6 +566,10 @@ async def get_tenant(tenant_id: int) -> dict | None:
         return None
     t = dict(row)
     t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+    try:
+        t["onboarding_profile"] = json.loads(t.get("onboarding_profile") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        t["onboarding_profile"] = {}
     return t
 
 
@@ -600,6 +622,10 @@ async def list_tenants(status: str | None = None) -> list[dict]:
     for row in rows:
         t = dict(row)
         t["admin_user_ids"] = json.loads(t["admin_user_ids"])
+        try:
+            t["onboarding_profile"] = json.loads(t.get("onboarding_profile") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            t["onboarding_profile"] = {}
         result.append(t)
     return result
 
@@ -1395,6 +1421,10 @@ async def list_applications(
 def _row_to_vacancy(row) -> dict:
     v = dict(row)
     v["questions"] = json.loads(v["questions"])
+    try:
+        v["profile"] = json.loads(v.get("profile_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        v["profile"] = {}
     v["resume_required"] = bool(v["resume_required"])
     v["active"] = bool(v["active"])
     return v
@@ -1541,12 +1571,13 @@ async def create_vacancy(
     reject_message: str,
     questions: list,
     resume_required: bool,
+    profile: dict | None = None,
 ) -> None:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
             "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
-            "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+            "resume_required, active, profile_json, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
             (
                 tenant_id,
                 key,
@@ -1554,6 +1585,7 @@ async def create_vacancy(
                 reject_message,
                 json.dumps(questions, ensure_ascii=False),
                 int(resume_required),
+                json.dumps(profile or {}, ensure_ascii=False),
                 created_at,
             ),
         )
@@ -1569,6 +1601,7 @@ async def update_vacancy(tenant_id: int, key: str, **fields) -> None:
         "questions",
         "resume_required",
         "active",
+        "profile",
     }
     unknown_fields = set(fields) - allowed_fields
     if unknown_fields:
@@ -1577,6 +1610,9 @@ async def update_vacancy(tenant_id: int, key: str, **fields) -> None:
     for field, value in fields.items():
         if field == "questions":
             value = json.dumps(value, ensure_ascii=False)
+        elif field == "profile":
+            field = "profile_json"
+            value = json.dumps(value or {}, ensure_ascii=False)
         elif field in ("resume_required", "active"):
             value = int(value)
         set_clauses.append(f"{field} = ?")
@@ -1620,12 +1656,15 @@ async def list_interview_slots(tenant_id: int, active_only: bool = True) -> list
     return [dict(r) for r in rows]
 
 
-async def add_interview_slot(tenant_id: int, label: str, capacity: int = 1) -> int:
+async def add_interview_slot(
+    tenant_id: int, label: str, capacity: int = 1, starts_at: str | None = None
+) -> int:
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
-            "INSERT INTO interview_slots (tenant_id, label, capacity, active, created_at) VALUES (?, ?, ?, 1, ?)",
-            (tenant_id, label, capacity, created_at),
+            "INSERT INTO interview_slots (tenant_id, label, capacity, starts_at, active, created_at) "
+            "VALUES (?, ?, ?, ?, 1, ?)",
+            (tenant_id, label, capacity, starts_at, created_at),
         )
         await db.commit()
         return cursor.lastrowid
@@ -1696,6 +1735,87 @@ async def update_interview_settings(tenant_id: int, **fields):
             ),
         )
         await db.commit()
+
+
+async def update_tenant_onboarding(
+    tenant_id: int, *, industry: str, profile: dict, completed: bool = True
+) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE tenants SET industry=?, onboarding_profile=?, onboarding_completed_at=? WHERE id=?",
+            (
+                industry,
+                json.dumps(profile or {}, ensure_ascii=False),
+                datetime.now(timezone.utc).isoformat() if completed else None,
+                tenant_id,
+            ),
+        )
+        await db.commit()
+
+
+async def deactivate_empty_vacancies(tenant_id: int) -> None:
+    """Arizasi bo'lmagan eski demo vakansiyalarni onboarding oldidan yopadi."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE vacancies SET active=0 WHERE tenant_id=? AND key NOT IN "
+            "(SELECT DISTINCT vacancy_key FROM applications WHERE tenant_id=?)",
+            (tenant_id, tenant_id),
+        )
+        await db.commit()
+
+
+async def clear_unbooked_interview_slots(tenant_id: int) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "DELETE FROM interview_slots WHERE tenant_id=? AND label NOT IN "
+            "(SELECT DISTINCT selected_slot FROM applications WHERE tenant_id=? AND selected_slot IS NOT NULL)",
+            (tenant_id, tenant_id),
+        )
+        await db.commit()
+
+
+async def list_funnel_applications(
+    tenant_id: int, *, days: int = 30, vacancy_key: str | None = None
+) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))).isoformat()
+    sql = "SELECT * FROM applications WHERE tenant_id=? AND created_at>=?"
+    params: list = [tenant_id, cutoff]
+    if vacancy_key:
+        sql += " AND vacancy_key=?"
+        params.append(vacancy_key)
+    sql += " ORDER BY id DESC"
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        rows = await (await db.execute(sql, params)).fetchall()
+    return [_parse_app_row(row) for row in rows]
+
+
+async def list_interview_followup_candidates() -> list[dict]:
+    now = datetime.now(timezone.utc)
+    lower = (now - timedelta(hours=24)).isoformat()
+    upper = (now + timedelta(hours=26)).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT a.id AS app_id, a.tenant_id, a.user_id, a.full_name, a.vacancy_title, "
+            "a.lang, a.selected_slot, a.status, s.starts_at, t.bot_token, t.admin_bot_token, "
+            "t.admin_user_ids FROM applications a "
+            "JOIN interview_slots s ON s.tenant_id=a.tenant_id AND s.label=a.selected_slot "
+            "JOIN tenants t ON t.id=a.tenant_id "
+            "WHERE a.status='accepted' AND s.starts_at IS NOT NULL "
+            "AND s.starts_at>=? AND s.starts_at<=? AND t.status='active'",
+            (lower, upper),
+        )
+        rows = await cursor.fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["admin_user_ids"] = json.loads(item.get("admin_user_ids") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            item["admin_user_ids"] = []
+        result.append(item)
+    return result
 
 
 # ============================= STATISTIKA (admin bot) =============================

@@ -14,6 +14,7 @@ import json
 import logging
 import time
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl
 
@@ -26,7 +27,13 @@ from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER, WEBHOOK_BASE_URL
 from handlers.sell import send_slot_offer
 from i18n import DEFAULT_LANG, t
 from services import database
-from services.ai_scoring import aggregate_scores
+from services.ai_scoring import aggregate_scores, generate_questions
+from services.candidate_followup import notify_candidate_outcome
+from services.hiring_intelligence import (
+    candidate_risks,
+    compare_candidates,
+    hiring_funnel,
+)
 from services.payment_automation import (
     create_payment_order as create_payment_order_for_plan,
 )
@@ -244,6 +251,12 @@ async def add_interview_slot(request: web.Request):
         body = await request.json()
         label = str(body.get("label") or "").strip()
         capacity = int(body.get("capacity", 1))
+        starts_at = _normalise_starts_at(body.get("starts_at"))
+        if not starts_at and label:
+            try:
+                starts_at = _normalise_starts_at(label)
+            except web.HTTPBadRequest:
+                starts_at = None
     except (ValueError, TypeError, json.JSONDecodeError):
         raise web.HTTPBadRequest(text="Vaqt ma'lumoti noto'g'ri.")
     if not 3 <= len(label) <= 80:
@@ -253,9 +266,21 @@ async def add_interview_slot(request: web.Request):
     existing = await database.list_interview_slots(tenant["id"], active_only=True)
     if any(item["label"].casefold() == label.casefold() for item in existing):
         raise web.HTTPConflict(text="Bu suhbat vaqti allaqachon mavjud.")
-    slot_id = await database.add_interview_slot(tenant["id"], label, capacity)
+    if starts_at:
+        slot_id = await database.add_interview_slot(
+            tenant["id"], label, capacity, starts_at=starts_at
+        )
+    else:
+        # Eski erkin-format slotlar ham ishlashda davom etadi.
+        slot_id = await database.add_interview_slot(tenant["id"], label, capacity)
     return web.json_response(
-        {"ok": True, "slot": {"id": slot_id, "label": label, "capacity": capacity, "booked": 0}}
+        {
+            "ok": True,
+            "slot": {
+                "id": slot_id, "label": label, "capacity": capacity,
+                "booked": 0, "starts_at": starts_at,
+            },
+        }
     )
 
 
@@ -343,6 +368,7 @@ async def candidate_detail(request: web.Request):
     if not app:
         raise web.HTTPNotFound(text="Nomzod topilmadi.")
     result = _candidate_summary(app)
+    vacancy = await database.get_vacancy(tenant["id"], app["vacancy_key"])
     result.update(
         {
             "answers": app.get("answers") or {},
@@ -350,6 +376,7 @@ async def candidate_detail(request: web.Request):
             "suspect_flags": app.get("ai_suspect_flags") or [],
             "has_resume": bool(app.get("resume_file_id")),
             "has_voice": bool(app.get("voice_answers")),
+            "risk_signals": candidate_risks(app, vacancy),
         }
     )
     return web.json_response(result)
@@ -433,7 +460,165 @@ async def candidate_outcome(request: web.Request):
     )
     if not changed:
         raise web.HTTPConflict(text="Nomzod holati boshqa joydan o'zgartirilgan.")
+    await notify_candidate_outcome(tenant["id"], app_id, outcome)
     return web.json_response({"ok": True, "status": outcome})
+
+
+async def analytics_funnel(request: web.Request):
+    tenant, _ = await _authorize(request)
+    try:
+        days = max(1, min(90, int(request.query.get("days", "30"))))
+    except ValueError:
+        raise web.HTTPBadRequest(text="Davr noto'g'ri.")
+    vacancy_key = (request.query.get("vacancy_key") or "").strip() or None
+    apps = await database.list_funnel_applications(
+        tenant["id"], days=days, vacancy_key=vacancy_key
+    )
+    return web.json_response({"period_days": days, "funnel": hiring_funnel(apps)})
+
+
+async def compare_top_candidates(request: web.Request):
+    tenant, _ = await _authorize(request)
+    vacancy_key = (request.query.get("vacancy_key") or "").strip()
+    if not vacancy_key:
+        raise web.HTTPBadRequest(text="Vakansiyani tanlang.")
+    vacancy = await database.get_vacancy(tenant["id"], vacancy_key)
+    if not vacancy:
+        raise web.HTTPNotFound(text="Vakansiya topilmadi.")
+    try:
+        limit = max(2, min(5, int(request.query.get("limit", "3"))))
+    except ValueError:
+        limit = 3
+    apps = await database.get_applications_for_vacancy(tenant["id"], vacancy_key, limit=500)
+    return web.json_response(
+        {
+            "vacancy": {"key": vacancy["key"], "title": vacancy["title"]},
+            "comparison": compare_candidates(apps, vacancy, limit=limit),
+        }
+    )
+
+
+async def onboarding_status(request: web.Request):
+    tenant, _ = await _authorize(request)
+    stats = await database.get_overall_stats(tenant["id"])
+    return web.json_response(
+        {
+            "completed": bool(tenant.get("onboarding_completed_at")),
+            "can_quick_setup": stats["total"] == 0,
+            "industry": tenant.get("industry"),
+            "profile": tenant.get("onboarding_profile") or {},
+        }
+    )
+
+
+def _normalise_starts_at(value: str | None) -> str | None:
+    value = str(value or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise web.HTTPBadRequest(text="Suhbat vaqti noto'g'ri formatda.") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+async def quick_setup(request: web.Request):
+    tenant, _ = await _authorize(request)
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, TypeError):
+        raise web.HTTPBadRequest(text="Onboarding ma'lumoti noto'g'ri.")
+    industry = str(body.get("industry") or "").strip()
+    role = str(body.get("role_title") or "").strip()
+    ideal = str(body.get("ideal_candidate") or "").strip()
+    try:
+        question_count = int(body.get("question_count", 9))
+        salary_budget = body.get("salary_budget_max")
+        salary_budget = int(salary_budget) if salary_budget not in (None, "", 0) else None
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="Savol yoki maosh qiymati noto'g'ri.")
+    if not 2 <= len(industry) <= 100 or not 2 <= len(role) <= 100:
+        raise web.HTTPBadRequest(text="Biznes sohasi va lavozimni to'liq yozing.")
+    if not 5 <= len(ideal) <= 700:
+        raise web.HTTPBadRequest(text="Ideal xodim tavsifini aniqroq yozing.")
+    if not 5 <= question_count <= 12:
+        raise web.HTTPBadRequest(text="Savollar soni 5 dan 12 gacha bo'lishi kerak.")
+    if salary_budget is not None and not 100_000 <= salary_budget <= 1_000_000_000:
+        raise web.HTTPBadRequest(text="Maosh budjeti noto'g'ri.")
+
+    raw_slots = body.get("interview_slots") or []
+    if not isinstance(raw_slots, list) or len(raw_slots) > 10:
+        raise web.HTTPBadRequest(text="Suhbat vaqtlari noto'g'ri.")
+    clean_slots = []
+    for raw in raw_slots:
+        if not isinstance(raw, dict):
+            continue
+        label = str(raw.get("label") or "").strip()[:80]
+        starts_at = _normalise_starts_at(raw.get("starts_at"))
+        try:
+            capacity = max(1, min(20, int(raw.get("capacity", 1))))
+        except (TypeError, ValueError):
+            capacity = 1
+        if label and starts_at:
+            clean_slots.append({"label": label, "starts_at": starts_at, "capacity": capacity})
+
+    description = (
+        f"Biznes sohasi: {industry}. Ideal xodim: {ideal}. "
+        + (f"Oylik budjeti {salary_budget:,} so'mgacha. " if salary_budget else "")
+        + "Savollar real amaliy tajriba, natijadorlik, barqarorlik va mas'uliyatni ajratsin."
+    )
+    questions = await generate_questions(role, description, count=question_count)
+    if not questions:
+        raise web.HTTPServiceUnavailable(
+            text="AI savollarni tayyorlay olmadi. Birozdan keyin qayta urinib ko'ring."
+        )
+
+    stats = await database.get_overall_stats(tenant["id"])
+    if stats["total"] == 0:
+        await database.deactivate_empty_vacancies(tenant["id"])
+        await database.clear_unbooked_interview_slots(tenant["id"])
+    else:
+        usage = await database.get_subscription_usage(tenant["id"])
+        if not usage["vacancies_available"]:
+            raise web.HTTPPaymentRequired(text="Tarifdagi vakansiya limiti tugagan.")
+
+    key = database.make_vacancy_key(role)
+    base = key
+    suffix = 2
+    while await database.get_vacancy(tenant["id"], key):
+        key = f"{base[:36]}_{suffix}"
+        suffix += 1
+    profile = {
+        "industry": industry,
+        "ideal_candidate": ideal,
+        "salary_budget_max": salary_budget,
+        "question_count": question_count,
+    }
+    await database.create_vacancy(
+        tenant_id=tenant["id"],
+        key=key,
+        title=role,
+        reject_message=(
+            "Arizangiz uchun rahmat. Hozircha ushbu vakansiya bo'yicha keyingi bosqichga "
+            "o'tmadingiz. Sizga muvaffaqiyat tilaymiz!"
+        ),
+        questions=questions,
+        resume_required=False,
+        profile=profile,
+    )
+    for slot in clean_slots:
+        await database.add_interview_slot(
+            tenant["id"], slot["label"], slot["capacity"], starts_at=slot["starts_at"]
+        )
+    location = str(body.get("location_text") or "").strip()[:240]
+    if location:
+        await database.update_interview_settings(tenant["id"], location_text=location)
+    await database.update_tenant_onboarding(
+        tenant["id"], industry=industry, profile={**profile, "primary_vacancy_key": key}
+    )
+    return web.json_response({"ok": True, "vacancy_key": key, "questions": len(questions)})
 
 
 async def vacancies(request: web.Request):
@@ -695,6 +880,14 @@ def register_miniapp(app: web.Application) -> None:
         "/miniapp-assets", STATIC_DIR, show_index=False, append_version=True
     )
     app.router.add_get("/api/miniapp/{tenant_id}/dashboard", dashboard)
+    app.router.add_get("/api/miniapp/{tenant_id}/analytics/funnel", analytics_funnel)
+    app.router.add_get(
+        "/api/miniapp/{tenant_id}/intelligence/compare", compare_top_candidates
+    )
+    app.router.add_get("/api/miniapp/{tenant_id}/onboarding/status", onboarding_status)
+    app.router.add_post(
+        "/api/miniapp/{tenant_id}/onboarding/quick-setup", quick_setup
+    )
     app.router.add_get("/api/miniapp/{tenant_id}/candidates", candidates)
     app.router.add_get("/api/miniapp/{tenant_id}/candidates/{app_id}", candidate_detail)
     app.router.add_post(

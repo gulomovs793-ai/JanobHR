@@ -56,6 +56,12 @@ async def handle_decision(callback: CallbackQuery, tenant_id: int, tenant: dict)
         await callback.answer("🟡 Keyin ko'rish uchun saqlandi")
         return
     if action == "accept":
+        if not await database.get_available_interview_slots(tenant_id):
+            await callback.answer(
+                "Avval 📅 Suhbatlar bo'limidan kamida bitta bo'sh vaqt qo'shing.",
+                show_alert=True,
+            )
+            return
         new_status = "accepted"
         result_label = "✅ Suhbatga chaqirildi"
     else:

@@ -144,6 +144,17 @@ async def handle_slot_choice(
 
     app = await database.get_application(tenant_id, app_id)
     lang = (app or {}).get("lang", DEFAULT_LANG)
+    if (
+        not app
+        or app.get("user_id") != callback.from_user.id
+        or app.get("status") not in {"pending", "saved", "accepted"}
+    ):
+        await callback.answer("Bu suhbat taklifi endi faol emas.", show_alert=True)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            logger.exception("Eski suhbat tugmasini olib tashlab bo'lmadi (app_id=%s).", app_id)
+        return
 
     all_slots = await database.list_interview_slots(tenant_id, active_only=True)
     slot = next((s for s in all_slots if s["id"] == slot_id), None)

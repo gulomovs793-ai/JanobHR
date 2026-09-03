@@ -41,7 +41,7 @@ async def start_new_vacancy(callback: CallbackQuery, state: FSMContext, tenant_i
     usage = await database.get_subscription_usage(tenant_id)
     if not usage["vacancies_available"]:
         await callback.message.edit_text(
-            "🔒 <b>Vakansiya limiti tugagan</b>\n\nTarifni yangilang yoki mavjud vakansiyalardan birini o'chiring.",
+            "🔒 <b>Vakansiya limiti tugagan</b>\n\nTarifni oshiring yoki mavjud faol vakansiyalardan birini vaqtincha yoping.",
             reply_markup=InlineKeyboardBuilder().button(
                 text="💳 Tarifni yangilash", callback_data="menu:billing"
             ).button(text="⬅️ Bosh menyu", callback_data="menu:main").adjust(1).as_markup(),
@@ -307,14 +307,26 @@ async def _finalize_vacancy(message: Message, state: FSMContext, tenant_id: int)
         # Rezyume/portfolio so'rash endi barcha vakansiyalar uchun universal va
         # ixtiyoriy (handlers/questions.py'da), shuning uchun bu yerda alohida
         # so'ralmaydi — standart True qiymati saqlanadi, lekin amalda ishlatilmaydi.
-        await database.create_vacancy(
-            tenant_id=tenant_id,
-            key=key,
-            title=title,
-            reject_message=_DEFAULT_REJECT_MESSAGE,
-            questions=questions,
-            resume_required=True,
-        )
+        try:
+            await database.create_vacancy(
+                tenant_id=tenant_id,
+                key=key,
+                title=title,
+                reject_message=_DEFAULT_REJECT_MESSAGE,
+                questions=questions,
+                resume_required=True,
+            )
+        except database.VacancyLimitReached:
+            await state.clear()
+            builder = InlineKeyboardBuilder()
+            builder.button(text="💳 Tarif va limitlar", callback_data="menu:billing")
+            builder.button(text="📋 Vakansiyalar", callback_data="menu:vacancies")
+            builder.adjust(1)
+            await message.answer(
+                "🔒 Bu orada faol vakansiya limiti band bo'ldi. Boshqa vakansiyani yoping yoki tarifni oshiring.",
+                reply_markup=builder.as_markup(),
+            )
+            return
         result_text = (
             f"✅ Yangi vakansiya yaratildi: <b>{title}</b> ({len(questions)} ta savol).\n\n"
             "Nomzodlar botiga /start yuborib, darhol ko'rishlari mumkin."

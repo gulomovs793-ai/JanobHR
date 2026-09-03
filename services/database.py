@@ -23,6 +23,18 @@ class ApplicationLimitReached(RuntimeError):
     """Tarif ariza limiti atomik saqlash paytida tugagan."""
 
 
+class VacancyLimitReached(RuntimeError):
+    """Faol vakansiyalar limiti DB transaction ichida tugagan."""
+
+
+class InterviewSlotConflict(RuntimeError):
+    """Bir tenant ichida bir xil faol suhbat vaqti qayta yaratildi."""
+
+
+class InterviewSlotBooked(RuntimeError):
+    """Band qilingan suhbat vaqtini o'chirishga urinish."""
+
+
 _CREATE_TENANTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS tenants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -543,9 +555,13 @@ async def create_tenant(
     contact_phone: str = "",
     contact_username: str = "",
 ) -> int:
-    """Yangi mijoz yaratadi va unga standart 3 ta namunaviy vakansiyani urug'laydi.
-    Ikkita alohida token oladi: `bot_token` — nomzod-bot uchun, `admin_bot_token` —
-    faqat shu mijozning administratorlari ishlatadigan Admin panel-bot uchun."""
+    """Yangi mijozni toza workspace bilan yaratadi.
+
+    Trial 1 ta faol vakansiyaga ruxsat beradi. Avvalgi 3 ta umumiy demo
+    vakansiyani avtomatik aktiv yaratish yangi tenantni tug'ilishi bilan limitdan
+    oshirib qo'yardi va mijoz o'z vakansiyasini yaratolmasdi. Endi tenant bo'sh
+    boshlanadi; birinchi vakansiyani Admin bot yoki Mini App onboarding yaratadi.
+    """
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         cursor = await db.execute(
@@ -564,21 +580,6 @@ async def create_tenant(
             ),
         )
         tenant_id = cursor.lastrowid
-
-        for v in _DEFAULT_VACANCIES:
-            await db.execute(
-                "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
-                "resume_required, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
-                (
-                    tenant_id,
-                    v["key"],
-                    v["title"],
-                    v["reject_message"],
-                    json.dumps(v["questions"], ensure_ascii=False),
-                    int(v["resume_required"]),
-                    created_at,
-                ),
-            )
         await db.commit()
     logger.info("Yangi mijoz yaratildi: id=%s, %s", tenant_id, company_name)
     return tenant_id
@@ -917,13 +918,23 @@ async def update_business_lead_status(lead_id: int, status: str) -> bool:
 
 
 async def get_payment_order_for_tenant(tenant_id: int, order_code: str) -> dict | None:
+    now_iso = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
+        # UI polling eski orderni hali ham "kutilmoqda" deb ko'rsatmasin.
+        await db.execute(
+            "UPDATE payment_orders SET status='expired', "
+            "decided_at=COALESCE(decided_at, ?) "
+            "WHERE tenant_id=? AND UPPER(order_code)=UPPER(?) "
+            "AND status='awaiting_payment' AND expires_at<=?",
+            (now_iso, tenant_id, order_code.strip(), now_iso),
+        )
         cursor = await db.execute(
             "SELECT * FROM payment_orders WHERE tenant_id=? AND UPPER(order_code)=UPPER(?) LIMIT 1",
             (tenant_id, order_code.strip()),
         )
         row = await cursor.fetchone()
+        await db.commit()
     return dict(row) if row else None
 
 
@@ -953,17 +964,28 @@ async def list_leads_older_than(minutes: int) -> list[dict]:
 
 
 async def list_unpaid_orders_older_than(minutes: int) -> list[dict]:
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    cutoff = (now - timedelta(minutes=minutes)).isoformat()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
+        # Reminder sikli payment parser ishlamasa ham TTLni o'zi hurmat qiladi.
+        await db.execute(
+            "UPDATE payment_orders SET status='expired', "
+            "decided_at=COALESCE(decided_at, ?) "
+            "WHERE status='awaiting_payment' AND expires_at<=?",
+            (now_iso, now_iso),
+        )
         cursor = await db.execute(
             "SELECT p.*, t.company_name, t.contact_phone FROM payment_orders p "
             "JOIN tenants t ON t.id=p.tenant_id "
-            "WHERE p.status='awaiting_payment' AND p.created_at <= ? "
+            "WHERE p.status='awaiting_payment' AND p.created_at <= ? AND p.expires_at > ? "
             "ORDER BY p.created_at LIMIT 100",
-            (cutoff,),
+            (cutoff, now_iso),
         )
-        return [dict(row) for row in await cursor.fetchall()]
+        rows = [dict(row) for row in await cursor.fetchall()]
+        await db.commit()
+        return rows
 
 
 async def mark_lead_reminded(lead_id: int) -> None:
@@ -1600,23 +1622,114 @@ async def create_vacancy(
     resume_required: bool,
     profile: dict | None = None,
 ) -> None:
+    """Faol vakansiyani tarif limitiga nisbatan atomik yaratadi."""
+    from services.plans import get_plan
+
     created_at = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute(
-            "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
-            "resume_required, active, profile_json, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
-            (
-                tenant_id,
-                key,
-                title,
-                reject_message,
-                json.dumps(questions, ensure_ascii=False),
-                int(resume_required),
-                json.dumps(profile or {}, ensure_ascii=False),
-                created_at,
-            ),
-        )
-        await db.commit()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT plan_code, subscription_expires_at FROM tenants WHERE id=?",
+                (tenant_id,),
+            )
+            tenant = await cursor.fetchone()
+            if not tenant:
+                raise ValueError("Mijoz topilmadi")
+            plan = get_plan(tenant[0])
+            expires_at = tenant[1]
+            expired = bool(
+                plan.code not in {"trial", "legacy"}
+                and (not expires_at or expires_at <= created_at)
+            )
+            if expired:
+                raise VacancyLimitReached("Tarif muddati tugagan")
+            if plan.vacancy_limit is not None:
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM vacancies WHERE tenant_id=? AND active=1",
+                    (tenant_id,),
+                )
+                used = (await cursor.fetchone())[0]
+                if used >= plan.vacancy_limit:
+                    raise VacancyLimitReached("Tarifdagi vakansiya limiti tugagan")
+
+            await db.execute(
+                "INSERT INTO vacancies (tenant_id, key, title, reject_message, questions, "
+                "resume_required, active, profile_json, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                (
+                    tenant_id,
+                    key,
+                    title,
+                    reject_message,
+                    json.dumps(questions, ensure_ascii=False),
+                    int(resume_required),
+                    json.dumps(profile or {}, ensure_ascii=False),
+                    created_at,
+                ),
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+
+async def set_vacancy_active(tenant_id: int, key: str, active: bool) -> bool:
+    """Vakansiyani atomik faollashtiradi/faolsizlantiradi va quota bypassni yopadi."""
+    from services.plans import get_plan
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT active FROM vacancies WHERE tenant_id=? AND key=?",
+                (tenant_id, key),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                await db.rollback()
+                return False
+            current = bool(row[0])
+            if current == bool(active):
+                await db.commit()
+                return True
+
+            if active:
+                cursor = await db.execute(
+                    "SELECT plan_code, subscription_expires_at FROM tenants WHERE id=?",
+                    (tenant_id,),
+                )
+                tenant = await cursor.fetchone()
+                if not tenant:
+                    raise ValueError("Mijoz topilmadi")
+                plan = get_plan(tenant[0])
+                expires_at = tenant[1]
+                expired = bool(
+                    plan.code not in {"trial", "legacy"}
+                    and (not expires_at or expires_at <= now_iso)
+                )
+                if expired:
+                    raise VacancyLimitReached("Tarif muddati tugagan")
+                if plan.vacancy_limit is not None:
+                    cursor = await db.execute(
+                        "SELECT COUNT(*) FROM vacancies WHERE tenant_id=? AND active=1",
+                        (tenant_id,),
+                    )
+                    used = (await cursor.fetchone())[0]
+                    if used >= plan.vacancy_limit:
+                        raise VacancyLimitReached("Tarifdagi vakansiya limiti tugagan")
+
+            cursor = await db.execute(
+                "UPDATE vacancies SET active=? WHERE tenant_id=? AND key=?",
+                (int(bool(active)), tenant_id, key),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def update_vacancy(tenant_id: int, key: str, **fields) -> None:
@@ -1686,24 +1799,65 @@ async def list_interview_slots(tenant_id: int, active_only: bool = True) -> list
 async def add_interview_slot(
     tenant_id: int, label: str, capacity: int = 1, starts_at: str | None = None
 ) -> int:
+    label = str(label or "").strip()
+    if not 3 <= len(label) <= 80:
+        raise ValueError("Suhbat vaqti nomi 3–80 belgi bo'lishi kerak")
+    if not 1 <= int(capacity) <= 100:
+        raise ValueError("Suhbat sig'imi 1–100 oralig'ida bo'lishi kerak")
     created_at = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        cursor = await db.execute(
-            "INSERT INTO interview_slots (tenant_id, label, capacity, starts_at, active, created_at) "
-            "VALUES (?, ?, ?, ?, 1, ?)",
-            (tenant_id, label, capacity, starts_at, created_at),
-        )
-        await db.commit()
-        return cursor.lastrowid
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT 1 FROM interview_slots WHERE tenant_id=? AND active=1 "
+                "AND LOWER(label)=LOWER(?) LIMIT 1",
+                (tenant_id, label),
+            )
+            if await cursor.fetchone():
+                raise InterviewSlotConflict("Bu suhbat vaqti allaqachon mavjud")
+            cursor = await db.execute(
+                "INSERT INTO interview_slots (tenant_id, label, capacity, starts_at, active, created_at) "
+                "VALUES (?, ?, ?, ?, 1, ?)",
+                (tenant_id, label, int(capacity), starts_at, created_at),
+            )
+            await db.commit()
+            return cursor.lastrowid
+        except Exception:
+            await db.rollback()
+            raise
 
 
-async def delete_interview_slot(tenant_id: int, slot_id: int):
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute(
-            "DELETE FROM interview_slots WHERE id = ? AND tenant_id = ?",
-            (slot_id, tenant_id),
-        )
-        await db.commit()
+async def delete_interview_slot(tenant_id: int, slot_id: int) -> bool:
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT label FROM interview_slots WHERE id=? AND tenant_id=?",
+                (slot_id, tenant_id),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                await db.rollback()
+                return False
+            label = row[0]
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM applications WHERE tenant_id=? AND selected_slot=?",
+                (tenant_id, label),
+            )
+            booked = (await cursor.fetchone())[0]
+            if booked:
+                raise InterviewSlotBooked("Bu vaqtni nomzod tanlagan")
+            cursor = await db.execute(
+                "DELETE FROM interview_slots WHERE id=? AND tenant_id=?",
+                (slot_id, tenant_id),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def get_available_interview_slots(tenant_id: int) -> list[dict]:

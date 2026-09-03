@@ -208,7 +208,19 @@ async def candidates(request: web.Request):
         raise web.HTTPBadRequest(text="Qidiruv matni juda uzun.")
     if status == "all":
         status = None
-    allowed = {None, "pending", "saved", "accepted", "declined"}
+    allowed = {
+        None,
+        "pending",
+        "saved",
+        "accepted",
+        "declined",
+        "rejected_hard_filter",
+        "rejected_irrelevant",
+        "rejected_ai_generated",
+        "hired",
+        "not_hired",
+        "no_show",
+    }
     if status not in allowed:
         raise web.HTTPBadRequest(text="Noto'g'ri status.")
     try:
@@ -279,13 +291,16 @@ async def add_interview_slot(request: web.Request):
     existing = await database.list_interview_slots(tenant["id"], active_only=True)
     if any(item["label"].casefold() == label.casefold() for item in existing):
         raise web.HTTPConflict(text="Bu suhbat vaqti allaqachon mavjud.")
-    if starts_at:
-        slot_id = await database.add_interview_slot(
-            tenant["id"], label, capacity, starts_at=starts_at
-        )
-    else:
-        # Eski erkin-format slotlar ham ishlashda davom etadi.
-        slot_id = await database.add_interview_slot(tenant["id"], label, capacity)
+    try:
+        if starts_at:
+            slot_id = await database.add_interview_slot(
+                tenant["id"], label, capacity, starts_at=starts_at
+            )
+        else:
+            # Eski erkin-format slotlar ham ishlashda davom etadi.
+            slot_id = await database.add_interview_slot(tenant["id"], label, capacity)
+    except database.InterviewSlotConflict as exc:
+        raise web.HTTPConflict(text="Bu suhbat vaqti allaqachon mavjud.") from exc
     return web.json_response(
         {
             "ok": True,
@@ -312,7 +327,14 @@ async def delete_interview_slot(request: web.Request):
         raise web.HTTPConflict(
             text="Bu vaqtni nomzod tanlagan. Avval suhbatni boshqa vaqtga ko'chiring."
         )
-    await database.delete_interview_slot(tenant["id"], slot_id)
+    try:
+        deleted = await database.delete_interview_slot(tenant["id"], slot_id)
+    except database.InterviewSlotBooked as exc:
+        raise web.HTTPConflict(
+            text="Bu vaqtni nomzod tanlagan. Avval suhbatni boshqa vaqtga ko'chiring."
+        ) from exc
+    if not deleted:
+        raise web.HTTPNotFound(text="Suhbat vaqti topilmadi.")
     return web.json_response({"ok": True})
 
 
@@ -410,6 +432,10 @@ async def candidate_decision(request: web.Request):
         raise web.HTTPNotFound(text="Nomzod topilmadi.")
     if app["status"] not in {"pending", "saved"}:
         raise web.HTTPConflict(text="Bu nomzod bo'yicha qaror qabul qilingan.")
+    if action == "accept" and not await database.get_available_interview_slots(tenant["id"]):
+        raise web.HTTPConflict(
+            text="Avval Suhbatlar bo'limidan kamida bitta bo'sh vaqt qo'shing."
+        )
     new_status = {"accept": "accepted", "save": "saved", "reject": "declined"}[action]
     changed = await database.transition_application_status(
         tenant["id"], app_id, new_status, {"pending", "saved"}
@@ -468,6 +494,8 @@ async def candidate_outcome(request: web.Request):
         raise web.HTTPNotFound(text="Nomzod topilmadi.")
     if app["status"] != "accepted":
         raise web.HTTPConflict(text="Faqat suhbatdagi nomzodni yakunlash mumkin.")
+    if outcome == "no_show" and not app.get("selected_slot"):
+        raise web.HTTPConflict(text="Suhbat vaqti tanlanmagan nomzodni 'kelmadi' deb belgilab bo'lmaydi.")
     changed = await database.transition_application_status(
         tenant["id"], app_id, outcome, {"accepted"}
     )
@@ -609,18 +637,21 @@ async def quick_setup(request: web.Request):
         "salary_budget_max": salary_budget,
         "question_count": question_count,
     }
-    await database.create_vacancy(
-        tenant_id=tenant["id"],
-        key=key,
-        title=role,
-        reject_message=(
-            "Arizangiz uchun rahmat. Hozircha ushbu vakansiya bo'yicha keyingi bosqichga "
-            "o'tmadingiz. Sizga muvaffaqiyat tilaymiz!"
-        ),
-        questions=questions,
-        resume_required=False,
-        profile=profile,
-    )
+    try:
+        await database.create_vacancy(
+            tenant_id=tenant["id"],
+            key=key,
+            title=role,
+            reject_message=(
+                "Arizangiz uchun rahmat. Hozircha ushbu vakansiya bo'yicha keyingi bosqichga "
+                "o'tmadingiz. Sizga muvaffaqiyat tilaymiz!"
+            ),
+            questions=questions,
+            resume_required=False,
+            profile=profile,
+        )
+    except database.VacancyLimitReached as exc:
+        raise web.HTTPPaymentRequired(text="Tarifdagi vakansiya limiti tugagan.") from exc
     for slot in clean_slots:
         await database.add_interview_slot(
             tenant["id"], slot["label"], slot["capacity"], starts_at=slot["starts_at"]
@@ -717,14 +748,17 @@ async def create_vacancy(request: web.Request):
     while await database.get_vacancy(tenant["id"], key):
         key = f"{base_key[:36]}_{suffix}"
         suffix += 1
-    await database.create_vacancy(
-        tenant_id=tenant["id"],
-        key=key,
-        title=title,
-        reject_message=reject_message,
-        questions=questions,
-        resume_required=bool(body.get("resume_required")),
-    )
+    try:
+        await database.create_vacancy(
+            tenant_id=tenant["id"],
+            key=key,
+            title=title,
+            reject_message=reject_message,
+            questions=questions,
+            resume_required=bool(body.get("resume_required")),
+        )
+    except database.VacancyLimitReached as exc:
+        raise web.HTTPPaymentRequired(text="Tarifdagi vakansiya limiti tugagan.") from exc
     return web.json_response({"ok": True, "key": key}, status=201)
 
 
@@ -787,8 +821,16 @@ async def toggle_vacancy(request: web.Request):
     vacancy = await database.get_vacancy(tenant["id"], key)
     if not vacancy:
         raise web.HTTPNotFound(text="Vakansiya topilmadi.")
-    await database.update_vacancy(tenant["id"], key, active=not vacancy["active"])
-    return web.json_response({"ok": True, "active": not vacancy["active"]})
+    target = not vacancy["active"]
+    try:
+        changed = await database.set_vacancy_active(tenant["id"], key, target)
+    except database.VacancyLimitReached as exc:
+        raise web.HTTPPaymentRequired(
+            text="Tarifdagi faol vakansiya limiti tugagan. Boshqa vakansiyani yoping yoki tarifni oshiring."
+        ) from exc
+    if not changed:
+        raise web.HTTPNotFound(text="Vakansiya topilmadi.")
+    return web.json_response({"ok": True, "active": target})
 
 
 async def billing(request: web.Request):

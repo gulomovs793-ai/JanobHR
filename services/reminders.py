@@ -98,14 +98,14 @@ async def _send_subscription_reminders() -> None:
                     if expiry < now:
                         title = "⛔ Tarif muddati tugadi"
                         body = (
-                            "Botlar ishlashini davom ettirish uchun tarifni yangilang."
+                            "Yangi nomzod arizalarini yana qabul qilish uchun tarifni yangilang."
                         )
                     elif calendar_days == 0:
                         title = "⏰ Tarif bugun tugaydi"
-                        body = "Uzilish bo'lmasligi uchun tarifni bugun yangilang."
+                        body = "Yangi arizalar to'xtab qolmasligi uchun tarifni bugun yangilang."
                     else:
                         title = f"⏰ Tarif tugashiga {calendar_days} kun qoldi"
-                        body = "Botlar to'xtab qolmasligi uchun tarifni yangilang."
+                        body = "Yangi arizalar qabul qilish to'xtamasligi uchun tarifni yangilang."
                     await bot.send_message(
                         admin_id,
                         f"<b>{title}</b>\n\n{body}",

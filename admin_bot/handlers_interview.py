@@ -88,7 +88,11 @@ async def start_add_slot(callback: CallbackQuery, state: FSMContext):
 
 @router.message(InterviewForm.adding_slot_label, F.text)
 async def receive_slot_label(message: Message, state: FSMContext):
-    await state.update_data(new_slot_label=message.text.strip())
+    label = message.text.strip()
+    if not 3 <= len(label) <= 80:
+        await message.answer("Sana/vaqtni 3–80 belgi oralig'ida aniq yozing.")
+        return
+    await state.update_data(new_slot_label=label)
     await message.answer("Bu vaqtga nechta nomzod qabul qilinishi mumkin? (Odatda: 1)")
     await state.set_state(InterviewForm.adding_slot_capacity)
 
@@ -96,14 +100,19 @@ async def receive_slot_label(message: Message, state: FSMContext):
 @router.message(InterviewForm.adding_slot_capacity, F.text)
 async def receive_slot_capacity(message: Message, state: FSMContext, tenant_id: int):
     text = message.text.strip()
-    if not text.isdigit() or int(text) < 1:
-        await message.answer("Iltimos, musbat butun son kiriting (masalan: 1).")
+    if not text.isdigit() or not 1 <= int(text) <= 100:
+        await message.answer("Sig'im 1 dan 100 gacha butun son bo'lishi kerak.")
         return
 
     data = await state.get_data()
-    await database.add_interview_slot(
-        tenant_id, data["new_slot_label"], capacity=int(text)
-    )
+    try:
+        await database.add_interview_slot(
+            tenant_id, data["new_slot_label"], capacity=int(text)
+        )
+    except database.InterviewSlotConflict:
+        await message.answer("Bu suhbat vaqti allaqachon mavjud. Boshqa vaqt yozing.")
+        await state.set_state(InterviewForm.adding_slot_label)
+        return
     await message.answer(f"✅ Qo'shildi: {data['new_slot_label']} (sig'imi: {text})")
     await _show_menu(message, state, tenant_id)
 
@@ -124,8 +133,22 @@ async def show_delete_slot_list(callback: CallbackQuery, tenant_id: int):
 
 @router.callback_query(F.data.startswith("ivslot:del:"))
 async def delete_slot(callback: CallbackQuery, state: FSMContext, tenant_id: int):
-    slot_id = int(callback.data.split(":")[2])
-    await database.delete_interview_slot(tenant_id, slot_id)
+    try:
+        slot_id = int(callback.data.split(":")[2])
+    except (ValueError, IndexError):
+        await callback.answer("Noto'g'ri vaqt.", show_alert=True)
+        return
+    try:
+        deleted = await database.delete_interview_slot(tenant_id, slot_id)
+    except database.InterviewSlotBooked:
+        await callback.answer(
+            "Bu vaqtni nomzod tanlagan. Band suhbat vaqtini o'chirib bo'lmaydi.",
+            show_alert=True,
+        )
+        return
+    if not deleted:
+        await callback.answer("Bu vaqt allaqachon o'chirilgan.", show_alert=True)
+        return
     await callback.answer("O'chirildi.")
     await callback.message.delete()
     await _show_menu(callback.message, state, tenant_id)

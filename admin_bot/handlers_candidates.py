@@ -19,6 +19,9 @@ _STATUS = {
     "rejected_hard_filter": "⛔ Filtrdan o'tmagan",
     "rejected_irrelevant": "⛔ Mos kelmagan",
     "rejected_ai_generated": "⛔ Shubhali javob",
+    "hired": "✅ Ishga olindi",
+    "not_hired": "❌ Ishga olinmadi",
+    "no_show": "🚫 Suhbatga kelmadi",
 }
 
 

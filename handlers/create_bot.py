@@ -384,7 +384,10 @@ async def receive_admin_token(message: Message, state: FSMContext):
         f"1️⃣ Nomzod-bot: @{candidate_username}\n"
         f"2️⃣ Admin panel-bot: @{activated_admin_username}\n\n"
         f"Buyurtma raqamingiz: <code>{tenant_id}</code>\n\n"
-        "🎁 Birinchi 5 ta ariza bepul va botlaringiz hozirdanoq faol.\n"
+        "🎁 Birinchi 5 ta ariza bepul va botlaringiz hozirdanoq faol.\n\n"
+        f"⚙️ <b>Keyingi qadam:</b> @{activated_admin_username} ga /start yuboring, "
+        "Boshqaruv panelida o'zingizning birinchi vakansiyangizni yarating. "
+        "Shundan keyin u nomzod-botda ko'rinadi.\n\n"
         f"Tarif va limitlarni @{activated_admin_username} ichidagi <b>💳 Tarif va limitlar</b> bo'limidan boshqarasiz."
     )
     await state.clear()

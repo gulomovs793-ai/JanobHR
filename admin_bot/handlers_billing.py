@@ -7,7 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
 from services import database
 from services.payment_automation import create_payment_order
-from services.plans import PUBLIC_PLAN_CODES, format_som, get_plan
+from services.plans import PUBLIC_PLAN_CODES, format_som, get_plan, get_plan_transition
 
 router = Router(name="admin_billing")
 
@@ -78,6 +78,18 @@ async def billing_buy(callback: CallbackQuery, tenant_id: int):
     if not PAYMENT_CARD_NUMBER:
         await callback.answer("To'lov rekvizitlari hali sozlanmagan.", show_alert=True)
         return
+    usage = await database.get_subscription_usage(tenant_id)
+    transition = get_plan_transition(
+        usage["plan"].code, code, current_expired=usage["expired"]
+    )
+    if transition == "blocked":
+        expiry = (usage.get("expires_at") or "")[:10]
+        suffix = f" ({expiry} gacha)" if expiry else ""
+        await callback.answer(
+            f"{usage['plan'].name} tarifi{suffix} faol. Past tarifni muddat tugagach tanlang.",
+            show_alert=True,
+        )
+        return
     plan = get_plan(code)
     order = await create_payment_order(tenant_id, plan.price, plan_code=code)
     builder = InlineKeyboardBuilder()
@@ -116,5 +128,6 @@ async def billing_check(callback: CallbackQuery, tenant_id: int):
         "approved": "✅ To'lov qabul qilindi, tarif yoqilgan",
         "needs_review": "⚠️ To'lov qo'lda tekshirilmoqda",
         "cancelled": "❌ Buyurtma bekor qilingan",
+        "expired": "⌛ Buyurtma muddati tugagan — yangi buyurtma oching",
     }
     await callback.answer(labels.get(order["status"], order["status"]), show_alert=True)

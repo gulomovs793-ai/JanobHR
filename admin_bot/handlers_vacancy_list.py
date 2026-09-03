@@ -110,7 +110,14 @@ async def toggle_vacancy(callback: CallbackQuery, tenant_id: int):
     if not vacancy:
         await callback.answer("Bu vakansiya topilmadi.", show_alert=True)
         return
-    await database.update_vacancy(tenant_id, key, active=not vacancy["active"])
+    try:
+        await database.set_vacancy_active(tenant_id, key, not vacancy["active"])
+    except database.VacancyLimitReached:
+        await callback.answer(
+            "Tarifdagi faol vakansiya limiti tugagan. Avval boshqa vakansiyani yoping yoki tarifni oshiring.",
+            show_alert=True,
+        )
+        return
     await _show_vacancy_detail(callback, tenant_id, key)
 
 
@@ -154,6 +161,11 @@ _STATUS_LABELS = {
     "declined": "❌ Rad etilgan",
     "rejected_hard_filter": "❌ Talabga javob bermadi",
     "rejected_irrelevant": "❌ Mavzuga mos kelmadi",
+    "rejected_ai_generated": "❌ Shubhali javob",
+    "saved": "🟡 Keyin ko'rish",
+    "hired": "✅ Ishga olindi",
+    "not_hired": "❌ Ishga olinmadi",
+    "no_show": "🚫 Suhbatga kelmadi",
 }
 
 

@@ -15,6 +15,12 @@ class TrialProvisioningRegressionTests(unittest.TestCase):
         self.assertIn("Ikkala botingiz ham ishga tushdi", source)
         self.assertIn("if not activation.get(\"ok\")", source)
 
+    def test_startup_reconciles_old_pending_trials(self):
+        source = Path("webhook_app.py").read_text(encoding="utf-8")
+        self.assertIn('database.list_tenants(status="pending")', source)
+        self.assertIn('result = await activate_tenant(pending["id"])', source)
+        self.assertIn('pending.get("plan_code") != "trial"', source)
+
 
 if __name__ == "__main__":
     unittest.main()

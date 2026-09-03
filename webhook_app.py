@@ -187,8 +187,31 @@ async def on_startup(app: web.Application):
     # "no such table: fsm_storage" bilan yiqiladi.
     await app["dispatcher"].storage.init()
     from services.reminders import run_reminders_forever
+    from services.tenant_activation import activate_tenant
 
     asyncio.create_task(run_reminders_forever())
+
+    # Eski self-service bug sabab ikki tokeni saqlangan, ammo `pending`da
+    # qolib ketgan trial mijozlarni avtomatik tiklaymiz. Trial uchun payment
+    # talab qilinmaydi: birinchi 5 ariza bepul. activate_tenant idempotent,
+    # shuning uchun restartda qayta urinish xavfsiz.
+    pending_trials = await database.list_tenants(status="pending")
+    for pending in pending_trials:
+        if pending.get("plan_code") != "trial":
+            continue
+        result = await activate_tenant(pending["id"])
+        if result.get("ok"):
+            logger.info(
+                "Pending trial avtomatik faollashtirildi: tenant_id=%s",
+                pending["id"],
+            )
+        else:
+            logger.warning(
+                "Pending trialni avtomatik faollashtirib bo'lmadi: tenant_id=%s error=%s",
+                pending["id"],
+                result.get("error"),
+            )
+
     tenants = await database.list_tenants(status="active")
     for tenant in tenants:
         try:

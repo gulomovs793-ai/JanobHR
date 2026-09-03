@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 
 from aiogram import Bot
+from aiogram.enums import ParseMode
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
@@ -52,7 +53,11 @@ async def _send_founder_lead_reminders() -> None:
             sent = False
             for founder_id in FOUNDER_USER_IDS:
                 try:
-                    await bot.send_message(founder_id, text)
+                    await bot.send_message(
+                        founder_id,
+                        text,
+                        parse_mode=ParseMode.HTML,
+                    )
                     sent = True
                 except Exception:
                     logger.exception(
@@ -101,6 +106,7 @@ async def _send_subscription_reminders() -> None:
                         admin_id,
                         f"<b>{title}</b>\n\n{body}",
                         reply_markup=builder.as_markup(),
+                        parse_mode=ParseMode.HTML,
                     )
                     sent = True
                 except Exception:
@@ -146,6 +152,7 @@ async def _send_unpaid_order_reminders() -> None:
                         f"Buyurtma: <code>{order['order_code']}</code>\n"
                         f"Summa: <b>{order['amount']:,} so'm</b>\n"
                         f"Telefon: <code>{order.get('contact_phone') or '—'}</code>",
+                        parse_mode=ParseMode.HTML,
                     )
                     sent = True
                 except Exception:

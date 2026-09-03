@@ -1,0 +1,29 @@
+name: Centralize payment listener on Janob HR
+
+on:
+  push:
+    branches:
+      - multi-tenant
+    paths:
+      - .github/workflows/centralize-payment-listener.yml
+      - .github/scripts/centralize_payment_listener.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+      - name: Move listener to always-on Janob HR
+        run: python .github/scripts/centralize_payment_listener.py
+      - name: Commit payment listener migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config.py userbot.py
+          git commit -m "Run shared payment listener on Janob HR web" || exit 0
+          git push origin HEAD:multi-tenant

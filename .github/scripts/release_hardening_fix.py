@@ -1,5 +1,7 @@
 from pathlib import Path
 
+# Follow-up edge-case fixes discovered by the full release test suite.
+
 
 def replace_once(path: str, old: str, new: str) -> None:
     file = Path(path)

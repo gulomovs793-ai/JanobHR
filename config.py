@@ -107,6 +107,12 @@ TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 TELEGRAM_USERBOT_SESSION = os.getenv("TELEGRAM_USERBOT_SESSION", "")
 CARD_BOT_USERNAME = os.getenv("CARD_BOT_USERNAME", "CardXabarBot").lstrip("@")
 
+# Telegram notification account is listened to by one service only.
+PAYMENT_LISTENER_ENABLED = os.getenv("PAYMENT_LISTENER_ENABLED", "1").strip().lower() not in {
+    "0", "false", "no", "off"
+}
+PAYMENT_ROUTER_SECRET = os.getenv("PAYMENT_ROUTER_SECRET", "")
+
 # Yangi mijoz ro'yxatdan o'tganda, shaxsan xabar beriladigan asoschi ID'lari
 # (bir nechta bo'lishi mumkin, vergul bilan ajratilgan).
 FOUNDER_USER_IDS = {

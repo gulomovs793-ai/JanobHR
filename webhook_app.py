@@ -12,6 +12,7 @@ serverni qayta ishga tushirmasdan qo'shiladi.
 """
 
 import asyncio
+import hmac
 import logging
 import os
 
@@ -21,7 +22,13 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import TokenBasedRequestHandler, setup_application
 from aiohttp import web
 
-from config import FOUNDER_BOT_TOKEN, MINI_APP_BASE_URL, WEBHOOK_BASE_URL
+from config import (
+    FOUNDER_BOT_TOKEN,
+    MINI_APP_BASE_URL,
+    PAYMENT_LISTENER_ENABLED,
+    PAYMENT_ROUTER_SECRET,
+    WEBHOOK_BASE_URL,
+)
 from services import database
 from services.storage import SQLiteStorage
 from services.tenant_middleware import TenantMiddleware
@@ -210,7 +217,11 @@ async def on_startup(app: web.Application):
     try:
         from userbot import is_userbot_configured, start_userbot
 
-        if is_userbot_configured():
+        if not PAYMENT_LISTENER_ENABLED:
+            logger.info(
+                "Janob HR Telegram payment listener o'chirilgan — signed router ishlatiladi."
+            )
+        elif is_userbot_configured():
             asyncio.create_task(start_userbot())
             logger.info(
                 "Userbot (to'lovlarni aniqlash) fon vazifasi sifatida ishga tushirildi."
@@ -223,6 +234,43 @@ async def on_startup(app: web.Application):
         logger.exception("Userbot ishga tushmadi — asosiy bot ishlashda davom etadi.")
 
     logger.info("Webhook server ishga tushdi: %d ta faol mijoz.", len(tenants))
+
+
+async def internal_payment_notification(request: web.Request) -> web.Response:
+    """Signed notification from the single shared-card Telegram listener."""
+    supplied = request.headers.get("X-Payment-Router-Secret", "")
+    if not PAYMENT_ROUTER_SECRET:
+        logger.error("PAYMENT_ROUTER_SECRET sozlanmagan; routed payment rad etildi.")
+        raise web.HTTPServiceUnavailable(text="payment router not configured")
+    if not supplied or not hmac.compare_digest(supplied, PAYMENT_ROUTER_SECRET):
+        logger.warning("Noto'g'ri payment router secret bilan so'rov rad etildi.")
+        raise web.HTTPUnauthorized(text="unauthorized")
+
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise web.HTTPBadRequest(text="invalid json") from exc
+    raw_text = str(payload.get("raw_text") or "").strip()
+    if not raw_text or len(raw_text) > 5000:
+        raise web.HTTPBadRequest(text="invalid notification")
+
+    from services.payment_automation import handle_payment_notification
+    from userbot import (
+        _activate_tenant_wrapper,
+        _notify_founders,
+        _notify_tenant_payment_approved,
+    )
+
+    result = await handle_payment_notification(
+        raw_text,
+        _notify_founders,
+        _activate_tenant_wrapper,
+        notify_no_match=False,
+    )
+    if result.get("status") == "approved":
+        await _notify_tenant_payment_approved(result)
+    logger.info("[payment-router] Natija: %s", result.get("status"))
+    return web.json_response(result)
 
 
 def create_app() -> web.Application:
@@ -245,6 +293,7 @@ def create_app() -> web.Application:
 
     register_miniapp(app)
     register_founder_miniapp(app)
+    app.router.add_post("/internal/payment-notification", internal_payment_notification)
     setup_application(app, dp)
 
     app.on_startup.append(on_startup)

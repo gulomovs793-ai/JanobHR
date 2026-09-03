@@ -32,6 +32,10 @@ from services.plans import get_plan_transition
 
 logger = logging.getLogger("janob_hr_bot")
 
+# Shared-card namespace: Janob HR generated amounts end in 6/7/8/9.
+# O‘zbek Ovoz AI uses 1/2/3/4. The physical card stays the same.
+_JANOBHR_AMOUNT_LAST_DIGITS = {6, 7, 8, 9}
+
 _NOTIFY_EXCLUDE_KEYWORDS = [
     "spisan",
     "spisano",
@@ -170,14 +174,22 @@ def _new_order_code() -> str:
 
 
 async def _pick_unique_amount(base_price: int) -> int:
-    """Bazaviy narxga kichik tasodifiy summa qo'shib, ochiq buyurtmalar
-    orasida noyob ekanini tekshiradi."""
-    for _ in range(25):
+    """Janob HR uchun loyiha-imzoli va ochiq orderlar orasida noyob summa."""
+    for _ in range(60):
         offset = random.randint(1, 200)
         candidate = base_price + offset
+        if candidate % 10 not in _JANOBHR_AMOUNT_LAST_DIGITS:
+            continue
         if not await database.get_open_payment_order_by_amount(candidate):
             return candidate
-    return base_price + random.randint(1, 200)
+
+    for offset in range(1, 201):
+        candidate = base_price + offset
+        if candidate % 10 not in _JANOBHR_AMOUNT_LAST_DIGITS:
+            continue
+        if not await database.get_open_payment_order_by_amount(candidate):
+            return candidate
+    raise RuntimeError("Janob HR uchun noyob to'lov summasi topilmadi")
 
 
 async def create_payment_order(
@@ -218,7 +230,7 @@ async def create_payment_order(
 
 
 async def handle_payment_notification(
-    raw_text: str, notify_founders, activate_tenant
+    raw_text: str, notify_founders, activate_tenant, *, notify_no_match: bool = True
 ) -> dict:
     """Userbot orqali kelgan xom bildirishnoma matnini qayta ishlaydi.
 
@@ -268,11 +280,12 @@ async def handle_payment_notification(
     candidates = await database.get_open_payment_orders_by_amount(amount)
 
     if not candidates:
-        await notify_founders(
-            f"⚠️ Noma'lum kirim: {amount:,} so'm\n"
-            "Ochiq buyurtmaga mos kelmadi."
-        )
-        logger.warning("[to'lov] Mos kelmadi: amount=%s", amount)
+        if notify_no_match:
+            await notify_founders(
+                f"⚠️ Noma'lum kirim: {amount:,} so'm\n"
+                "Ochiq buyurtmaga mos kelmadi."
+            )
+        logger.info("[to'lov] Mos kelmadi: amount=%s", amount)
         return {"status": "no_match", "amount": amount}
 
     if len(candidates) > 1:

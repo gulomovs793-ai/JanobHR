@@ -15,4 +15,10 @@ replace_once(
     '''    try:\n        await callback.message.edit_reply_markup(reply_markup=None)\n    except Exception:  # noqa: BLE001 - natija DBda saqlangan; eski xabarni edit qilish kritik emas\n        await callback.answer(f"✅ {labels[outcome]}")\n        return\n    await callback.answer(f"✅ {labels[outcome]}")\n''',
 )
 
+replace_once(
+    "miniapp_api.py",
+    '''    slot_id = await database.add_interview_slot(\n        tenant["id"], label, capacity, starts_at=starts_at\n    )\n''',
+    '''    if starts_at:\n        slot_id = await database.add_interview_slot(\n            tenant["id"], label, capacity, starts_at=starts_at\n        )\n    else:\n        # Eski erkin-format slotlar ham ishlashda davom etadi.\n        slot_id = await database.add_interview_slot(tenant["id"], label, capacity)\n''',
+)
+
 print("Janob HR 2 CI cleanup applied.")

@@ -20,11 +20,14 @@ tirish degani, shuning uchun har bir tekshiruv O'ZBEK OVOZ AI'dagi bilan
 bir xil qat'iylikda saqlangan.
 """
 
+import asyncio
 import hashlib
 import logging
 import random
 import re
 from datetime import datetime, timedelta, timezone
+
+import aiosqlite
 
 from config import MONTHLY_PRICE_SOM, ORDER_TTL_MINUTES, PAYMENT_CARD_NUMBER
 from services import database
@@ -175,23 +178,77 @@ def _new_order_code() -> str:
     return f"JH-{suffix}"
 
 
-async def _pick_unique_amount(base_price: int) -> int:
-    """Janob HR uchun loyiha-imzoli va ochiq orderlar orasida noyob summa."""
-    for _ in range(60):
-        offset = random.randint(1, 200)
-        candidate = base_price + offset
-        if candidate % 10 not in _JANOBHR_AMOUNT_LAST_DIGITS:
-            continue
-        if not await database.get_open_payment_order_by_amount(candidate):
-            return candidate
+_PAYMENT_OFFSET_MAX = 1999
+_AMOUNT_RESERVATION_HOURS = 24
 
-    for offset in range(1, 201):
-        candidate = base_price + offset
-        if candidate % 10 not in _JANOBHR_AMOUNT_LAST_DIGITS:
-            continue
-        if not await database.get_open_payment_order_by_amount(candidate):
-            return candidate
-    raise RuntimeError("Janob HR uchun noyob to'lov summasi topilmadi")
+
+async def _expire_stale_payment_orders(now: datetime | None = None) -> None:
+    now = now or datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    try:
+        async with aiosqlite.connect(database.SQLITE_PATH, timeout=5) as db:
+            await db.execute("PRAGMA busy_timeout=5000")
+            await db.execute(
+                "UPDATE payment_orders SET status='expired', "
+                "decided_at=COALESCE(decided_at, ?) "
+                "WHERE status='awaiting_payment' AND expires_at<=?",
+                (now_iso, now_iso),
+            )
+            await db.commit()
+    except aiosqlite.OperationalError as exc:
+        # Unit tests and first-start recovery may call this before init_db.
+        # A real initialized production DB always has payment_orders.
+        if "no such table" not in str(exc).lower():
+            raise
+
+
+async def _recent_non_live_orders(amount: int) -> list[dict]:
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=_AMOUNT_RESERVATION_HOURS)
+    ).isoformat()
+    async with aiosqlite.connect(database.SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM payment_orders WHERE amount=? AND created_at>=? "
+            "AND status IN ('expired','cancelled','approved','needs_review') "
+            "ORDER BY id DESC",
+            (amount, cutoff),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+
+async def _handle_late_or_duplicate_payment(amount: int, notify_founders) -> dict | None:
+    recent = await _recent_non_live_orders(amount)
+    if not recent:
+        return None
+
+    # Amounts are reserved for 24h, so a recent approved order cannot belong to
+    # a new customer. Treat a repeated bank notification as duplicate, not money
+    # for a different tenant.
+    if recent[0]["status"] == "approved":
+        return {"status": "duplicate", "amount": amount}
+
+    unresolved = [
+        order for order in recent if order["status"] in {"expired", "cancelled", "needs_review"}
+    ]
+    if len(unresolved) == 1:
+        order = unresolved[0]
+        await database.mark_payment_order_needs_review(
+            order["id"], "To'lov order muddati/bekor qilingandan keyin keldi"
+        )
+        await notify_founders(
+            f"⚠️ Kechikkan to'lov: {amount:,} so'm. "
+            f"Buyurtma {order['order_code']} endi avtomatik yoqilmadi; qo'lda tekshiring."
+        )
+        return {"status": "needs_review", "amount": amount}
+
+    if unresolved:
+        await notify_founders(
+            f"⚠️ Kechikkan/noaniq to'lov: {amount:,} so'm bir nechta eski "
+            "buyurtmaga mos keldi. Qo'lda tekshiring."
+        )
+        return {"status": "ambiguous", "amount": amount}
+    return None
 
 
 async def create_payment_order(
@@ -201,34 +258,97 @@ async def create_payment_order(
     plan_code: str = "start",
     billing_months: int = 1,
 ) -> dict:
-    """Mijoz uchun yangi to'lov buyurtmasi yaratadi (avvalgi ochiq
-    buyurtmalarini bekor qilib). Noyob summa va tugash muddati bilan."""
+    """Create an order atomically and reserve its exact amount for 24 hours.
+
+    ``BEGIN IMMEDIATE`` serializes competing writers, eliminating the old
+    check-then-insert race. Expired/cancelled/approved recent amounts stay
+    reserved so a delayed bank notification can never activate a different
+    customer's newly-created order.
+    """
     base_amount = base_amount or MONTHLY_PRICE_SOM
 
-    await database.cancel_open_payment_orders_for_tenant(tenant_id)
+    for attempt in range(4):
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        expires_at = (now + timedelta(minutes=ORDER_TTL_MINUTES)).isoformat()
+        reservation_cutoff = (
+            now - timedelta(hours=_AMOUNT_RESERVATION_HOURS)
+        ).isoformat()
 
-    amount = await _pick_unique_amount(base_amount)
-    order_code = _new_order_code()
-    expires_at = (
-        datetime.now(timezone.utc) + timedelta(minutes=ORDER_TTL_MINUTES)
-    ).isoformat()
+        try:
+            async with aiosqlite.connect(database.SQLITE_PATH, timeout=10) as db:
+                await db.execute("PRAGMA busy_timeout=10000")
+                await db.execute("BEGIN IMMEDIATE")
 
-    order_id = await database.create_payment_order(
-        tenant_id=tenant_id,
-        order_code=order_code,
-        base_amount=base_amount,
-        amount=amount,
-        expires_at=expires_at,
-        plan_code=plan_code,
-        billing_months=billing_months,
-    )
-    return {
-        "id": order_id,
-        "order_code": order_code,
-        "amount": amount,
-        "expires_at": expires_at,
-        "plan_code": plan_code,
-    }
+                await db.execute(
+                    "UPDATE payment_orders SET status='expired', "
+                    "decided_at=COALESCE(decided_at, ?) "
+                    "WHERE status='awaiting_payment' AND expires_at<=?",
+                    (now_iso, now_iso),
+                )
+                await db.execute(
+                    "UPDATE payment_orders SET status='cancelled', decided_at=? "
+                    "WHERE tenant_id=? AND status='awaiting_payment'",
+                    (now_iso, tenant_id),
+                )
+
+                cursor = await db.execute(
+                    "SELECT amount FROM payment_orders WHERE created_at>=?",
+                    (reservation_cutoff,),
+                )
+                reserved = {int(row[0]) for row in await cursor.fetchall()}
+
+                offsets = [
+                    offset
+                    for offset in range(1, _PAYMENT_OFFSET_MAX + 1)
+                    if (base_amount + offset) % 10 in _JANOBHR_AMOUNT_LAST_DIGITS
+                ]
+                random.shuffle(offsets)
+                amount = next(
+                    (base_amount + offset for offset in offsets if base_amount + offset not in reserved),
+                    None,
+                )
+                if amount is None:
+                    await db.rollback()
+                    raise RuntimeError(
+                        "Janob HR uchun 24 soatlik noyob to'lov summalari band."
+                    )
+
+                order_code = _new_order_code()
+                cursor = await db.execute(
+                    "INSERT INTO payment_orders "
+                    "(tenant_id, order_code, base_amount, amount, plan_code, billing_months, "
+                    "status, created_at, expires_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?)",
+                    (
+                        tenant_id,
+                        order_code,
+                        base_amount,
+                        amount,
+                        plan_code,
+                        billing_months,
+                        now_iso,
+                        expires_at,
+                    ),
+                )
+                await db.commit()
+                return {
+                    "id": cursor.lastrowid,
+                    "order_code": order_code,
+                    "amount": amount,
+                    "expires_at": expires_at,
+                    "plan_code": plan_code,
+                }
+        except aiosqlite.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == 3:
+                raise
+            await asyncio.sleep(0.05 * (attempt + 1))
+        except aiosqlite.IntegrityError:
+            if attempt == 3:
+                raise
+            await asyncio.sleep(0)
+
+    raise RuntimeError("To'lov buyurtmasini yaratib bo'lmadi")
 
 
 async def handle_payment_notification(
@@ -279,9 +399,13 @@ async def handle_payment_notification(
         return {"status": "duplicate", "amount": amount}
     await database.record_seen_notification(text_hash, amount)
 
+    await _expire_stale_payment_orders()
     candidates = await database.get_open_payment_orders_by_amount(amount)
 
     if not candidates:
+        late = await _handle_late_or_duplicate_payment(amount, notify_founders)
+        if late is not None:
+            return late
         if notify_no_match:
             await notify_founders(
                 f"⚠️ Noma'lum kirim: {amount:,} so'm\n"

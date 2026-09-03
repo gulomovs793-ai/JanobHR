@@ -48,19 +48,13 @@ _PROVIDERS = [
 
 
 async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str | None:
-    """AI javobini tez qaytaradi: asosiy provayder darhol boshlanadi, zaxiralar
-    esa qisqa kechikish bilan "hedge" sifatida ishga tushadi. Birinchi sog'lom
-    javob kelishi bilan qolgan so'rovlar bekor qilinadi.
-
-    Avvalgi ketma-ket 12s + 12s + 12s kutish webhookni uzoq ushlab turardi.
-    Bu esa nomzodga kech javob va Telegram webhook retry sabab dubl savollar
-    berilishiga olib kelishi mumkin edi.
-    """
+    """Race configured providers and retry truncated reasoning-model outputs once."""
     active = [(k, b, m, label) for k, b, m, label in _PROVIDERS if k]
     if not active:
         return None
 
-    timeout = aiohttp.ClientTimeout(total=5.0, connect=2.0, sock_read=4.5)
+    timeout = aiohttp.ClientTimeout(total=8.0, connect=2.0, sock_read=7.5)
+    initial_budget = max(max_tokens, 384)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async def run_provider(provider, delay: float) -> str | None:
@@ -68,16 +62,16 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str
             if delay:
                 await asyncio.sleep(delay)
 
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0,
-                "max_tokens": max_tokens,
-            }
-            try:
+            async def request_once(token_budget: int) -> tuple[str | None, str | None]:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0,
+                    "max_tokens": token_budget,
+                }
                 async with session.post(
                     f"{base.rstrip('/')}/chat/completions",
                     json=payload,
@@ -91,30 +85,45 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str
                             resp.status,
                             body[:300],
                         )
-                        return None
-
+                        return None, None
                     data = await resp.json()
-                    content = data["choices"][0]["message"].get("content")
-                    if not content or not content.strip():
-                        finish_reason = data.get("choices", [{}])[0].get("finish_reason")
-                        logger.warning(
-                            "AI provayder (%s) bo'sh javob qaytardi (finish_reason=%s).",
-                            label,
-                            finish_reason,
-                        )
-                        return None
-                    return content.strip()
+                    choice = data.get("choices", [{}])[0]
+                    content = (choice.get("message") or {}).get("content")
+                    return (content.strip() if content and content.strip() else None), choice.get(
+                        "finish_reason"
+                    )
+
+            try:
+                content, finish_reason = await request_once(initial_budget)
+                if finish_reason == "length":
+                    retry_budget = max(initial_budget * 2, 1200)
+                    logger.warning(
+                        "AI provayder (%s) output limitga urildi; %s token bilan qayta uriniladi.",
+                        label,
+                        retry_budget,
+                    )
+                    retry_content, retry_reason = await request_once(retry_budget)
+                    if retry_content:
+                        content = retry_content
+                        finish_reason = retry_reason
+
+                if not content:
+                    logger.warning(
+                        "AI provayder (%s) bo'sh javob qaytardi (finish_reason=%s).",
+                        label,
+                        finish_reason,
+                    )
+                    return None
+                return content
             except asyncio.CancelledError:
                 raise
             except asyncio.TimeoutError:
-                logger.warning("AI provayder (%s) 5 soniyada javob bermadi.", label)
+                logger.warning("AI provayder (%s) timeout bilan javob bermadi.", label)
                 return None
             except Exception:
                 logger.exception("AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi.", label)
                 return None
 
-        # Odatda asosiy provayder 1.2 soniyadan oldin javob bersa zaxira umuman
-        # chaqirilmaydi. Sekinlashsa zaxira-1, keyin zaxira-2 avtomatik poygaga kiradi.
         tasks = [
             asyncio.create_task(run_provider(provider, idx * 1.2))
             for idx, provider in enumerate(active)
@@ -139,6 +148,7 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str
             for task in tasks:
                 if not task.done():
                     task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 class ScoreResult(TypedDict):

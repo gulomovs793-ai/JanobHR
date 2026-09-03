@@ -2,9 +2,9 @@
 Janob HR — ko'p mijozli webhook server (Phase 2).
 
 Bitta veb-server barcha mijozlarning botlaridan kelayotgan yangilanishlarni
-qabul qiladi. Har bir mijoz o'z URL manzilida (/webhook/{token}) xabar
-qabul qiladi — aiogram avtomatik ravishda shu token bilan Bot obyektini
-yaratadi/keshlaydi (TokenBasedRequestHandler).
+qabul qiladi. Telegram bot tokenlari URLga qo'yilmaydi: har bir bot uchun
+HMAC orqali alohida opaque webhook ID va Telegram secret-token hosil qilinadi.
+Reverse-proxy/access loglarda haqiqiy BotFather tokeni ko'rinmaydi.
 
 Ishga tushirilganda, bazadagi barcha FAOL mijozlar uchun webhook o'rnatiladi.
 Yangi mijoz keyinroq (Phase 3/4) `register_new_tenant_webhook()` orqali,
@@ -12,6 +12,7 @@ serverni qayta ishga tushirmasdan qo'shiladi.
 """
 
 import asyncio
+import hashlib
 import hmac
 import logging
 import os
@@ -19,7 +20,7 @@ import os
 from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.webhook.aiohttp_server import TokenBasedRequestHandler, setup_application
+from aiogram.webhook.aiohttp_server import BaseRequestHandler, setup_application
 from aiohttp import web
 
 from config import (
@@ -27,7 +28,9 @@ from config import (
     MINI_APP_BASE_URL,
     PAYMENT_LISTENER_ENABLED,
     PAYMENT_ROUTER_SECRET,
+    TELEGRAM_USERBOT_SESSION,
     WEBHOOK_BASE_URL,
+    WEBHOOK_ROUTING_SECRET,
 )
 from services import database
 from services.storage import SQLiteStorage
@@ -35,7 +38,91 @@ from services.tenant_middleware import TenantMiddleware
 
 logger = logging.getLogger("janob_hr_bot")
 
-WEBHOOK_PATH = "/webhook/{bot_token}"
+WEBHOOK_PATH = "/telegram/{webhook_id}"
+_SECURE_WEBHOOK_HANDLER: "SecureMultiBotRequestHandler | None" = None
+
+
+def _webhook_master_secret() -> str:
+    """Stable server-side secret used only to derive webhook route IDs/secrets.
+
+    A dedicated WEBHOOK_ROUTING_SECRET is preferred. Existing high-entropy
+    production secrets are safe fallbacks so a deploy cannot accidentally
+    revert to token-in-URL routing just because the new env var is missing.
+    """
+    secret = WEBHOOK_ROUTING_SECRET or PAYMENT_ROUTER_SECRET or TELEGRAM_USERBOT_SESSION
+    if not secret:
+        raise RuntimeError(
+            "Webhook xavfsizlik secreti sozlanmagan: WEBHOOK_ROUTING_SECRET kiriting."
+        )
+    return secret
+
+
+def _derive_webhook_identity(bot_token: str) -> tuple[str, str]:
+    master = _webhook_master_secret().encode()
+    route_id = hmac.new(
+        master, f"route:{bot_token}".encode(), hashlib.sha256
+    ).hexdigest()[:40]
+    telegram_secret = hmac.new(
+        master, f"secret:{bot_token}".encode(), hashlib.sha256
+    ).hexdigest()
+    return route_id, telegram_secret
+
+
+class SecureMultiBotRequestHandler(BaseRequestHandler):
+    """Multi-bot webhook handler that never puts BotFather tokens in URLs."""
+
+    def __init__(self, dispatcher: Dispatcher, *, handle_in_background: bool = True):
+        super().__init__(dispatcher=dispatcher, handle_in_background=handle_in_background)
+        self.bots: dict[str, Bot] = {}
+
+    def add_bot(self, bot_token: str) -> Bot:
+        route_id, _ = _derive_webhook_identity(bot_token)
+        bot = self.bots.get(route_id)
+        if bot is None:
+            bot = Bot(
+                token=bot_token,
+                default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+            )
+            self.bots[route_id] = bot
+        return bot
+
+    async def resolve_bot(self, request: web.Request) -> Bot:
+        bot = self.bots.get(request.match_info["webhook_id"])
+        if bot is None:
+            raise web.HTTPNotFound()
+        return bot
+
+    def verify_secret(self, telegram_secret_token: str, bot: Bot) -> bool:
+        if not telegram_secret_token:
+            return False
+        _, expected = _derive_webhook_identity(bot.token)
+        return hmac.compare_digest(telegram_secret_token, expected)
+
+    async def close(self) -> None:
+        tasks = list(self._background_feed_update_tasks)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        for bot in self.bots.values():
+            await bot.session.close()
+
+
+def _spawn_background_task(app: web.Application, coroutine) -> asyncio.Task:
+    task = asyncio.create_task(coroutine)
+    app["background_tasks"].add(task)
+    task.add_done_callback(app["background_tasks"].discard)
+    return task
+
+
+async def on_shutdown(app: web.Application) -> None:
+    tasks = list(app.get("background_tasks", set()))
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _build_dispatcher() -> Dispatcher:
@@ -120,27 +207,23 @@ def _build_dispatcher() -> Dispatcher:
 
 
 async def register_new_tenant_webhook(bot_token: str) -> str:
-    """Yangi bot (nomzod yoki admin) uchun serverni qayta ishga tushirmasdan
-    webhookni o'rnatadi. Bot username'ini qaytaradi."""
+    """Install a non-secret URL plus Telegram secret-token for one bot."""
     if not WEBHOOK_BASE_URL:
         raise RuntimeError("WEBHOOK_BASE_URL sozlanmagan.")
+    if _SECURE_WEBHOOK_HANDLER is None:
+        raise RuntimeError("Secure webhook handler hali ishga tushmagan.")
 
-    bot = Bot(token=bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    try:
-        webhook_url = f"{WEBHOOK_BASE_URL}/webhook/{bot_token}"
-        # Deploy/restart oralig'ida kelgan nomzod xabarlari yo'qolmasin.
-        # Deduplikatsiya handler/FSM qatlamida qilinadi, pending update'ni
-        # Telegram serveridan o'chirish production uchun xavfli.
-        await bot.set_webhook(url=webhook_url, drop_pending_updates=False)
-        me = await bot.get_me()
-        logger.info("Webhook o'rnatildi: @%s", me.username)
-        return me.username
-    finally:
-        # Bu vaqtinchalik Bot obyekti faqat webhook o'rnatish uchun
-        # yaratiladi — ishlatib bo'lgach sessiyasi albatta yopilishi kerak,
-        # aks holda "Unclosed client session" xatosi va resurs sizib
-        # chiqishi (memory/file descriptor leak) yuzaga keladi.
-        await bot.session.close()
+    route_id, telegram_secret = _derive_webhook_identity(bot_token)
+    bot = _SECURE_WEBHOOK_HANDLER.add_bot(bot_token)
+    webhook_url = f"{WEBHOOK_BASE_URL.rstrip('/')}/telegram/{route_id}"
+    await bot.set_webhook(
+        url=webhook_url,
+        secret_token=telegram_secret,
+        drop_pending_updates=False,
+    )
+    me = await bot.get_me()
+    logger.info("Xavfsiz webhook o'rnatildi: @%s", me.username)
+    return me.username
 
 
 async def configure_admin_miniapp(tenant: dict) -> None:
@@ -186,10 +269,12 @@ async def on_startup(app: web.Application):
     # kirmaydi. Uni alohida yaratmasak, yangi serverda birinchi /start so'rovi
     # "no such table: fsm_storage" bilan yiqiladi.
     await app["dispatcher"].storage.init()
+    from services.backup import run_backups_forever
     from services.reminders import run_reminders_forever
     from services.tenant_activation import activate_tenant
 
-    asyncio.create_task(run_reminders_forever())
+    _spawn_background_task(app, run_reminders_forever())
+    _spawn_background_task(app, run_backups_forever())
 
     # Eski self-service bug sabab ikki tokeni saqlangan, ammo `pending`da
     # qolib ketgan trial mijozlarni avtomatik tiklaymiz. Trial uchun payment
@@ -248,7 +333,7 @@ async def on_startup(app: web.Application):
                 "Janob HR Telegram payment listener o'chirilgan — signed router ishlatiladi."
             )
         elif is_userbot_configured():
-            asyncio.create_task(start_userbot())
+            _spawn_background_task(app, start_userbot())
             logger.info(
                 "Userbot (to'lovlarni aniqlash) fon vazifasi sifatida ishga tushirildi."
             )
@@ -300,23 +385,21 @@ async def internal_payment_notification(request: web.Request) -> web.Response:
 
 
 def create_app() -> web.Application:
+    global _SECURE_WEBHOOK_HANDLER
+
     dp = _build_dispatcher()
     app = web.Application()
     app["dispatcher"] = dp
+    app["background_tasks"] = set()
+    app.on_shutdown.append(on_shutdown)
 
-    # TokenBasedRequestHandler har bir tenant tokeni uchun Bot obyektini o'zi
-    # yaratadi. Default parse mode berilmasa, <b> kabi HTML teglar foydalanuvchiga
-    # oddiy matn bo'lib ko'rinadi.
-    handler = TokenBasedRequestHandler(
+    # Opaque route ID + Telegram secret-token. BotFather tokeni URL/access-logga
+    # hech qachon tushmaydi.
+    handler = SecureMultiBotRequestHandler(
         dispatcher=dp,
-        # AI tahlili bir necha soniya olsa ham Telegram webhook HTTP javobini
-        # kutib turmaydi. Aks holda Telegram bir xil update'ni retry qilib,
-        # nomzodga bir savol ikki marta yuborilishi mumkin.
         handle_in_background=True,
-        bot_settings={
-            "default": DefaultBotProperties(parse_mode=ParseMode.HTML),
-        },
     )
+    _SECURE_WEBHOOK_HANDLER = handler
     handler.register(app, path=WEBHOOK_PATH)
     from founder_miniapp_api import register_founder_miniapp
     from miniapp_api import register_miniapp

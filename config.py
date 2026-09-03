@@ -84,6 +84,11 @@ WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "").strip() or (
     f"https://{_render_hostname}" if _render_hostname else ""
 )
 
+# Webhook URL ichida Telegram bot tokeni HECH QACHON ishlatilmaydi.
+# Alohida master-secret berish tavsiya etiladi. Productionda u bo'sh bo'lsa,
+# webhook_app mavjud yuqori-entropiyali server secretlaridan xavfsiz fallback qiladi.
+WEBHOOK_ROUTING_SECRET = os.getenv("WEBHOOK_ROUTING_SECRET", "").strip()
+
 # Admin bot ichidan ochiladigan Telegram Mini App. Bo'sh qoldirilsa
 # WEBHOOK_BASE_URL/miniapp manzili ishlatiladi.
 MINI_APP_BASE_URL = os.getenv("MINI_APP_BASE_URL", "")

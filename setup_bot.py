@@ -27,6 +27,7 @@ from aiogram.types import (
 )
 
 from config import FOUNDER_USER_IDS, SETUP_BOT_TOKEN
+from services.tenant_activation import activate_tenant
 
 logger = logging.getLogger("janob_hr_setup")
 
@@ -189,13 +190,30 @@ async def receive_admin_token(message: Message, state: FSMContext):
         )
         return
 
+    activation = await activate_tenant(tenant_id)
+    if not activation.get("ok"):
+        logger.error(
+            "Setup trial provisioning muvaffaqiyatsiz: tenant_id=%s error=%s",
+            tenant_id,
+            activation.get("error"),
+        )
+        await wait_msg.edit_text(
+            "⚠️ Tokenlaringiz saqlandi, lekin botlarni serverga ulashda texnik xato yuz berdi.\n\n"
+            f"Mijoz raqamingiz: <code>{tenant_id}</code>\n"
+            "Iltimos, @F45746 ga shu raqamni yuboring."
+        )
+        await state.clear()
+        return
+
+    candidate_username = activation.get("candidate_username") or data["candidate_bot_username"]
+    activated_admin_username = activation.get("admin_username") or admin_me.username
     await wait_msg.edit_text(
-        "✅ Tabriklaymiz! Ikkala bot ham ro'yxatdan o'tkazildi.\n\n"
-        f"Nomzod-bot: <b>@{data['candidate_bot_username']}</b>\n"
-        f"Admin-bot: <b>@{admin_me.username}</b>\n\n"
+        "✅ Tabriklaymiz! Ikkala botingiz ham ishga tushdi.\n\n"
+        f"Nomzod-bot: <b>@{candidate_username}</b>\n"
+        f"Admin-bot: <b>@{activated_admin_username}</b>\n\n"
         f"Mijoz raqamingiz: <code>{tenant_id}</code>\n\n"
-        "Birinchi 5 ta ariza bepul. Bot faollashgach tarif va limitlarni "
-        f"@{admin_me.username} ichidagi <b>💳 Tarif va limitlar</b> bo'limidan boshqarasiz."
+        "🎁 Birinchi 5 ta ariza bepul va botlaringiz hozirdanoq faol.\n"
+        f"Tarif va limitlarni @{activated_admin_username} ichidagi <b>💳 Tarif va limitlar</b> bo'limidan boshqarasiz."
     )
     await state.clear()
 

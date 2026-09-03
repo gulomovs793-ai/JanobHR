@@ -17,10 +17,9 @@ sifatida, FOUNDER_BOT_TOKEN bilan bir xil xizmatda ham ishga tushirish mumkin).
 
 import asyncio
 import logging
-
-import aiohttp
 from datetime import datetime, timedelta, timezone
 
+import aiohttp
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
@@ -35,7 +34,10 @@ from config import (
     TELEGRAM_USERBOT_SESSION,
 )
 from services import database
-from services.payment_automation import handle_payment_notification, parse_notification_amount
+from services.payment_automation import (
+    handle_payment_notification,
+    parse_notification_amount,
+)
 from services.plans import format_som, get_plan
 from services.tenant_activation import activate_tenant
 
@@ -65,32 +67,34 @@ async def _forward_to_ovoz(raw_text: str, amount: int | None) -> dict:
     last_status = None
     for attempt in range(1, 4):
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.post(
                     OVOZ_PAYMENT_URL,
                     headers=headers,
                     json={"raw_text": raw_text, "source": "janobhr-web"},
-                ) as response:
-                    last_status = response.status
-                    body = await response.json(content_type=None)
-                    if 200 <= response.status < 300:
-                        result = body if isinstance(body, dict) else {"status": "ok"}
-                        result["_project"] = "ovoz"
-                        logger.info(
-                            "[payment-router] Ovoz natija: %s, summa=%s",
-                            result.get("status"), amount,
-                        )
-                        return result
-                    if response.status not in retryable:
-                        logger.error(
-                            "[payment-router] Ovoz HTTP %s: %s", response.status, str(body)[:300]
-                        )
-                        return {
-                            "status": "router_error",
-                            "http_status": response.status,
-                            "amount": amount,
-                            "_project": "ovoz",
-                        }
+                ) as response,
+            ):
+                last_status = response.status
+                body = await response.json(content_type=None)
+                if 200 <= response.status < 300:
+                    result = body if isinstance(body, dict) else {"status": "ok"}
+                    result["_project"] = "ovoz"
+                    logger.info(
+                        "[payment-router] Ovoz natija: %s, summa=%s",
+                        result.get("status"), amount,
+                    )
+                    return result
+                if response.status not in retryable:
+                    logger.error(
+                        "[payment-router] Ovoz HTTP %s: %s", response.status, str(body)[:300]
+                    )
+                    return {
+                        "status": "router_error",
+                        "http_status": response.status,
+                        "amount": amount,
+                        "_project": "ovoz",
+                    }
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             logger.warning(
                 "[payment-router] Ovoz urinish %s/3 muvaffaqiyatsiz: %s", attempt, exc

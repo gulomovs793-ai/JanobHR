@@ -28,6 +28,7 @@ from aiogram.types import (
 
 from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, FOUNDER_USER_IDS
 from services import bot_registry, database
+from services.tenant_activation import activate_tenant
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -352,13 +353,39 @@ async def receive_admin_token(message: Message, state: FSMContext):
         )
         return
 
+    # Birinchi 5 ariza bepul trial bo'lgani uchun payment kutmaymiz.
+    # Ikki token tasdiqlanishi bilan candidate/admin webhooklari va Admin Mini App
+    # shu zahoti ulanadi. activate_tenant idempotent: retry xavfsiz.
+    activation = await activate_tenant(tenant_id)
+    if not activation.get("ok"):
+        logger.error(
+            "Trial provisioning muvaffaqiyatsiz: tenant_id=%s error=%s",
+            tenant_id,
+            activation.get("error"),
+        )
+        await wait_msg.edit_text(
+            "⚠️ Tokenlaringiz saqlandi, lekin botlarni serverga ulashda texnik xato yuz berdi.\n\n"
+            f"Buyurtma raqami: <code>{tenant_id}</code>\n"
+            "Iltimos, birozdan so'ng qayta urinib ko'ring yoki @F45746 ga shu raqamni yuboring."
+        )
+        await _send_to_janob_hr_admin(
+            "⚠️ <b>Trial botlarni faollashtirishda xato</b>\n\n"
+            f"Mijoz №{tenant_id} — {escape(data['company_name'])}\n"
+            f"Xato: {escape(str(activation.get('error') or 'noma’lum'))}"
+        )
+        await state.clear()
+        return
+
+    candidate_username = activation.get("candidate_username") or data["candidate_bot_username"]
+    activated_admin_username = activation.get("admin_username") or admin_username
+
     await wait_msg.edit_text(
-        f"✅ Tabriklaymiz! Ikkala botingiz ham tayyor:\n\n"
-        f"1️⃣ Nomzod-bot: @{data['candidate_bot_username']}\n"
-        f"2️⃣ Admin panel-bot: @{admin_username}\n\n"
+        f"✅ Tabriklaymiz! Ikkala botingiz ham ishga tushdi:\n\n"
+        f"1️⃣ Nomzod-bot: @{candidate_username}\n"
+        f"2️⃣ Admin panel-bot: @{activated_admin_username}\n\n"
         f"Buyurtma raqamingiz: <code>{tenant_id}</code>\n\n"
-        "Birinchi 5 ta ariza bepul. Bot faollashgach tarif va limitlarni "
-        f"@{admin_username} ichidagi <b>💳 Tarif va limitlar</b> bo'limidan boshqarasiz."
+        "🎁 Birinchi 5 ta ariza bepul va botlaringiz hozirdanoq faol.\n"
+        f"Tarif va limitlarni @{activated_admin_username} ichidagi <b>💳 Tarif va limitlar</b> bo'limidan boshqarasiz."
     )
     await state.clear()
 

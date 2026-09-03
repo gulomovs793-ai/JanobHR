@@ -11,7 +11,12 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import MAX_ANSWER_CHARS
 from i18n import DEFAULT_LANG, t
 from services import database
-from services.ai_scoring import check_relevance, score_answer
+from services.ai_scoring import (
+    check_relevance,
+    clear_ai_unavailable,
+    mark_ai_unavailable,
+    score_answer,
+)
 from states import ApplyForm
 from vacancies import is_negative_answer
 
@@ -225,9 +230,13 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
         answers[q["key"]] = answer_text
 
         result = await score_answer(q["text"], answer_text)
-        if result is not None:
+        if result is None:
+            ai_scores = mark_ai_unavailable(ai_scores, q["key"])
+        else:
+            ai_scores = clear_ai_unavailable(ai_scores, q["key"])
             ai_scores[q["key"]] = result
 
+        if result is not None:  # noqa: SIM102 - explicit None guard before result.get
             if "ai_yozgan" in result.get("red_flags", []):
                 flagged_keys = data.get("ai_suspect_flagged_keys", [])
                 if q["key"] not in flagged_keys:
@@ -290,7 +299,10 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
     result = None
     if q.get("ai_score"):
         result = await score_answer(q["text"], answer_text)
-        if result is not None:
+        if result is None:
+            ai_scores = mark_ai_unavailable(ai_scores, q["key"])
+        else:
+            ai_scores = clear_ai_unavailable(ai_scores, q["key"])
             ai_scores[q["key"]] = result
             relevant = result.get("relevant", True)
     elif not q.get("ai_score") and len(answer_text) > _SHORT_ANSWER_SKIP_CHARS:

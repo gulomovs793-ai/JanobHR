@@ -17,7 +17,7 @@ from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from services import database
-from services.ai_scoring import aggregate_scores
+from services.ai_scoring import aggregate_scores, get_ai_unavailable_keys
 from vacancies import build_questions
 
 logger = logging.getLogger("janob_hr_bot")
@@ -44,10 +44,12 @@ _MAX_TEXT_LENGTH = 3800
 
 
 def format_candidate_card(app: dict) -> str:
-    aggregate = aggregate_scores(app.get("ai_scores") or {})
+    ai_scores = app.get("ai_scores") or {}
+    aggregate = aggregate_scores(ai_scores)
+    unavailable_keys = get_ai_unavailable_keys(ai_scores)
     scored = [
         value
-        for value in (app.get("ai_scores") or {}).values()
+        for value in ai_scores.values()
         if isinstance(value, dict) and isinstance(value.get("score"), (int, float))
     ]
     strongest = max(scored, key=lambda value: value["score"], default=None)
@@ -60,7 +62,17 @@ def format_candidate_card(app: dict) -> str:
         )
     elif weakest and weakest.get("score", 100) < 70:
         risk = weakest.get("izoh") or "Ayrim javoblari yetarlicha aniq emas."
-    score = f"{aggregate['avg_score']}/100" if aggregate else "Baholanmagan"
+
+    if unavailable_keys:
+        ai_note = f"⚠️ AI tahlili {len(unavailable_keys)} ta savolda ishlamadi."
+        risk = f"{ai_note} {risk}"
+        if aggregate:
+            score = f"{aggregate['avg_score']}/100 ⚠️ qisman"
+        else:
+            score = "⚠️ AI ishlamadi"
+            strength = "AI tahlili mavjud emas — javoblarni qo'lda ko'ring."
+    else:
+        score = f"{aggregate['avg_score']}/100" if aggregate else "Baholanmagan"
     return (
         f"👤 <b>{escape(str(app['full_name']))}</b>\n"
         f"💼 {escape(str(app['vacancy_title']))}\n"
@@ -86,6 +98,7 @@ async def format_application_full_text(app: dict) -> str:
     lines.append("")
 
     ai_scores = app.get("ai_scores") or {}
+    unavailable_keys = get_ai_unavailable_keys(ai_scores)
     tenant_id = app["tenant_id"]
 
     for key, value in app["answers"].items():
@@ -136,6 +149,12 @@ async def format_application_full_text(app: dict) -> str:
         lines.append(
             f"{emoji} <b>Yakuniy AI ball: {aggregate['avg_score']}/100</b>{coverage}"
         )
+        if unavailable_keys or valid_count < len(expected_keys):
+            missing_count = max(len(expected_keys) - valid_count, len(unavailable_keys))
+            lines.append(
+                f"⚠️ <b>AI tahlili to'liq emas:</b> {missing_count} ta savolni "
+                "qo'lda ko'rib chiqing."
+            )
         lines.append(
             f"📊 Natijadorlik: {aggregate['avg_natijadorlik']} | "
             f"Mas'uliyat: {aggregate['avg_masuliyat']} | "

@@ -555,6 +555,41 @@ async def translate_vacancy_content(
         return None
 
 
+AI_STATUS_KEY = "__ai_status__"
+
+
+def get_ai_unavailable_keys(ai_scores: dict | None) -> list[str]:
+    meta = (ai_scores or {}).get(AI_STATUS_KEY)
+    if not isinstance(meta, dict):
+        return []
+    keys = meta.get("unavailable_keys")
+    if not isinstance(keys, list):
+        return []
+    return [str(key) for key in keys if str(key)]
+
+
+def mark_ai_unavailable(ai_scores: dict | None, question_key: str) -> dict:
+    scores = dict(ai_scores or {})
+    # If a follow-up answer replaced an older scored answer but the re-analysis
+    # failed, never keep the stale old score attached to the new answer.
+    scores.pop(question_key, None)
+    keys = get_ai_unavailable_keys(scores)
+    if question_key not in keys:
+        keys.append(question_key)
+    scores[AI_STATUS_KEY] = {"unavailable_keys": keys}
+    return scores
+
+
+def clear_ai_unavailable(ai_scores: dict | None, question_key: str) -> dict:
+    scores = dict(ai_scores or {})
+    keys = [key for key in get_ai_unavailable_keys(scores) if key != question_key]
+    if keys:
+        scores[AI_STATUS_KEY] = {"unavailable_keys": keys}
+    else:
+        scores.pop(AI_STATUS_KEY, None)
+    return scores
+
+
 class AggregateResult(TypedDict):
     avg_score: int
     verdict: str  # "yashil" | "sariq" | "qizil"

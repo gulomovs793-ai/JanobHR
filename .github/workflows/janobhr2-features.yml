@@ -24,6 +24,8 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Apply Janob HR 2 feature patch
         run: python .github/scripts/apply_janobhr2_features.py
+      - name: Clean CI edge cases
+        run: python .github/scripts/janobhr2_ci_cleanup.py
       - name: Auto-fix lint
         run: ruff check . --fix
       - name: Validate lint

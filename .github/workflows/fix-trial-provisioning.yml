@@ -26,6 +26,7 @@ jobs:
       - name: Validate lint
         run: |
           pip install -r requirements-dev.txt
+          ruff check . --fix
           ruff check .
       - name: Validate syntax
         run: python -m compileall -q .

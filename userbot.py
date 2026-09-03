@@ -17,6 +17,7 @@ sifatida, FOUNDER_BOT_TOKEN bilan bir xil xizmatda ham ishga tushirish mumkin).
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -24,6 +25,7 @@ from telethon.sessions import StringSession
 from config import (
     CARD_BOT_USERNAME,
     FOUNDER_USER_IDS,
+    ORDER_TTL_MINUTES,
     TELEGRAM_API_HASH,
     TELEGRAM_API_ID,
     TELEGRAM_USERBOT_SESSION,
@@ -112,6 +114,7 @@ async def start_userbot():
         )
         return
 
+    started_at = datetime.now(timezone.utc)
     client = TelegramClient(
         StringSession(TELEGRAM_USERBOT_SESSION),
         TELEGRAM_API_ID,
@@ -169,16 +172,30 @@ async def start_userbot():
     async def handler(event):
         await process_message(event.message)
 
-    # Deploy paytida yoki kuzatuvchi vaqtincha o'chib qolganida kelgan to'lov
-    # yo'qolib ketmasin. Deduplikatsiya bir xabarni ikki marta tasdiqlashga yo'l
-    # qo'ymaydi; faqat oxirgi 20 ta xabar tekshiriladi.
+    # Deploy paytida kelgan haqiqiy to'lov yo'qolib ketmasin, ammo eski tarix
+    # qayta ishlanib founderga spam bermasin. Ochiq buyurtma ORDER_TTL_MINUTES
+    # ichida baribir eskiradi, shuning uchun undan eski xabarni replay qilishning
+    # foydasi yo'q.
+    replay_cutoff = started_at - timedelta(minutes=max(ORDER_TTL_MINUTES, 1))
+    replayed = 0
     try:
         async for old_message in client.iter_messages(CARD_BOT_USERNAME, limit=20):
+            message_date = getattr(old_message, "date", None)
+            if message_date is None:
+                continue
+            if message_date.tzinfo is None:
+                message_date = message_date.replace(tzinfo=timezone.utc)
+            if message_date < replay_cutoff:
+                continue
             await process_message(old_message)
+            replayed += 1
     except Exception:
         logger.exception("[userbot] Oxirgi to'lov xabarlarini tekshirib bo'lmadi.")
 
-    logger.info("[userbot] Tinglashni boshladi.")
+    logger.info(
+        "[userbot] Tinglashni boshladi. Replay qilingan yaqindagi xabarlar: %d",
+        replayed,
+    )
     await client.run_until_disconnected()
 
 

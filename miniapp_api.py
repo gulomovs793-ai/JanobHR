@@ -103,10 +103,7 @@ def _request_init_data(request: web.Request) -> str:
             return value
     cookie = request.cookies.get("jh_tg_init") or ""
     if cookie:
-        try:
-            return unquote(cookie).strip()
-        except Exception:
-            return ""
+        return unquote(cookie).strip()
     return ""
 
 

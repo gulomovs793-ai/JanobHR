@@ -454,6 +454,33 @@ async def init_db():
             await db.execute(
                 "ALTER TABLE payment_orders ADD COLUMN customer_notified_at TEXT"
             )
+
+        # Defense-in-depth for payment routing: even if application-level locking
+        # regresses later, SQLite itself must never allow two LIVE orders to own
+        # the same exact incoming amount. Historical duplicates from older code
+        # are ambiguous, so mark every still-live duplicate for manual review
+        # before creating the partial UNIQUE index.
+        duplicate_now = datetime.now(timezone.utc).isoformat()
+        cursor = await db.execute(
+            "SELECT amount FROM payment_orders WHERE status='awaiting_payment' "
+            "GROUP BY amount HAVING COUNT(*) > 1"
+        )
+        for (duplicate_amount,) in await cursor.fetchall():
+            logger.error(
+                "Duplicate live payment amount migrationda topildi: %s; needs_review qilindi.",
+                duplicate_amount,
+            )
+            await db.execute(
+                "UPDATE payment_orders SET status='needs_review', "
+                "decided_at=COALESCE(decided_at, ?) "
+                "WHERE amount=? AND status='awaiting_payment'",
+                (duplicate_now, duplicate_amount),
+            )
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_orders_awaiting_amount "
+            "ON payment_orders(amount) WHERE status='awaiting_payment'"
+        )
+
         cursor = await db.execute("PRAGMA table_info(business_leads)")
         lead_columns = {row[1] for row in await cursor.fetchall()}
         if "last_reminded_at" not in lead_columns:

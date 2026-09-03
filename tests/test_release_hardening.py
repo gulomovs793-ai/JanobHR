@@ -36,6 +36,28 @@ class ReleaseHardeningTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotEqual(first["amount"], second["amount"])
 
+    async def test_db_rejects_duplicate_live_payment_amount(self):
+        first = await create_payment_order(self.tenant_a, 599_000, plan_code="growth")
+        aiosqlite = __import__("aiosqlite")
+        async with aiosqlite.connect(self.db_path) as db:
+            with self.assertRaises(aiosqlite.IntegrityError):
+                await db.execute(
+                    "INSERT INTO payment_orders "
+                    "(tenant_id, order_code, base_amount, amount, plan_code, billing_months, "
+                    "status, created_at, expires_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?)",
+                    (
+                        self.tenant_b,
+                        "JH-INDEX-TEST",
+                        599_000,
+                        first["amount"],
+                        "growth",
+                        1,
+                        "2026-09-03T00:00:00+00:00",
+                        "2099-09-03T00:20:00+00:00",
+                    ),
+                )
+
     async def test_expired_amount_stays_reserved_for_late_payment_window(self):
         first = await create_payment_order(self.tenant_a, 599_000, plan_code="growth")
         async with __import__("aiosqlite").connect(self.db_path) as db:

@@ -1,0 +1,51 @@
+name: Fix founder Mini App launch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-founder-webapp-launch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+      - name: Patch founder reply-keyboard WebApp launch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('founder_panel.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''def _founder_services_keyboard() -> ReplyKeyboardMarkup:\n    panel = KeyboardButton(text=FOUNDER_MENU["panel"])\n    if WEBHOOK_BASE_URL:\n        panel = KeyboardButton(\n            text=FOUNDER_MENU["panel"],\n            web_app=WebAppInfo(url=f"{WEBHOOK_BASE_URL.rstrip('/')}/founder"),\n        )\n    return ReplyKeyboardMarkup(\n'''
+          new = '''def _founder_services_keyboard() -> ReplyKeyboardMarkup:\n    # Reply-keyboard WebApp buttons are opened as Telegram SimpleWebView and\n    # do not reliably include user initData. Keep this as a normal text\n    # button; its handler below returns an inline WebApp button, which does\n    # include signed Telegram user data required by Founder auth.\n    panel = KeyboardButton(text=FOUNDER_MENU["panel"])\n    return ReplyKeyboardMarkup(\n'''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          marker = '''@router.message(F.text == FOUNDER_MENU["customers"])\nasync def service_founder_customers(message: Message):\n'''
+          handler = '''@router.message(F.text == FOUNDER_MENU["panel"])\nasync def service_founder_panel(message: Message):\n    if message.from_user.id not in FOUNDER_USER_IDS:\n        return\n    builder = InlineKeyboardBuilder()\n    if WEBHOOK_BASE_URL:\n        builder.button(\n            text="👑 Founder panelni ochish",\n            web_app=WebAppInfo(url=f"{WEBHOOK_BASE_URL.rstrip('/')}/founder"),\n        )\n    await message.answer(\n        "Founder panelni xavfsiz ochish uchun quyidagi tugmani bosing:",\n        reply_markup=builder.as_markup(),\n    )\n\n\n'''
+          if handler not in text:
+              if marker not in text:
+                  raise SystemExit('Founder customers handler marker not found')
+              text = text.replace(marker, handler + marker, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit fix
+        run: |
+          if git diff --quiet -- founder_panel.py; then
+            echo "Already fixed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add founder_panel.py
+          git commit -m "Fix founder Mini App secure launch"
+          git push origin multi-tenant

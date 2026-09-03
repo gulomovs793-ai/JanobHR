@@ -24,6 +24,8 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Apply hardening patch
         run: python .github/scripts/market_ready_hardening.py
+      - name: Clean remaining lint debt
+        run: python .github/scripts/market_ready_lint_cleanup.py
       - name: Auto-fix lint
         run: ruff check . --fix
       - name: Validate lint

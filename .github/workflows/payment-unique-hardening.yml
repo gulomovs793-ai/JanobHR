@@ -1,0 +1,43 @@
+name: Payment unique hardening
+
+on:
+  push:
+    branches: [payment-unique-hardening-2026-09-03]
+    paths:
+      - .github/workflows/payment-unique-hardening.yml
+      - .github/scripts/payment_unique_hardening.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: payment-unique-hardening-2026-09-03
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Apply DB uniqueness hardening
+        run: python .github/scripts/payment_unique_hardening.py
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Compile
+        run: python -m compileall -q .
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Diff safety check
+        run: git diff --check
+      - name: Commit tested hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/database.py tests/test_release_hardening.py
+          git commit -m "Enforce unique live payment amounts in SQLite" || exit 0
+          git push origin HEAD:payment-unique-hardening-2026-09-03

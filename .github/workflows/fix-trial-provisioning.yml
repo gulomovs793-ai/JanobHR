@@ -5,6 +5,7 @@ on:
     branches: [multi-tenant]
     paths:
       - .github/workflows/fix-trial-provisioning.yml
+      - .github/scripts/fix_trial_provisioning.py
   workflow_dispatch:
 
 permissions:

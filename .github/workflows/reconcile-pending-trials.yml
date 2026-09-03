@@ -1,0 +1,41 @@
+name: Reconcile pending trial bots
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/reconcile-pending-trials.yml
+      - .github/scripts/reconcile_pending_trials.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply pending-trial reconciliation
+        run: python .github/scripts/reconcile_pending_trials.py
+      - name: Validate
+        run: |
+          pip install -r requirements-dev.txt
+          ruff check . --fix
+          ruff check .
+          python -m compileall -q .
+          python -m unittest discover -s tests -v
+      - name: Commit validated reconciliation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Reconcile pending trial bots on startup"
+            git push origin multi-tenant
+          fi

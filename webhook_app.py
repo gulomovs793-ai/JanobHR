@@ -283,6 +283,10 @@ def create_app() -> web.Application:
     # oddiy matn bo'lib ko'rinadi.
     handler = TokenBasedRequestHandler(
         dispatcher=dp,
+        # AI tahlili bir necha soniya olsa ham Telegram webhook HTTP javobini
+        # kutib turmaydi. Aks holda Telegram bir xil update'ni retry qilib,
+        # nomzodga bir savol ikki marta yuborilishi mumkin.
+        handle_in_background=True,
         bot_settings={
             "default": DefaultBotProperties(parse_mode=ParseMode.HTML),
         },

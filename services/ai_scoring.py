@@ -16,6 +16,7 @@ Hech qanday provayder sozlanmagan bo'lsa yoki barchasi ishlamasa, None qaytadi
 — bot AI'siz ham ishlayveradi.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -47,65 +48,97 @@ _PROVIDERS = [
 
 
 async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str | None:
-    """Sozlangan provayderlarni navbat bilan sinaydi, birinchi muvaffaqiyatlisidan
-    xom matnni qaytaradi. Hech biri sozlanmagan yoki barchasi ishlamasa — None.
+    """AI javobini tez qaytaradi: asosiy provayder darhol boshlanadi, zaxiralar
+    esa qisqa kechikish bilan "hedge" sifatida ishga tushadi. Birinchi sog'lom
+    javob kelishi bilan qolgan so'rovlar bekor qilinadi.
+
+    Avvalgi ketma-ket 12s + 12s + 12s kutish webhookni uzoq ushlab turardi.
+    Bu esa nomzodga kech javob va Telegram webhook retry sabab dubl savollar
+    berilishiga olib kelishi mumkin edi.
     """
     active = [(k, b, m, label) for k, b, m, label in _PROVIDERS if k]
     if not active:
         return None
 
-    for key, base, model, label in active:
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0,
-            "max_tokens": max_tokens,
-        }
-        try:
-            async with (
-                aiohttp.ClientSession() as session,
-                session.post(
+    timeout = aiohttp.ClientTimeout(total=5.0, connect=2.0, sock_read=4.5)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async def run_provider(provider, delay: float) -> str | None:
+            key, base, model, label = provider
+            if delay:
+                await asyncio.sleep(delay)
+
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0,
+                "max_tokens": max_tokens,
+            }
+            try:
+                async with session.post(
                     f"{base.rstrip('/')}/chat/completions",
                     json=payload,
                     headers={"Authorization": f"Bearer {key}"},
-                    timeout=aiohttp.ClientTimeout(total=12),
-                ) as resp,
-            ):
-                if resp.status != 200:
-                    body = await resp.text()
-                    logger.warning(
-                        "AI provayder (%s) xatosi: HTTP %s | %s",
-                        label,
-                        resp.status,
-                        body[:300],
-                    )
-                    continue  # navbatdagi provayderga o'tamiz
-                data = await resp.json()
-                content = data["choices"][0]["message"]["content"]
-                if not content or not content.strip():
-                    # HTTP 200 keldi, lekin matn bo'sh — bu odatda "fikrlash"
-                    # (reasoning) modellari max_tokens byudjetini ichki fikrlashga
-                    # sarflab, ko'rinadigan javob yozishga ulgurmaganda sodir
-                    # bo'ladi. Bu holatni MUVAFFAQIYAT deb hisoblamaymiz —
-                    # navbatdagi provayderga o'tamiz.
-                    finish_reason = data.get("choices", [{}])[0].get("finish_reason")
-                    logger.warning(
-                        "AI provayder (%s) bo'sh javob qaytardi (finish_reason=%s), "
-                        "keyingi provayderga o'tamiz.",
-                        label,
-                        finish_reason,
-                    )
-                    continue
-                return content.strip()
-        except Exception:
-            logger.exception("AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi.", label)
-            continue  # navbatdagi provayderga o'tamiz
+                ) as resp:
+                    if resp.status != 200:
+                        body = await resp.text()
+                        logger.warning(
+                            "AI provayder (%s) xatosi: HTTP %s | %s",
+                            label,
+                            resp.status,
+                            body[:300],
+                        )
+                        return None
 
-    logger.error("Barcha AI provayderlar ishlamadi (%d ta sinaldi).", len(active))
-    return None
+                    data = await resp.json()
+                    content = data["choices"][0]["message"].get("content")
+                    if not content or not content.strip():
+                        finish_reason = data.get("choices", [{}])[0].get("finish_reason")
+                        logger.warning(
+                            "AI provayder (%s) bo'sh javob qaytardi (finish_reason=%s).",
+                            label,
+                            finish_reason,
+                        )
+                        return None
+                    return content.strip()
+            except asyncio.CancelledError:
+                raise
+            except asyncio.TimeoutError:
+                logger.warning("AI provayder (%s) 5 soniyada javob bermadi.", label)
+                return None
+            except Exception:
+                logger.exception("AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi.", label)
+                return None
+
+        # Odatda asosiy provayder 1.2 soniyadan oldin javob bersa zaxira umuman
+        # chaqirilmaydi. Sekinlashsa zaxira-1, keyin zaxira-2 avtomatik poygaga kiradi.
+        tasks = [
+            asyncio.create_task(run_provider(provider, idx * 1.2))
+            for idx, provider in enumerate(active)
+        ]
+        pending = set(tasks)
+        try:
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in done:
+                    result = task.result()
+                    if result:
+                        for other in pending:
+                            other.cancel()
+                        if pending:
+                            await asyncio.gather(*pending, return_exceptions=True)
+                        return result
+            logger.error("Barcha AI provayderlar ishlamadi (%d ta sinaldi).", len(active))
+            return None
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
 
 
 class ScoreResult(TypedDict):
@@ -168,7 +201,7 @@ FAQAT quyidagi JSON formatida javob ber, boshqa hech qanday matn, izoh yoki mark
 
 async def score_answer(question: str, answer: str) -> ScoreResult | None:
     content = await _call_ai(
-        _SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=700
+        _SYSTEM_PROMPT, f"Savol: {question}\nNomzod javobi: {answer}", max_tokens=260
     )
     if content is None:
         return None

@@ -1,5 +1,6 @@
 """Janob HR Bot — savol-javob oqimi, hard-filter, mavzuga aloqadorlik va AI baholash."""
 
+import asyncio
 import logging
 
 from aiogram import F, Router
@@ -17,6 +18,19 @@ from vacancies import is_negative_answer
 logger = logging.getLogger("janob_hr_bot")
 
 router = Router(name="questions")
+
+# Telegram webhook retry yoki bir xil update parallel qayta ishlansa, bitta javob
+# keyingi ikki savolga ketma-ket yozilib qolmasligi uchun chat/user bo'yicha lock.
+_ANSWER_LOCKS: dict[tuple[int, int], asyncio.Lock] = {}
+
+
+def _answer_lock(message: Message) -> asyncio.Lock:
+    key = (message.chat.id, message.from_user.id)
+    lock = _ANSWER_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _ANSWER_LOCKS[key] = lock
+    return lock
 
 
 async def ask_current_question(message: Message, state: FSMContext):
@@ -105,17 +119,38 @@ _FOLLOWUP_SCORE_THRESHOLD = 50
 
 @router.message(ApplyForm.answering_questions, F.text)
 async def handle_text_answer(message: Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", DEFAULT_LANG)
-    idx = data["question_index"]
-    questions = data["vacancy_questions"]
+    async with _answer_lock(message):
+        data = await state.get_data()
 
-    if questions[idx].get("voice"):
-        # Bu savol MAJBURIY ravishda ovozli xabar talab qiladi — matn qabul qilinmaydi.
-        await message.answer(t("voice_required", lang))
-        return
+        # Telegram aynan shu update'ni qayta yuborgan bo'lsa, ikkinchi marta
+        # savol indeksini siljitmaymiz. Bu qiymat FSM bilan persistent saqlanadi.
+        if data.get("last_answer_message_id") == message.message_id:
+            logger.info(
+                "Dubl candidate update e'tiborsiz qoldirildi: chat=%s message=%s",
+                message.chat.id,
+                message.message_id,
+            )
+            return
 
-    await _process_answer(message, state, message.text.strip())
+        lang = data.get("lang", DEFAULT_LANG)
+        idx = data["question_index"]
+        questions = data["vacancy_questions"]
+
+        if questions[idx].get("voice"):
+            await message.answer(t("voice_required", lang))
+            return
+
+        # Belgini AI chaqiruvidan OLDIN yozamiz: parallel retry lockdan keyin
+        # kirganda shu xabar allaqachon ishlanayotganini ko'radi. Agar kutilmagan
+        # xato bo'lsa, belgini qaytarib tashlaymiz — keyin qayta urinish mumkin.
+        await state.update_data(last_answer_message_id=message.message_id)
+        try:
+            await _process_answer(message, state, message.text.strip())
+        except Exception:
+            current = await state.get_data()
+            if current.get("last_answer_message_id") == message.message_id:
+                await state.update_data(last_answer_message_id=None)
+            raise
 
 
 @router.message(ApplyForm.answering_questions, F.voice)

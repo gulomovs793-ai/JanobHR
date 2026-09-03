@@ -1,0 +1,44 @@
+name: AI failure visibility
+
+on:
+  push:
+    branches: [ai-failure-visibility-2026-09-03]
+    paths:
+      - .github/workflows/ai-failure-visibility.yml
+      - .github/scripts/ai_failure_visibility.py
+      - tests/test_ai_failure_visibility.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ai-failure-visibility-2026-09-03
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Apply AI visibility hardening
+        run: python .github/scripts/ai_failure_visibility.py
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Compile
+        run: python -m compileall -q .
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Diff safety check
+        run: git diff --check
+      - name: Commit tested hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/ai_scoring.py handlers/questions.py handlers/admin.py tests/test_ai_failure_visibility.py
+          git commit -m "Make AI analysis failures visible to admins" || exit 0
+          git push origin HEAD:ai-failure-visibility-2026-09-03

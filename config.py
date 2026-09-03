@@ -112,6 +112,7 @@ PAYMENT_LISTENER_ENABLED = os.getenv("PAYMENT_LISTENER_ENABLED", "1").strip().lo
     "0", "false", "no", "off"
 }
 PAYMENT_ROUTER_SECRET = os.getenv("PAYMENT_ROUTER_SECRET", "")
+OVOZ_PAYMENT_URL = os.getenv("OVOZ_PAYMENT_URL", "").strip()
 
 # Yangi mijoz ro'yxatdan o'tganda, shaxsan xabar beriladigan asoschi ID'lari
 # (bir nechta bo'lishi mumkin, vergul bilan ajratilgan).

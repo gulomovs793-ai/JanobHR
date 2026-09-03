@@ -17,6 +17,8 @@ sifatida, FOUNDER_BOT_TOKEN bilan bir xil xizmatda ham ishga tushirish mumkin).
 
 import asyncio
 import logging
+
+import aiohttp
 from datetime import datetime, timedelta, timezone
 
 from telethon import TelegramClient, events
@@ -26,16 +28,128 @@ from config import (
     CARD_BOT_USERNAME,
     FOUNDER_USER_IDS,
     ORDER_TTL_MINUTES,
+    OVOZ_PAYMENT_URL,
+    PAYMENT_ROUTER_SECRET,
     TELEGRAM_API_HASH,
     TELEGRAM_API_ID,
     TELEGRAM_USERBOT_SESSION,
 )
 from services import database
-from services.payment_automation import handle_payment_notification
+from services.payment_automation import handle_payment_notification, parse_notification_amount
 from services.plans import format_som, get_plan
 from services.tenant_activation import activate_tenant
 
 logger = logging.getLogger("janob_hr_userbot")
+
+
+_OVOZ_LAST_DIGITS = {1, 2, 3, 4}
+_JANOBHR_LAST_DIGITS = {6, 7, 8, 9}
+
+
+async def _forward_to_ovoz(raw_text: str, amount: int | None) -> dict:
+    """Forward one signed bank notification to the O'zbek Ovoz payment engine.
+
+    The Ovoz service may be on Render Free and asleep. The long timeout plus
+    retry lets the incoming HTTP request wake it without losing the payment.
+    """
+    if not OVOZ_PAYMENT_URL or not PAYMENT_ROUTER_SECRET:
+        logger.error("[payment-router] OVOZ_PAYMENT_URL/PAYMENT_ROUTER_SECRET sozlanmagan.")
+        return {"status": "router_not_configured", "amount": amount, "_project": "ovoz"}
+
+    headers = {
+        "X-Payment-Router-Secret": PAYMENT_ROUTER_SECRET,
+        "Content-Type": "application/json",
+    }
+    timeout = aiohttp.ClientTimeout(total=95, connect=15)
+    retryable = {429, 502, 503, 504}
+    last_status = None
+    for attempt in range(1, 4):
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    OVOZ_PAYMENT_URL,
+                    headers=headers,
+                    json={"raw_text": raw_text, "source": "janobhr-web"},
+                ) as response:
+                    last_status = response.status
+                    body = await response.json(content_type=None)
+                    if 200 <= response.status < 300:
+                        result = body if isinstance(body, dict) else {"status": "ok"}
+                        result["_project"] = "ovoz"
+                        logger.info(
+                            "[payment-router] Ovoz natija: %s, summa=%s",
+                            result.get("status"), amount,
+                        )
+                        return result
+                    if response.status not in retryable:
+                        logger.error(
+                            "[payment-router] Ovoz HTTP %s: %s", response.status, str(body)[:300]
+                        )
+                        return {
+                            "status": "router_error",
+                            "http_status": response.status,
+                            "amount": amount,
+                            "_project": "ovoz",
+                        }
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            logger.warning(
+                "[payment-router] Ovoz urinish %s/3 muvaffaqiyatsiz: %s", attempt, exc
+            )
+        if attempt < 3:
+            await asyncio.sleep(8 * attempt)
+
+    return {
+        "status": "router_error",
+        "http_status": last_status,
+        "amount": amount,
+        "_project": "ovoz",
+    }
+
+
+async def _route_payment_notification(raw_text: str) -> dict:
+    """One physical card, two isolated payment engines.
+
+    New Ovoz amounts end in 1/2/3/4 and Janob HR in 6/7/8/9. Legacy 0/5
+    and old orders are still given a fallback chance in the other engine.
+    """
+    amount = parse_notification_amount(raw_text)
+
+    async def local(*, notify_no_match: bool = False) -> dict:
+        result = await handle_payment_notification(
+            raw_text,
+            _notify_founders,
+            _activate_tenant_wrapper,
+            notify_no_match=notify_no_match,
+        )
+        result["_project"] = "janobhr"
+        return result
+
+    if amount is None:
+        return await local(notify_no_match=False)
+
+    last_digit = amount % 10
+    if last_digit in _OVOZ_LAST_DIGITS:
+        routed = await _forward_to_ovoz(raw_text, amount)
+        if routed.get("status") not in {"no_match", "router_error", "router_not_configured"}:
+            return routed
+        # Legacy Janob HR order may predate the namespace split.
+        legacy = await local(notify_no_match=False)
+        if legacy.get("status") != "no_match":
+            return legacy
+        return routed
+
+    # Janob HR namespace (and legacy/reserved digits): local engine first.
+    result = await local(notify_no_match=False)
+    if result.get("status") != "no_match":
+        return result
+
+    # A legacy Ovoz order may use an old last digit.
+    routed = await _forward_to_ovoz(raw_text, amount)
+    if routed.get("status") in {"router_error", "router_not_configured"}:
+        # If neither engine can be checked, surface the unknown incoming payment
+        # to founders instead of silently dropping it.
+        return await local(notify_no_match=True)
+    return routed
 
 
 def is_userbot_configured() -> bool:
@@ -159,11 +273,13 @@ async def start_userbot():
             logger.info(
                 "[userbot] @%s dan xabar keldi (%d belgi).", expected, len(text)
             )
-            result = await handle_payment_notification(
-                text, _notify_founders, _activate_tenant_wrapper
+            result = await _route_payment_notification(text)
+            logger.info(
+                "[userbot] Natija: %s (%s)",
+                result.get("status"),
+                result.get("_project", "unknown"),
             )
-            logger.info("[userbot] Natija: %s", result.get("status"))
-            if result.get("status") == "approved":
+            if result.get("status") == "approved" and result.get("_project") == "janobhr":
                 await _notify_tenant_payment_approved(result)
         except Exception:
             logger.exception("[userbot] Xabarni qayta ishlashda xatolik.")

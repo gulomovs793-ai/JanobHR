@@ -51,6 +51,35 @@ _NOTIFY_EXCLUDE_KEYWORDS = [
     "declin",  # so'rov rad etildi
 ]
 
+_NON_PAYMENT_SUMMARY_KEYWORDS = (
+    "umumiy balans",
+    "общий баланс",
+    "balance summary",
+)
+
+
+def looks_like_non_payment_summary(text: str) -> bool:
+    """CardXabarBot'ning balans/kartalar ro'yxati kabi ma'lumot xabarlarini
+    haqiqiy to'lov bildirishnomasidan ajratadi."""
+    raw = text or ""
+    t = raw.lower()
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    has_incoming_amount = any(re.match(r"^(\+|➕)", line) for line in lines)
+
+    # Haqiqiy kirimda aniq "+" summa qatori bo'lsa, summary kalit so'zlari
+    # tasodifan uchrasa ham to'lovni rad etmaymiz.
+    if has_incoming_amount:
+        return False
+
+    if any(keyword in t for keyword in _NON_PAYMENT_SUMMARY_KEYWORDS):
+        return True
+
+    # CardXabarBot'ning karta ro'yxati formati: bir xabarda "Karta:" va
+    # "Bank:" bloklari keladi. Bu tranzaksiya emas, hisob ma'lumoti.
+    has_card_list = any(re.search(r"\b(?:karta|card)\s*:", line, re.IGNORECASE) for line in lines)
+    has_bank_list = any(re.search(r"\b(?:bank)\s*:", line, re.IGNORECASE) for line in lines)
+    return bool(has_card_list and has_bank_list)
+
 
 def looks_like_failed_or_outgoing(text: str) -> bool:
     """Bildirishnoma matni chiquvchi/muvaffaqiyatsiz tranzaksiyaga tegishli
@@ -105,13 +134,19 @@ def parse_notification_amount(text: str) -> int | None:
 
     for line in raw.splitlines():
         t = line.strip()
-        if re.search(r"balans|balance|dostupno|ostatok|💵", t, re.IGNORECASE):
+        if re.search(
+            r"balans|balance|dostupno|ostatok|umumiy balans|общий баланс|💵|💰",
+            t,
+            re.IGNORECASE,
+        ):
             continue
         n = _extract_amount(t)
         if n is not None:
             return n
 
-    return _extract_amount(raw)
+    # Butun xabar bo'yicha fallback qilmaymiz: u ko'p qatorli balans/karta
+    # ro'yxatidan noto'g'ri summani ushlab qolishi mumkin.
+    return None
 
 
 def card_matches_ours(text: str) -> bool:
@@ -195,6 +230,10 @@ async def handle_payment_notification(
     if not text:
         return {"status": "no_amount"}
 
+    if looks_like_non_payment_summary(text):
+        logger.info("[to'lov] balans/karta ma'lumoti, e'tiborsiz qoldirildi.")
+        return {"status": "ignored_non_payment"}
+
     if looks_like_failed_or_outgoing(text):
         logger.info(
             "[to'lov] chiquvchi/muvaffaqiyatsiz tranzaksiya, e'tiborsiz qoldirildi."
@@ -211,7 +250,8 @@ async def handle_payment_notification(
             f"⚠️ Bildirishnoma karta bo'yicha rad etildi.\n"
             f"Matnda topilgan karta: {', '.join(found_cards) or 'aniqlanmadi'}\n"
             f"Sozlangan kartaning oxiri: {our_digits[-4:] if our_digits else 'yoq'}\n\n"
-            f"Agar bu SIZNING to'lovingiz bo'lsa, PAYMENT_CARD_NUMBER Render'da noto'g'ri sozlangan bo'lishi mumkin."
+            "Agar bu SIZNING to'lovingiz bo'lsa, PAYMENT_CARD_NUMBER Render'da "
+            "noto'g'ri sozlangan bo'lishi mumkin."
         )
         return {"status": "ignored_excluded"}
 
@@ -228,20 +268,11 @@ async def handle_payment_notification(
     candidates = await database.get_open_payment_orders_by_amount(amount)
 
     if not candidates:
-        open_orders = await database.list_open_payment_orders()
-        open_summary = (
-            ", ".join(f"{o['order_code']}={o['amount']}" for o in open_orders) or "yo'q"
-        )
         await notify_founders(
-            f"⚠️ Noma'lum to'lov bildirishnomasi.\n\nAniqlangan summa: {amount:,} so'm\n"
-            f"Matn: {text[:300]}\n\nJoriy ochiq buyurtmalar: {open_summary}\n\n"
-            "Hech qanday ochiq buyurtmaga mos kelmadi."
+            f"⚠️ Noma'lum kirim: {amount:,} so'm\n"
+            "Ochiq buyurtmaga mos kelmadi."
         )
-        logger.warning(
-            "[to'lov] Mos kelmadi: amount=%s, ochiq buyurtmalar=%s",
-            amount,
-            open_summary,
-        )
+        logger.warning("[to'lov] Mos kelmadi: amount=%s", amount)
         return {"status": "no_match", "amount": amount}
 
     if len(candidates) > 1:

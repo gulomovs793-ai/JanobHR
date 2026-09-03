@@ -71,7 +71,7 @@ def extract_salary_expectation(answers: dict[str, Any]) -> dict | None:
             number *= 1_000_000
         elif currency == "UZS" and number < 100_000 and re.search(r"\bming\b", lower):
             number *= 1_000
-        return {"amount": int(round(number)), "currency": currency, "raw": text[:120]}
+        return {"amount": round(number), "currency": currency, "raw": text[:120]}
     return None
 
 

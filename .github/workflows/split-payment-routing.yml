@@ -2,9 +2,11 @@ name: Split payment routing
 
 on:
   push:
-    branches: [multi-tenant]
+    branches:
+      - multi-tenant
     paths:
       - .github/workflows/split-payment-routing.yml
+      - .github/scripts/split_payment_routing.py
 
 permissions:
   contents: write
@@ -16,124 +18,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: multi-tenant
-
-      - name: Split Janob HR payment receiver from Telegram listener
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          # services/payment_automation.py
-          p = Path('services/payment_automation.py')
-          s = p.read_text()
-          old = 'logger = logging.getLogger("janob_hr_bot")\n\n_NOTIFY_EXCLUDE_KEYWORDS = ['
-          new = 'logger = logging.getLogger("janob_hr_bot")\n\n# Cross-project payment namespace: Janob HR generated amounts always end\n# in 6/7/8/9. O\'zbek Ovoz AI uses 1/2/3/4. The physical card can stay\n# the same while one Telegram notification listener routes safely.\n_JANOBHR_AMOUNT_LAST_DIGITS = {6, 7, 8, 9}\n\n_NOTIFY_EXCLUDE_KEYWORDS = ['
-          assert old in s, 'logger anchor not found'
-          s = s.replace(old, new, 1)
-
-          old = '''async def _pick_unique_amount(base_price: int) -> int:\n    """Bazaviy narxga kichik tasodifiy summa qo'shib, ochiq buyurtmalar\n    orasida noyob ekanini tekshiradi."""\n    for _ in range(25):\n        offset = random.randint(1, 200)\n        candidate = base_price + offset\n        if not await database.get_open_payment_order_by_amount(candidate):\n            return candidate\n    return base_price + random.randint(1, 200)\n'''
-          new = '''async def _pick_unique_amount(base_price: int) -> int:\n    """Janob HR uchun loyiha-imzoli va ochiq orderlar orasida noyob summa.\n\n    Yakuniy summaning oxirgi raqami faqat 6/7/8/9 bo'ladi. Shu orqali\n    bitta kartaga kelgan notification O'zbek Ovoz AI (1/2/3/4) bilan\n    chalkashmaydi.\n    """\n    for _ in range(60):\n        offset = random.randint(1, 200)\n        candidate = base_price + offset\n        if candidate % 10 not in _JANOBHR_AMOUNT_LAST_DIGITS:\n            continue\n        if not await database.get_open_payment_order_by_amount(candidate):\n            return candidate\n\n    # Random urinishlar band summalarga tushib qolsa, barcha offsetlarni\n    # deterministik ko'rib chiqamiz. Namespace qoidasini hech qachon buzmaymiz.\n    for offset in range(1, 201):\n        candidate = base_price + offset\n        if candidate % 10 not in _JANOBHR_AMOUNT_LAST_DIGITS:\n            continue\n        if not await database.get_open_payment_order_by_amount(candidate):\n            return candidate\n    raise RuntimeError("Janob HR uchun noyob to'lov summasi topilmadi")\n'''
-          assert old in s, 'pick unique block not found'
-          s = s.replace(old, new, 1)
-
-          old = '''async def handle_payment_notification(\n    raw_text: str, notify_founders, activate_tenant\n) -> dict:\n'''
-          new = '''async def handle_payment_notification(\n    raw_text: str, notify_founders, activate_tenant, *, notify_no_match: bool = True\n) -> dict:\n'''
-          assert old in s, 'handler signature not found'
-          s = s.replace(old, new, 1)
-
-          old = '''    if not candidates:\n        await notify_founders(\n            f"⚠️ Noma'lum kirim: {amount:,} so'm\\n"\n            "Ochiq buyurtmaga mos kelmadi."\n        )\n        logger.warning("[to'lov] Mos kelmadi: amount=%s", amount)\n        return {"status": "no_match", "amount": amount}\n'''
-          new = '''    if not candidates:\n        # Markaziy router har bir haqiqiy karta kirimini Janob HR'ga uzatishi\n        # mumkin. Begona/personal kirim founder chatini spam qilmasligi uchun\n        # routed endpoint notify_no_match=False ishlatadi.\n        if notify_no_match:\n            await notify_founders(\n                f"⚠️ Noma'lum kirim: {amount:,} so'm\\n"\n                "Ochiq buyurtmaga mos kelmadi."\n            )\n        logger.info("[to'lov] Mos kelmadi: amount=%s", amount)\n        return {"status": "no_match", "amount": amount}\n'''
-          assert old in s, 'no-match block not found'
-          s = s.replace(old, new, 1)
-          p.write_text(s)
-
-          # config.py
-          p = Path('config.py')
-          s = p.read_text()
-          old = 'CARD_BOT_USERNAME = os.getenv("CARD_BOT_USERNAME", "CardXabarBot").lstrip("@")\n'
-          new = old + '''\n# Shared-card routing. Telegram user session faqat bitta servisda (O'zbek Ovoz)\n# tinglanadi; Janob HR signed internal endpoint orqali notification oladi.\nPAYMENT_LISTENER_ENABLED = os.getenv("PAYMENT_LISTENER_ENABLED", "1").strip().lower() not in {\n    "0", "false", "no", "off"\n}\nPAYMENT_ROUTER_SECRET = os.getenv("PAYMENT_ROUTER_SECRET", "")\n'''
-          assert old in s, 'config card bot anchor not found'
-          s = s.replace(old, new, 1)
-          p.write_text(s)
-
-          # webhook_app.py
-          p = Path('webhook_app.py')
-          s = p.read_text()
-          old = 'import asyncio\nimport logging\nimport os\n'
-          new = 'import asyncio\nimport hmac\nimport logging\nimport os\n'
-          assert old in s, 'webhook imports anchor not found'
-          s = s.replace(old, new, 1)
-
-          old = 'from config import FOUNDER_BOT_TOKEN, MINI_APP_BASE_URL, WEBHOOK_BASE_URL\n'
-          new = '''from config import (\n    FOUNDER_BOT_TOKEN,\n    MINI_APP_BASE_URL,\n    PAYMENT_LISTENER_ENABLED,\n    PAYMENT_ROUTER_SECRET,\n    WEBHOOK_BASE_URL,\n)\n'''
-          assert old in s, 'config import not found'
-          s = s.replace(old, new, 1)
-
-          old = '''        if is_userbot_configured():\n            asyncio.create_task(start_userbot())\n            logger.info(\n                "Userbot (to'lovlarni aniqlash) fon vazifasi sifatida ishga tushirildi."\n            )\n        else:\n            logger.info(\n                "Userbot sozlanmagan (TELEGRAM_API_ID/HASH/SESSION yo'q) — o'tkazib yuborildi."\n            )\n'''
-          new = '''        if not PAYMENT_LISTENER_ENABLED:\n            logger.info(\n                "Janob HR Telegram payment listener o'chirilgan — signed router notificationlari ishlatiladi."\n            )\n        elif is_userbot_configured():\n            asyncio.create_task(start_userbot())\n            logger.info(\n                "Userbot (to'lovlarni aniqlash) fon vazifasi sifatida ishga tushirildi."\n            )\n        else:\n            logger.info(\n                "Userbot sozlanmagan (TELEGRAM_API_ID/HASH/SESSION yo'q) — o'tkazib yuborildi."\n            )\n'''
-          assert old in s, 'userbot startup block not found'
-          s = s.replace(old, new, 1)
-
-          anchor = '\n\ndef create_app() -> web.Application:\n'
-          handler = r'''
-
-async def internal_payment_notification(request: web.Request) -> web.Response:
-    """O'zbek Ovoz AI'dagi yagona Telegram listenerdan signed notification.
-
-    Bu endpoint public URL'da bo'lsa ham shared secret bo'lmasa hech narsani
-    qayta ishlamaydi. Janob HR faqat o'z SQLite orderlarini tekshiradi.
-    """
-    supplied = request.headers.get("X-Payment-Router-Secret", "")
-    if not PAYMENT_ROUTER_SECRET:
-        logger.error("PAYMENT_ROUTER_SECRET sozlanmagan; routed payment rad etildi.")
-        raise web.HTTPServiceUnavailable(text="payment router not configured")
-    if not supplied or not hmac.compare_digest(supplied, PAYMENT_ROUTER_SECRET):
-        logger.warning("Noto'g'ri payment router secret bilan so'rov rad etildi.")
-        raise web.HTTPUnauthorized(text="unauthorized")
-
-    try:
-        payload = await request.json()
-    except Exception as exc:
-        raise web.HTTPBadRequest(text="invalid json") from exc
-    raw_text = str(payload.get("raw_text") or "").strip()
-    if not raw_text or len(raw_text) > 5000:
-        raise web.HTTPBadRequest(text="invalid notification")
-
-    from services.payment_automation import handle_payment_notification
-    from userbot import (
-        _activate_tenant_wrapper,
-        _notify_founders,
-        _notify_tenant_payment_approved,
-    )
-
-    result = await handle_payment_notification(
-        raw_text,
-        _notify_founders,
-        _activate_tenant_wrapper,
-        notify_no_match=False,
-    )
-    if result.get("status") == "approved":
-        await _notify_tenant_payment_approved(result)
-    logger.info("[payment-router] Natija: %s", result.get("status"))
-    return web.json_response(result)
-'''
-          assert anchor in s, 'create_app anchor not found'
-          s = s.replace(anchor, handler + anchor, 1)
-
-          old = '''    register_miniapp(app)\n    register_founder_miniapp(app)\n    setup_application(app, dp)\n'''
-          new = '''    register_miniapp(app)\n    register_founder_miniapp(app)\n    app.router.add_post("/internal/payment-notification", internal_payment_notification)\n    setup_application(app, dp)\n'''
-          assert old in s, 'route registration anchor not found'
-          s = s.replace(old, new, 1)
-          p.write_text(s)
-          PY
-
-      - name: Commit Janob HR split
-        shell: bash
+      - name: Apply split
+        run: python .github/scripts/split_payment_routing.py
+      - name: Commit split
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add services/payment_automation.py config.py webhook_app.py
           git commit -m "Split Janob HR payment routing" || exit 0
           git push origin HEAD:multi-tenant
-
-# trigger: 2

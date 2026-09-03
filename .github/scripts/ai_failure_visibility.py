@@ -30,7 +30,7 @@ replace_once(
 )
 
 followup_old = '''        result = await score_answer(q["text"], answer_text)\n        if result is not None:\n            ai_scores[q["key"]] = result\n\n            if "ai_yozgan" in result.get("red_flags", []):\n'''
-followup_new = '''        result = await score_answer(q["text"], answer_text)\n        if result is None:\n            ai_scores = mark_ai_unavailable(ai_scores, q["key"])\n        else:\n            ai_scores = clear_ai_unavailable(ai_scores, q["key"])\n            ai_scores[q["key"]] = result\n\n        if result is not None:\n            if "ai_yozgan" in result.get("red_flags", []):\n'''
+followup_new = '''        result = await score_answer(q["text"], answer_text)\n        if result is None:\n            ai_scores = mark_ai_unavailable(ai_scores, q["key"])\n        else:\n            ai_scores = clear_ai_unavailable(ai_scores, q["key"])\n            ai_scores[q["key"]] = result\n\n        if result is not None:  # noqa: SIM102 - explicit None guard before result.get\n            if "ai_yozgan" in result.get("red_flags", []):\n'''
 replace_once(
     "handlers/questions.py",
     followup_old,

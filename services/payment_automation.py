@@ -127,6 +127,8 @@ def parse_notification_amount(text: str) -> int | None:
     """Bank/karta bildirishnomasi matnidan summani (butun so'mda) ajratib
     oladi. Kirim ("+") qatori BALANS qatoridan ustun qo'yiladi."""
     raw = text or ""
+    if looks_like_non_payment_summary(raw):
+        return None
 
     for line in raw.splitlines():
         t = line.strip()

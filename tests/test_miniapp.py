@@ -126,25 +126,24 @@ class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
     async def test_add_interview_slot_rejects_invalid_capacity(self):
         with patch(
             "miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))
-        ):
-            with self.assertRaises(web.HTTPBadRequest):
-                await add_interview_slot(
-                    self.JsonRequest({"label": "5-sentabr, 14:00", "capacity": 0})
-                )
+        ), self.assertRaises(web.HTTPBadRequest):
+            await add_interview_slot(
+                self.JsonRequest({"label": "5-sentabr, 14:00", "capacity": 0})
+            )
 
     async def test_outcome_only_closes_accepted_candidate(self):
         app = {"id": 9, "status": "accepted"}
-        update = AsyncMock()
+        transition = AsyncMock(return_value=True)
         with (
             patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
             patch("miniapp_api.database.get_application", AsyncMock(return_value=app)),
-            patch("miniapp_api.database.update_status", update),
+            patch("miniapp_api.database.transition_application_status", transition),
         ):
             response = await candidate_outcome(
                 self.JsonRequest({"outcome": "hired"}, app_id="9")
             )
         self.assertEqual(json.loads(response.text)["status"], "hired")
-        update.assert_awaited_once_with(7, 9, "hired")
+        transition.assert_awaited_once_with(7, 9, "hired", {"accepted"})
 
     async def test_create_vacancy_checks_plan_limit(self):
         payload = {
@@ -157,10 +156,9 @@ class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
             patch(
                 "miniapp_api.database.get_subscription_usage",
                 AsyncMock(return_value={"vacancies_available": False}),
-            ),
+            ),self.assertRaises(web.HTTPPaymentRequired)
         ):
-            with self.assertRaises(web.HTTPPaymentRequired):
-                await create_vacancy(self.JsonRequest(payload))
+            await create_vacancy(self.JsonRequest(payload))
 
     async def test_create_billing_order_returns_exact_payment_details(self):
         create_order = AsyncMock(
@@ -212,9 +210,9 @@ class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             patch("miniapp_api.create_payment_order_for_plan", create_order),
+            self.assertRaises(web.HTTPConflict),
         ):
-            with self.assertRaises(web.HTTPConflict):
-                await create_billing_order(self.JsonRequest({"plan_code": "start"}))
+            await create_billing_order(self.JsonRequest({"plan_code": "start"}))
         create_order.assert_not_awaited()
 
     async def test_billing_order_status_is_tenant_scoped(self):
@@ -223,12 +221,11 @@ class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
             patch(
                 "miniapp_api.database.get_payment_order_for_tenant",
                 AsyncMock(return_value=None),
-            ),
+            ),self.assertRaises(web.HTTPNotFound)
         ):
-            with self.assertRaises(web.HTTPNotFound):
-                await billing_order_status(
-                    self.JsonRequest({}, order_code="JH-OTHER")
-                )
+            await billing_order_status(
+                self.JsonRequest({}, order_code="JH-OTHER")
+            )
 
 
 if __name__ == "__main__":

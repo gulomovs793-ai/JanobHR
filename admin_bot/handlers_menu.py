@@ -3,7 +3,13 @@
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup, WebAppInfo
+from aiogram.types import (
+    CallbackQuery,
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+    WebAppInfo,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import MINI_APP_BASE_URL, WEBHOOK_BASE_URL
@@ -24,13 +30,11 @@ ADMIN_MENU = {
 
 
 def _service_keyboard(tenant_id: int) -> ReplyKeyboardMarkup:
-    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
+    # Reply-keyboard WebApp tugmasi ayrim Telegram klientlarida SimpleWebView
+    # sifatida ochilib, server auth uchun kerakli initData'ni bermasligi mumkin.
+    # Shuning uchun persistent tugma oddiy matn; bosilganda quyidagi handler
+    # signed initData beradigan inline WebApp tugmasini yuboradi.
     panel = KeyboardButton(text=ADMIN_MENU["panel"])
-    if WEBHOOK_BASE_URL:
-        panel = KeyboardButton(
-            text=ADMIN_MENU["panel"],
-            web_app=WebAppInfo(url=f"{miniapp_base}/{tenant_id}"),
-        )
     return ReplyKeyboardMarkup(
         keyboard=[
             [panel],
@@ -92,6 +96,23 @@ async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
 async def cmd_cancel(message: Message, state: FSMContext, tenant_id: int):
     await state.clear()
     await show_main_menu(message, tenant_id)
+
+
+@router.message(F.text == ADMIN_MENU["panel"])
+async def service_panel(message: Message, tenant_id: int):
+    if not WEBHOOK_BASE_URL:
+        await message.answer("Boshqaruv paneli vaqtincha mavjud emas. Keyinroq urinib ko'ring.")
+        return
+    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🖥 Boshqaruv panelini ochish",
+        web_app=WebAppInfo(url=f"{miniapp_base}/{tenant_id}"),
+    )
+    await message.answer(
+        "Boshqaruv panelini Telegram orqali xavfsiz oching:",
+        reply_markup=builder.as_markup(),
+    )
 
 
 @router.callback_query(F.data == "menu:main")

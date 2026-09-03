@@ -4,6 +4,7 @@ telefon raqami) yig'ish. Barcha savollar (va agar kerak bo'lsa, fayl) qabul
 qilingandan so'ng, arizani yakunlashdan oldin shu bosqich ishga tushadi.
 """
 
+import asyncio
 import logging
 import re
 
@@ -22,6 +23,19 @@ from states import ApplyForm
 logger = logging.getLogger("janob_hr_bot")
 
 router = Router(name="contact")
+
+# Ikki parallel contact/text update bitta arizani ikki marta yakunlamasin.
+_FINISH_LOCKS: dict[tuple[int, int], asyncio.Lock] = {}
+
+
+def _finish_lock(message: Message) -> asyncio.Lock:
+    key = (message.chat.id, message.from_user.id)
+    lock = _FINISH_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _FINISH_LOCKS[key] = lock
+    return lock
+
 
 # Juda soddalashtirilgan telefon raqami tekshiruvi: kamida 7 ta raqam bo'lishi kerak.
 _PHONE_DIGITS_RE = re.compile(r"\d")
@@ -68,12 +82,22 @@ async def handle_wrong_name_type(message: Message, state: FSMContext):
 async def _finish_contact_collection(message: Message, state: FSMContext, phone: str):
     from handlers.questions import complete_application
 
-    data = await state.get_data()
-    lang = data.get("lang", DEFAULT_LANG)
-
-    await state.update_data(candidate_phone=phone)
-    await message.answer(t("contact_thanks", lang), reply_markup=ReplyKeyboardRemove())
-    await complete_application(message, state)
+    async with _finish_lock(message):
+        if await state.get_state() != ApplyForm.waiting_phone.state:
+            logger.info(
+                "Dubl yakuniy contact update e'tiborsiz qoldirildi: chat=%s message=%s",
+                message.chat.id,
+                message.message_id,
+            )
+            return
+        data = await state.get_data()
+        lang = data.get("lang", DEFAULT_LANG)
+        await state.update_data(candidate_phone=phone)
+        # Ikkinchi parallel update waiting_phone handleriga kirib ulgurgan bo'lsa
+        # ham lockdan keyin shu holatni ko'rib qaytadi. Ma'lumot clear qilinmaydi.
+        await state.set_state(ApplyForm.finished)
+        await message.answer(t("contact_thanks", lang), reply_markup=ReplyKeyboardRemove())
+        await complete_application(message, state)
 
 
 @router.message(ApplyForm.waiting_phone, F.contact)

@@ -71,26 +71,32 @@ async def _reject_and_save(
     reject_text: str,
     status: str,
 ):
-    """Nomzodni xushmuomalalik bilan rad etadi, arizani baribir bazaga yozadi (statistika
-    uchun) va suhbat holatini tozalaydi."""
+    """Rad javobini yuboradi va statistikani idempotent tarzda saqlaydi."""
     await message.answer(reject_text)
-    await database.save_application(
-        tenant_id=data["tenant_id"],
-        user_id=message.from_user.id,
-        username=message.from_user.username or "",
-        full_name=message.from_user.full_name,
-        vacancy_key=data["vacancy_key"],
-        vacancy_title=data["vacancy_title"],
-        answers=answers,
-        ai_scores=ai_scores,
-        resume_file_id=None,
-        video_file_id=None,
-        status=status,
-        lang=data.get("lang", DEFAULT_LANG),
-        ai_suspect_flags=data.get("ai_suspect_flagged_keys", []),
-        voice_answers=data.get("voice_answers", {}),
-    )
-    await state.clear()
+    try:
+        await database.save_application(
+            tenant_id=data["tenant_id"],
+            user_id=message.from_user.id,
+            submission_key=data.get("submission_key"),
+            username=message.from_user.username or "",
+            full_name=message.from_user.full_name,
+            vacancy_key=data["vacancy_key"],
+            vacancy_title=data["vacancy_title"],
+            answers=answers,
+            ai_scores=ai_scores,
+            resume_file_id=None,
+            video_file_id=None,
+            status=status,
+            lang=data.get("lang", DEFAULT_LANG),
+            ai_suspect_flags=data.get("ai_suspect_flagged_keys", []),
+            voice_answers=data.get("voice_answers", {}),
+        )
+    except database.ApplicationLimitReached:
+        # Limit aynan shu vaqtda tugashi mumkin. Nomzodga rad javobi allaqachon
+        # berildi; tarifni oshirib yuborishdan ko'ra statistik yozuvni o'tkazamiz.
+        logger.info("Rad etilgan ariza tarif limiti sabab DBga yozilmadi.")
+    finally:
+        await state.clear()
 
 
 # Oddiy faktik savollarda ("qaysi platforma/dastur ishlatasiz" kabi) bundan qisqa
@@ -155,31 +161,40 @@ async def handle_text_answer(message: Message, state: FSMContext):
 
 @router.message(ApplyForm.answering_questions, F.voice)
 async def handle_voice_answer(message: Message, state: FSMContext):
-    """Ovozli javobni HECH QANDAY tahlil qilmasdan (matnga o'girmasdan) — xom
-    audio fayl sifatida qabul qiladi. Fayl keyinroq Admin panelida to'g'ridan-
-    to'g'ri tinglash uchun yuboriladi — baho AI emas, insonning o'zi tomonidan
-    beriladi (bu ko'proq ishonchli, chunki nutqni-matnga o'girishga bog'liq emas)."""
-    data = await state.get_data()
-    lang = data.get("lang", DEFAULT_LANG)
-    idx = data["question_index"]
-    questions = data["vacancy_questions"]
-    q = questions[idx]
+    """Ovozli javobni tahlilsiz saqlaydi, Telegram retry'ni dubl qilmaydi."""
+    async with _answer_lock(message):
+        data = await state.get_data()
+        if data.get("last_answer_message_id") == message.message_id:
+            logger.info(
+                "Dubl voice update e'tiborsiz qoldirildi: chat=%s message=%s",
+                message.chat.id,
+                message.message_id,
+            )
+            return
 
-    voice_answers = data.get("voice_answers", {})
-    voice_answers[q["key"]] = message.voice.file_id
+        lang = data.get("lang", DEFAULT_LANG)
+        idx = data["question_index"]
+        questions = data["vacancy_questions"]
+        q = questions[idx]
+        if not q.get("voice"):
+            await message.answer(t("wrong_answer_type", lang))
+            return
 
-    answers = data.get("answers", {})
-    answers[q["key"]] = t("voice_answer_placeholder", lang)
+        voice_answers = data.get("voice_answers", {})
+        voice_answers[q["key"]] = message.voice.file_id
+        answers = data.get("answers", {})
+        answers[q["key"]] = t("voice_answer_placeholder", lang)
 
-    await state.update_data(
-        voice_answers=voice_answers,
-        answers=answers,
-        question_index=idx + 1,
-        irrelevant_retry_count=0,
-        ai_suspect_retry_count=0,
-    )
-    await message.answer(t("voice_received", lang))
-    await ask_current_question(message, state)
+        await state.update_data(
+            last_answer_message_id=message.message_id,
+            voice_answers=voice_answers,
+            answers=answers,
+            question_index=idx + 1,
+            irrelevant_retry_count=0,
+            ai_suspect_retry_count=0,
+        )
+        await message.answer(t("voice_received", lang))
+        await ask_current_question(message, state)
 
 
 async def _process_answer(message: Message, state: FSMContext, answer_text: str):
@@ -454,10 +469,12 @@ async def complete_application(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    app_id = await database.save_application(
-        tenant_id=tenant_id,
-        user_id=message.from_user.id,
-        username=message.from_user.username or "",
+    try:
+        app_id = await database.save_application(
+            tenant_id=tenant_id,
+            user_id=message.from_user.id,
+            submission_key=data.get("submission_key"),
+            username=message.from_user.username or "",
         full_name=data.get("candidate_full_name") or message.from_user.full_name,
         phone_number=data.get("candidate_phone", ""),
         vacancy_key=data["vacancy_key"],
@@ -469,8 +486,16 @@ async def complete_application(message: Message, state: FSMContext):
         status="pending",
         lang=lang,
         ai_suspect_flags=data.get("ai_suspect_flagged_keys", []),
-        voice_answers=data.get("voice_answers", {}),
-    )
+            voice_answers=data.get("voice_answers", {}),
+        )
+    except database.ApplicationLimitReached:
+        await message.answer(
+            "Компания временно приостановила приём новых заявок. Попробуйте позже."
+            if lang == "ru"
+            else "Kompaniya yangi arizalarni qabul qilishni vaqtincha to'xtatgan. Keyinroq urinib ko'ring."
+        )
+        await state.clear()
+        return
 
     await message.answer(t("application_submitted", lang))
     await state.set_state(ApplyForm.finished)

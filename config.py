@@ -22,7 +22,7 @@ def _load_migrated_runtime_settings() -> None:
     try:
         values = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(values, dict):
-            raise ValueError("settings bundle must be an object")
+            raise TypeError("settings bundle must be an object")
         for key, value in values.items():
             if isinstance(key, str) and isinstance(value, str):
                 os.environ.setdefault(key, value)

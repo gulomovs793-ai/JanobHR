@@ -8,7 +8,6 @@ from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
 from miniapp_api import verify_init_data
 from services import database
 
-
 STATIC_DIR = Path(__file__).with_name("founder_miniapp")
 
 

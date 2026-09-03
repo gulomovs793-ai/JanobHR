@@ -1,5 +1,7 @@
 """Janob HR Bot — vakansiya tanlash bosqichi."""
 
+import uuid
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
@@ -51,6 +53,9 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: 
         vacancy_title=vacancy["title"],
         vacancy_reject_message=vacancy["reject_message"],
         vacancy_questions=build_questions(vacancy, lang),
+        # Bir arizaning butun FSM umri davomida o'zgarmaydigan idempotency kalit.
+        # Telegram retry/restart bo'lsa ham shu ariza DBda ikki marta paydo bo'lmaydi.
+        submission_key=uuid.uuid4().hex,
         question_index=0,
         answers={},
         ai_scores={},

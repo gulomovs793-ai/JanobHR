@@ -135,3 +135,5 @@ async def internal_payment_notification(request: web.Request) -> web.Response:
           git add services/payment_automation.py config.py webhook_app.py
           git commit -m "Split Janob HR payment routing" || exit 0
           git push origin HEAD:multi-tenant
+
+# trigger: 2

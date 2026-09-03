@@ -1,0 +1,33 @@
+name: Fix candidate latency
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/fix-candidate-latency.yml
+      - .github/scripts/fix_candidate_latency.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+
+      - name: Apply candidate latency fix
+        run: python .github/scripts/fix_candidate_latency.py
+
+      - name: Syntax check
+        run: python -m py_compile services/ai_scoring.py handlers/questions.py webhook_app.py
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/ai_scoring.py handlers/questions.py webhook_app.py
+          git commit -m "Fix candidate reply latency and duplicate questions" || exit 0
+          git push origin HEAD:multi-tenant

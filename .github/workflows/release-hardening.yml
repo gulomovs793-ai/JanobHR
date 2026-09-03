@@ -28,6 +28,7 @@ jobs:
         run: |
           python .github/scripts/release_hardening.py
           python .github/scripts/release_hardening_fix.py
+          git restore .github/workflows/tests.yml
       - name: Install test dependencies
         run: pip install -r requirements-dev.txt
       - name: Ruff

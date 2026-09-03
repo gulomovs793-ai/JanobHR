@@ -38,12 +38,11 @@ FOUNDER_MENU = {
 
 
 def _founder_services_keyboard() -> ReplyKeyboardMarkup:
+    # Reply-keyboard WebApp buttons are opened as Telegram SimpleWebView and
+    # do not reliably include user initData. Keep this as a normal text
+    # button; its handler below returns an inline WebApp button, which does
+    # include signed Telegram user data required by Founder auth.
     panel = KeyboardButton(text=FOUNDER_MENU["panel"])
-    if WEBHOOK_BASE_URL:
-        panel = KeyboardButton(
-            text=FOUNDER_MENU["panel"],
-            web_app=WebAppInfo(url=f"{WEBHOOK_BASE_URL.rstrip('/')}/founder"),
-        )
     return ReplyKeyboardMarkup(
         keyboard=[
             [panel],
@@ -130,6 +129,22 @@ async def _send_founder_tenants(message: Message):
     builder.adjust(1)
     await message.answer(
         f"🏢 <b>Barcha mijozlar</b>\n\nJami: <b>{len(tenants)}</b>",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.message(F.text == FOUNDER_MENU["panel"])
+async def service_founder_panel(message: Message):
+    if message.from_user.id not in FOUNDER_USER_IDS:
+        return
+    builder = InlineKeyboardBuilder()
+    if WEBHOOK_BASE_URL:
+        builder.button(
+            text="👑 Founder panelni ochish",
+            web_app=WebAppInfo(url=f"{WEBHOOK_BASE_URL.rstrip('/')}/founder"),
+        )
+    await message.answer(
+        "Founder panelni xavfsiz ochish uchun quyidagi tugmani bosing:",
         reply_markup=builder.as_markup(),
     )
 

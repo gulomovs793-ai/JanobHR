@@ -1,7 +1,6 @@
 import base64
 from pathlib import Path
 
-
 root = Path(__file__).parent
 html = (root / "index.html").read_text(encoding="utf-8")
 css = (root / "app.css").read_text(encoding="utf-8")

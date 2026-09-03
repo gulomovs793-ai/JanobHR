@@ -23,8 +23,15 @@ router = Router(name="admin_decisions")
 
 @router.callback_query(F.data.startswith("decision:"))
 async def handle_decision(callback: CallbackQuery, tenant_id: int, tenant: dict):
-    _, action, app_id_str = callback.data.split(":")
-    app_id = int(app_id_str)
+    try:
+        _, action, app_id_str = callback.data.split(":")
+        app_id = int(app_id_str)
+    except (ValueError, TypeError):
+        await callback.answer("Noto'g'ri amal.", show_alert=True)
+        return
+    if action not in {"save", "accept", "reject"}:
+        await callback.answer("Noto'g'ri amal.", show_alert=True)
+        return
 
     app = await database.get_application(tenant_id, app_id)
     if not app:
@@ -40,7 +47,12 @@ async def handle_decision(callback: CallbackQuery, tenant_id: int, tenant: dict)
     lang = app.get("lang", DEFAULT_LANG)
 
     if action == "save":
-        await database.update_status(tenant_id, app_id, "saved")
+        changed = await database.transition_application_status(
+            tenant_id, app_id, "saved", {"pending", "saved"}
+        )
+        if not changed:
+            await callback.answer("Bu anketa bo'yicha qaror allaqachon qabul qilingan.", show_alert=True)
+            return
         await callback.answer("🟡 Keyin ko'rish uchun saqlandi")
         return
     if action == "accept":
@@ -50,7 +62,14 @@ async def handle_decision(callback: CallbackQuery, tenant_id: int, tenant: dict)
         new_status = "declined"
         result_label = "❌ Rad etildi"
 
-    await database.update_status(tenant_id, app_id, new_status)
+    changed = await database.transition_application_status(
+        tenant_id, app_id, new_status, {"pending", "saved"}
+    )
+    if not changed:
+        await callback.answer(
+            "Bu anketa bo'yicha boshqa joydan qaror qabul qilindi.", show_alert=True
+        )
+        return
 
     candidate_bot = Bot(token=tenant["bot_token"])
     try:

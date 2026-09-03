@@ -18,6 +18,11 @@ from config import SQLITE_PATH
 
 logger = logging.getLogger("janob_hr_bot")
 
+
+class ApplicationLimitReached(RuntimeError):
+    """Tarif ariza limiti atomik saqlash paytida tugagan."""
+
+
 _CREATE_TENANTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS tenants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,6 +48,7 @@ CREATE TABLE IF NOT EXISTS applications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
+    submission_key TEXT,
     username TEXT,
     full_name TEXT,
     vacancy_key TEXT NOT NULL,
@@ -376,6 +382,24 @@ async def init_db():
         await db.execute(_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL)
         await db.execute(_CREATE_BUSINESS_LEADS_TABLE_SQL)
         await db.execute(_CREATE_SYSTEM_NOTIFICATIONS_TABLE_SQL)
+
+        # Ko'p async handler bir vaqtda o'qib/yozishi mumkin. WAL readerlarni
+        # writer sabab bloklanishini kamaytiradi; busy_timeout qisqa locklarda
+        # tasodifiy "database is locked" xatosini oldini oladi.
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA synchronous=NORMAL")
+        await db.execute("PRAGMA busy_timeout=5000")
+
+        cursor = await db.execute("PRAGMA table_info(applications)")
+        application_columns = {row[1] for row in await cursor.fetchall()}
+        if "submission_key" not in application_columns:
+            await db.execute("ALTER TABLE applications ADD COLUMN submission_key TEXT")
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_submission_key "
+            "ON applications(tenant_id, submission_key) "
+            "WHERE submission_key IS NOT NULL"
+        )
+
         # Mavjud Render diskidagi eski bazalarni ma'lumot yo'qotmasdan
         # yangilaymiz. SQLite `ADD COLUMN` uchun IF NOT EXISTS bermaydi.
         cursor = await db.execute("PRAGMA table_info(tenants)")
@@ -447,6 +471,19 @@ async def init_db():
             )
         await db.commit()
     logger.info("Ma'lumotlar bazasi (ko'p mijozli) tayyor: %s", SQLITE_PATH)
+
+
+async def healthcheck() -> bool:
+    """Render health endpoint uchun eng arzon real DB tekshiruvi."""
+    try:
+        async with aiosqlite.connect(SQLITE_PATH, timeout=3) as db:
+            await db.execute("PRAGMA busy_timeout=3000")
+            cursor = await db.execute("SELECT 1")
+            row = await cursor.fetchone()
+        return bool(row and row[0] == 1)
+    except Exception:
+        logger.exception("SQLite healthcheck muvaffaqiyatsiz.")
+        return False
 
 
 # ============================= MIJOZLAR (tenants) =============================
@@ -1070,38 +1107,93 @@ async def save_application(
     lang: str = "uz",
     ai_suspect_flags: list | None = None,
     voice_answers: dict | None = None,
+    submission_key: str | None = None,
 ) -> int:
+    """Arizani idempotent va tarif limitiga nisbatan atomik saqlaydi.
+
+    Avvalgi get_subscription_usage() -> INSERT ketma-ketligi race condition
+    qoldirardi: limitda 1 joy qolsa, ikki nomzod bir paytda o'tib ketishi
+    mumkin edi. BEGIN IMMEDIATE bilan quota tekshiruvi va INSERT bitta write
+    transaction ichida bajariladi.
+    """
+    from services.plans import get_plan
+
     created_at = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        cursor = await db.execute(
-            """
-            INSERT INTO applications (
-                tenant_id, user_id, username, full_name, vacancy_key, vacancy_title,
-                answers, ai_scores, resume_file_id, video_file_id, status,
-                phone_number, lang, ai_suspect_flags, voice_answers, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                tenant_id,
-                user_id,
-                username,
-                full_name,
-                vacancy_key,
-                vacancy_title,
-                json.dumps(answers, ensure_ascii=False),
-                json.dumps(ai_scores, ensure_ascii=False),
-                resume_file_id,
-                video_file_id,
-                status,
-                phone_number,
-                lang,
-                json.dumps(ai_suspect_flags or [], ensure_ascii=False),
-                json.dumps(voice_answers or {}, ensure_ascii=False),
-                created_at,
-            ),
-        )
-        await db.commit()
-        return cursor.lastrowid
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            if submission_key:
+                cursor = await db.execute(
+                    "SELECT id FROM applications WHERE tenant_id=? AND submission_key=? LIMIT 1",
+                    (tenant_id, submission_key),
+                )
+                existing = await cursor.fetchone()
+                if existing:
+                    await db.commit()
+                    return existing[0]
+
+            cursor = await db.execute(
+                "SELECT plan_code, subscription_started_at, subscription_expires_at, created_at "
+                "FROM tenants WHERE id=?",
+                (tenant_id,),
+            )
+            tenant = await cursor.fetchone()
+            if not tenant:
+                raise ValueError("Mijoz topilmadi")
+
+            plan = get_plan(tenant[0])
+            expires_at = tenant[2]
+            expired = bool(
+                plan.code not in {"trial", "legacy"}
+                and (not expires_at or expires_at <= created_at)
+            )
+            if expired:
+                raise ApplicationLimitReached("Tarif muddati tugagan")
+
+            if plan.application_limit is not None:
+                period_start = tenant[1] or tenant[3]
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM applications WHERE tenant_id=? AND created_at>=?",
+                    (tenant_id, period_start),
+                )
+                used = (await cursor.fetchone())[0]
+                if used >= plan.application_limit:
+                    raise ApplicationLimitReached("Tarifdagi ariza limiti tugagan")
+
+            cursor = await db.execute(
+                """
+                INSERT INTO applications (
+                    tenant_id, user_id, submission_key, username, full_name, vacancy_key,
+                    vacancy_title, answers, ai_scores, resume_file_id, video_file_id, status,
+                    phone_number, lang, ai_suspect_flags, voice_answers, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    tenant_id,
+                    user_id,
+                    submission_key,
+                    username,
+                    full_name,
+                    vacancy_key,
+                    vacancy_title,
+                    json.dumps(answers, ensure_ascii=False),
+                    json.dumps(ai_scores, ensure_ascii=False),
+                    resume_file_id,
+                    video_file_id,
+                    status,
+                    phone_number,
+                    lang,
+                    json.dumps(ai_suspect_flags or [], ensure_ascii=False),
+                    json.dumps(voice_answers or {}, ensure_ascii=False),
+                    created_at,
+                ),
+            )
+            await db.commit()
+            return cursor.lastrowid
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def get_application(tenant_id: int, app_id: int) -> dict | None:
@@ -1174,18 +1266,65 @@ async def update_status(tenant_id: int, app_id: int, status: str):
         await db.commit()
 
 
+async def transition_application_status(
+    tenant_id: int,
+    app_id: int,
+    new_status: str,
+    allowed_from: set[str] | tuple[str, ...],
+) -> bool:
+    allowed_statuses = {
+        "pending",
+        "saved",
+        "accepted",
+        "declined",
+        "rejected_hard_filter",
+        "rejected_irrelevant",
+        "rejected_ai_generated",
+        "hired",
+        "not_hired",
+        "no_show",
+    }
+    if new_status not in allowed_statuses or not allowed_from:
+        raise ValueError("Noto'g'ri nomzod holati.")
+    invalid_from = set(allowed_from) - allowed_statuses
+    if invalid_from:
+        raise ValueError("Noto'g'ri boshlang'ich holat.")
+
+    placeholders = ",".join("?" for _ in allowed_from)
+    params = [new_status, app_id, tenant_id, *allowed_from]
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        cursor = await db.execute(
+            f"UPDATE applications SET status=? WHERE id=? AND tenant_id=? "
+            f"AND status IN ({placeholders})",
+            params,
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 async def try_book_slot(tenant_id: int, app_id: int, slot: str, capacity: int) -> bool:
-    """Atomik band qilish — bitta SQL ichida joy borligini tekshirib yozadi
-    (race condition oldini olish uchun), FAQAT shu mijoz doirasida."""
-    async with aiosqlite.connect(SQLITE_PATH) as db:
+    """Suhbat slotini atomik band qiladi va pipeline holatini sinxronlaydi.
+
+    Yuqori ball sabab admin qaroridan oldin slot taklif qilingan nomzod slotni
+    tanlasa, u endi mantiqan `accepted` bo'ladi. Bir xil tugmani qayta bosish
+    esa idempotent: o'z sloti to'lib qolgan bo'lsa ham muvaffaqiyat qaytadi.
+    """
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
         cursor = await db.execute(
             """
             UPDATE applications
-            SET selected_slot = ?
+            SET selected_slot = ?, status = 'accepted'
             WHERE id = ? AND tenant_id = ?
-              AND (SELECT COUNT(*) FROM applications WHERE selected_slot = ? AND tenant_id = ?) < ?
+              AND status IN ('pending', 'saved', 'accepted')
+              AND (
+                    selected_slot = ?
+                    OR (SELECT COUNT(*) FROM applications
+                        WHERE selected_slot = ? AND tenant_id = ?) < ?
+                  )
             """,
-            (slot, app_id, tenant_id, slot, tenant_id, capacity),
+            (slot, app_id, tenant_id, slot, slot, tenant_id, capacity),
         )
         await db.commit()
         return cursor.rowcount > 0

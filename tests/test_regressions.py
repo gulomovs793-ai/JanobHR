@@ -7,16 +7,15 @@ from unittest.mock import AsyncMock, patch
 from aiogram.fsm.storage.base import StorageKey
 
 import webhook_app
-from admin_bot.handlers_menu import _main_menu_keyboard
+from admin_bot.handlers_menu import ADMIN_MENU, _main_menu_keyboard, _service_keyboard
+from founder_panel import FOUNDER_MENU, _founder_services_keyboard
 from handlers import admin as admin_handlers
 from handlers import create_bot
+from handlers.start import _services_keyboard
 from services import database
 from services.payment_automation import handle_payment_notification
 from services.plans import get_plan
 from services.storage import SQLiteStorage
-from admin_bot.handlers_menu import ADMIN_MENU, _service_keyboard
-from founder_panel import FOUNDER_MENU, _founder_services_keyboard
-from handlers.start import _services_keyboard
 
 
 class FakeAdminBot:
@@ -148,6 +147,7 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_manual_payment_confirmation_uses_html_parse_mode(self):
         from aiogram.enums import ParseMode
+
         from founder_panel import _activate_order
 
         order = {

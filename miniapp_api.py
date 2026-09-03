@@ -22,12 +22,14 @@ from aiohttp import web
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
-from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
+from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER, WEBHOOK_BASE_URL
 from handlers.sell import send_slot_offer
 from i18n import DEFAULT_LANG, t
 from services import database
 from services.ai_scoring import aggregate_scores
-from services.payment_automation import create_payment_order as create_payment_order_for_plan
+from services.payment_automation import (
+    create_payment_order as create_payment_order_for_plan,
+)
 from services.plans import PUBLIC_PLAN_CODES, get_plan, get_plan_transition
 
 logger = logging.getLogger("janob_hr_bot")
@@ -141,7 +143,15 @@ async def index(request: web.Request):
 
 
 async def health(request: web.Request):
-    return web.json_response({"ok": True, "service": "janob-hr"})
+    db_ok = await database.healthcheck()
+    configured = bool(WEBHOOK_BASE_URL)
+    payload = {
+        "ok": db_ok and configured,
+        "service": "janob-hr",
+        "database": "ok" if db_ok else "error",
+        "webhook_configured": configured,
+    }
+    return web.json_response(payload, status=200 if payload["ok"] else 503)
 
 
 async def dashboard(request: web.Request):
@@ -321,6 +331,8 @@ async def remind_interview_candidate(request: web.Request):
         raise web.HTTPConflict(text="Avval kamida bitta bo'sh suhbat vaqtini qo'shing.")
     _interview_reminders[key] = time.monotonic()
     return web.json_response({"ok": True})
+
+
 async def candidate_detail(request: web.Request):
     tenant, _ = await _authorize(request)
     try:
@@ -359,7 +371,11 @@ async def candidate_decision(request: web.Request):
     if app["status"] not in {"pending", "saved"}:
         raise web.HTTPConflict(text="Bu nomzod bo'yicha qaror qabul qilingan.")
     new_status = {"accept": "accepted", "save": "saved", "reject": "declined"}[action]
-    await database.update_status(tenant["id"], app_id, new_status)
+    changed = await database.transition_application_status(
+        tenant["id"], app_id, new_status, {"pending", "saved"}
+    )
+    if not changed:
+        raise web.HTTPConflict(text="Bu nomzod bo'yicha boshqa joydan qaror qabul qilindi.")
     if action != "save":
         bot = Bot(token=tenant["bot_token"])
         try:
@@ -412,7 +428,11 @@ async def candidate_outcome(request: web.Request):
         raise web.HTTPNotFound(text="Nomzod topilmadi.")
     if app["status"] != "accepted":
         raise web.HTTPConflict(text="Faqat suhbatdagi nomzodni yakunlash mumkin.")
-    await database.update_status(tenant["id"], app_id, outcome)
+    changed = await database.transition_application_status(
+        tenant["id"], app_id, outcome, {"accepted"}
+    )
+    if not changed:
+        raise web.HTTPConflict(text="Nomzod holati boshqa joydan o'zgartirilgan.")
     return web.json_response({"ok": True, "status": outcome})
 
 

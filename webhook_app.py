@@ -128,7 +128,10 @@ async def register_new_tenant_webhook(bot_token: str) -> str:
     bot = Bot(token=bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     try:
         webhook_url = f"{WEBHOOK_BASE_URL}/webhook/{bot_token}"
-        await bot.set_webhook(url=webhook_url, drop_pending_updates=True)
+        # Deploy/restart oralig'ida kelgan nomzod xabarlari yo'qolmasin.
+        # Deduplikatsiya handler/FSM qatlamida qilinadi, pending update'ni
+        # Telegram serveridan o'chirish production uchun xavfli.
+        await bot.set_webhook(url=webhook_url, drop_pending_updates=False)
         me = await bot.get_me()
         logger.info("Webhook o'rnatildi: @%s", me.username)
         return me.username
@@ -292,8 +295,8 @@ def create_app() -> web.Application:
         },
     )
     handler.register(app, path=WEBHOOK_PATH)
-    from miniapp_api import register_miniapp
     from founder_miniapp_api import register_founder_miniapp
+    from miniapp_api import register_miniapp
 
     register_miniapp(app)
     register_founder_miniapp(app)

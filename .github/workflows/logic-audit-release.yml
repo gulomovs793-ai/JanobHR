@@ -1,0 +1,43 @@
+name: Logic audit release
+
+on:
+  push:
+    branches: [logic-audit-release]
+    paths:
+      - .github/workflows/logic-audit-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: logic-audit-release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Apply logical-flow hardening
+        run: python .github/scripts/fix_logic_release.py
+      - name: Auto-fix lint
+        run: ruff check . --fix
+      - name: Validate lint
+        run: ruff check .
+      - name: Validate syntax
+        run: python -m compileall -q .
+      - name: Run complete test suite
+        run: python -m unittest discover -s tests -v
+      - name: Commit validated changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Fix market-release logical flow inconsistencies"
+            git push origin logic-audit-release
+          fi

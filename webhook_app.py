@@ -235,12 +235,24 @@ async def configure_admin_miniapp(tenant: dict) -> None:
     miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
     admin_bot = Bot(token=tenant["admin_bot_token"])
     try:
-        await admin_bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text="Boshqaruv paneli",
-                web_app=WebAppInfo(url=f"{miniapp_base}/{tenant['id']}"),
-            )
+        menu_button = MenuButtonWebApp(
+            text="Boshqaruv paneli",
+            web_app=WebAppInfo(url=f"{miniapp_base}/{tenant['id']}"),
         )
+        # Keep a default for future admins, but explicitly bind the button to
+        # every known private admin chat as well. Telegram's Bot API supports
+        # per-chat menu buttons and this preserves the correct user context.
+        await admin_bot.set_chat_menu_button(menu_button=menu_button)
+        for admin_id in tenant.get("admin_user_ids", []):
+            try:
+                await admin_bot.set_chat_menu_button(
+                    chat_id=admin_id, menu_button=menu_button
+                )
+            except Exception:
+                logger.exception(
+                    "Admin Mini App menu tugmasi chatga ulanmagan: tenant_id=%s admin_id=%s",
+                    tenant.get("id"), admin_id,
+                )
     finally:
         await admin_bot.session.close()
 

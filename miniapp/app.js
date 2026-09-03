@@ -2,8 +2,44 @@
   'use strict';
   const tg = window.Telegram?.WebApp;
   const tenant = document.body.dataset.tenant;
-  const initData = tg?.initData || '';
+  let initData = tg?.initData || '';
   const previewMode = location.protocol === 'file:' || ['localhost', '127.0.0.1'].includes(location.hostname);
+
+  function initDataFromLocation(){
+    for(const source of [location.hash.replace(/^#/, ''), location.search.replace(/^\?/, '')]){
+      if(!source) continue;
+      const params = new URLSearchParams(source);
+      const value = params.get('tgWebAppData');
+      if(value) return value;
+    }
+    return '';
+  }
+  function persistInitData(value){
+    if(!value || previewMode) return;
+    try{
+      document.cookie = `jh_tg_init=${encodeURIComponent(value)}; Path=/; Max-Age=3600; Secure; SameSite=Lax`;
+    }catch{}
+  }
+  async function ensureInitData(){
+    if(previewMode) return '';
+    if(initData){ persistInitData(initData); return initData; }
+    const deadline = Date.now() + 1800;
+    while(Date.now() < deadline){
+      initData = window.Telegram?.WebApp?.initData || initDataFromLocation() || '';
+      if(initData){ persistInitData(initData); return initData; }
+      await new Promise(resolve => setTimeout(resolve, 60));
+    }
+    return '';
+  }
+  function authHeaders(extra={}){
+    const headers = {'Content-Type':'application/json', ...extra};
+    if(initData){
+      headers['X-Telegram-Init-Data'] = initData;
+      headers['Authorization'] = `tma ${initData}`;
+    }
+    return headers;
+  }
+  window.JanobHRAuth = {ensure:ensureInitData, headers:authHeaders, get:()=>initData};
   let currentStatus = 'all';
   let candidatePage = 0;
   let candidateQuery = '';
@@ -59,7 +95,8 @@
       if(path==='/billing') return previewData.billing;
       return {ok:true};
     }
-    const response = await fetch(`/api/miniapp/${tenant}${path}`, {...options, headers:{'Content-Type':'application/json','X-Telegram-Init-Data':initData,...options.headers}});
+    await ensureInitData();
+    const response = await fetch(`/api/miniapp/${tenant}${path}`, {...options, headers:authHeaders(options.headers||{})});
     if (!response.ok) throw new Error((await response.text()) || 'Server xatosi');
     return response.json();
   };
@@ -83,7 +120,7 @@
   function resetVacancyForm(){document.querySelector('#vacancy-form').reset();document.querySelector('#vacancy-key').value='';document.querySelector('#vacancy-editor-title').textContent='Yangi vakansiya';document.querySelector('#vacancy-reject').value='Arizangiz uchun rahmat. Hozircha keyingi bosqichga o‘tmadingiz. Sizga muvaffaqiyat tilaymiz!';show('vacancy-editor');}
   async function editVacancy(key){try{const v=await api(`/vacancies/${encodeURIComponent(key)}`);document.querySelector('#vacancy-key').value=v.key;document.querySelector('#vacancy-editor-title').textContent='Vakansiyani tahrirlash';document.querySelector('#vacancy-title').value=v.title;document.querySelector('#vacancy-questions').value=(v.questions||[]).map(q=>q.text).join('\n');document.querySelector('#vacancy-reject').value=v.reject_message;document.querySelector('#vacancy-resume').checked=Boolean(v.resume_required);show('vacancy-editor');}catch(e){toast(e.message);}}
   async function saveVacancy(event){event.preventDefault();const key=document.querySelector('#vacancy-key').value;const questions=document.querySelector('#vacancy-questions').value.split('\n').map(x=>x.trim()).filter(Boolean);if(questions.length<3||questions.length>20){toast('3 tadan 20 tagacha savol kiriting');return;}const body={title:document.querySelector('#vacancy-title').value.trim(),questions,reject_message:document.querySelector('#vacancy-reject').value.trim(),resume_required:document.querySelector('#vacancy-resume').checked};try{await api(key?`/vacancies/${encodeURIComponent(key)}`:'/vacancies',{method:key?'PUT':'POST',body:JSON.stringify(body)});tg?.HapticFeedback?.notificationOccurred('success');toast(key?'Vakansiya yangilandi':'Vakansiya yaratildi');show('vacancies');}catch(e){toast(e.message);}}
-  async function exportVacancy(key,title){if(previewMode){toast('Demo rejimida Excel eksport tayyor');return;}try{const response=await fetch(`/api/miniapp/${tenant}/vacancies/${encodeURIComponent(key)}/export`,{headers:{'X-Telegram-Init-Data':initData}});if(!response.ok)throw new Error((await response.text())||'Eksport xatosi');const blob=await response.blob();const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=`${title||'nomzodlar'}.xlsx`;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);toast('Excel fayl tayyor');}catch(e){toast(e.message);}}
+  async function exportVacancy(key,title){if(previewMode){toast('Demo rejimida Excel eksport tayyor');return;}try{await ensureInitData();const response=await fetch(`/api/miniapp/${tenant}/vacancies/${encodeURIComponent(key)}/export`,{headers:authHeaders()});if(!response.ok)throw new Error((await response.text())||'Eksport xatosi');const blob=await response.blob();const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=`${title||'nomzodlar'}.xlsx`;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);toast('Excel fayl tayyor');}catch(e){toast(e.message);}}
   async function loadBilling(){try{const d=await api('/billing');const expiry=d.current.expires_at?esc(d.current.expires_at.slice(0,10)):'';document.querySelector('#current-plan').innerHTML=`<small>JORIY TARIF</small><h2>${esc(d.current.name)}</h2><p>${expiry&&!d.current.expired?'Amal qiladi: '+expiry:'Sinov rejimi yoki muddati tugagan'}</p>`;const labels={select:'Tarifni tanlash',renew:'30 kunga uzaytirish',upgrade:'Yuqori tarifga o‘tish',blocked:'Faol tarif tugagach'};document.querySelector('#plans').innerHTML=d.plans.map(p=>{const state=p.purchase_state||'select';const current=p.code===d.current.code&&!d.current.expired;const badge=current?'JORIY':p.code==='growth'?'OMMABOP':'';const note={select:'30 kunlik obunani yoqing.',renew:'Amaldagi muddatga yana 30 kun qo‘shiladi.',upgrade:'Yangi tarif hozir yoqiladi, muddatga 30 kun qo‘shiladi.',blocked:`${esc(d.current.name)} ${expiry?expiry+'gacha ':''}faol. Past tarifni keyin tanlaysiz.`}[state];return `<article class="price-card purchase-${esc(state)} ${p.code==='growth'&&!current?'popular':''}">${badge?`<span class="popular-tag">${badge}</span>`:''}<div class="price-head"><div><h3>${esc(p.name)}</h3><p>${p.applications} ariza · ${p.vacancies} vakansiya</p></div></div><div class="price">${fmt(p.price)} so‘m</div><p class="plan-rule ${state==='blocked'?'blocked':''}">${note}</p><button data-open-bot data-purchase-state="${esc(state)}" data-plan="${esc(p.name)}" data-plan-code="${esc(p.code)}" data-price="${p.price}" ${state==='blocked'?'disabled aria-disabled="true"':''}>${labels[state]||labels.select}</button></article>`;}).join('');}catch(e){fail(e);}}
   async function openCandidate(id){try{const returnView=document.querySelector('.view.active')?.id==='interviews'?'interviews':'candidates';const back=document.querySelector('#detail-back');back.dataset.go=returnView;back.textContent=returnView==='interviews'?'← Suhbatlar':'← Nomzodlar';const c=await api(`/candidates/${id}`);const questionNames={experience:'Tajribangiz haqida ayting',tools:'Qaysi ish vositalarini bilasiz?',crm:'Qaysi CRM tizimlarida ishlagansiz?',achievement:'Eng yaxshi natijangiz qanday?',plan:'Ishni nimadan boshlaysiz?'};const answers=Object.entries(c.answers||{}).map(([key,value])=>{const ai=c.ai_scores?.[key];return `<div class="answer"><b>${esc(questionNames[key]||'SAVOLGA JAVOB')}</b><p>${esc(value)}</p>${ai?.izoh?`<div class="ai-note">${esc(ai.izoh)}${ai.score!=null?` · ${esc(ai.score)}/100`:''}</div>`:''}</div>`}).join('');const actions=['pending','saved'].includes(c.status)?`<div class="decision-actions"><button data-decision="accept" data-id="${c.id}">Suhbatga chaqirish</button><button class="save" data-decision="save" data-id="${c.id}">Keyin ko‘rish</button><button class="reject" data-decision="reject" data-id="${c.id}">Rad etish</button></div>`:c.status==='accepted'?`<div class="outcome-actions"><button class="hired" data-outcome="hired" data-id="${c.id}">✓ Ishga olindi</button><button class="no-show" data-outcome="no_show" data-id="${c.id}">Suhbatga kelmadi</button><button class="not-hired" data-outcome="not_hired" data-id="${c.id}">Ishga olinmadi</button></div>`:'';document.querySelector('#candidate-detail').innerHTML=`<article class="detail-card"><span class="status ${esc(c.status)}">${esc(statusNames[c.status]||c.status)}</span><h1>${esc(c.full_name)}</h1><div class="detail-meta">${esc(c.vacancy_title)} · ${esc(c.phone_number||'Raqam yo‘q')}</div><div class="detail-score"><span>AI moslik bahosi</span><strong>${c.score==null?'—':esc(c.score)+'/100'}</strong></div>${answers||'<div class="empty">Javoblar topilmadi.</div>'}${actions}</article>`;show('detail');}catch(e){toast(e.message);}}
   async function decide(id,action){const config={accept:{title:'Suhbatga chaqirish',text:'Nomzodga mavjud suhbat vaqtlarini tanlash uchun xabar yuboriladi.',confirm:'Chaqirish',icon:'✓',type:'success'},save:{title:'Keyin ko‘rish',text:'Nomzod saqlanadi va “Keyin” filtrida qoladi.',confirm:'Saqlash',icon:'↗'},reject:{title:'Nomzodni rad etish',text:'Nomzodga rad javobi yuboriladi. Bu qarorni tekshirib tasdiqlang.',confirm:'Rad etish',icon:'!',type:'danger'}};if(!await ask(config[action]))return;try{const result=await api(`/candidates/${id}/decision`,{method:'POST',body:JSON.stringify({action})});tg?.HapticFeedback?.notificationOccurred('success');toast(result.warning||'Qaror saqlandi');show(action==='accept'?'interviews':'candidates');}catch(e){toast(e.message);}}
@@ -108,5 +145,9 @@
   document.querySelector('#retry').addEventListener('click',()=>show('dashboard'));
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('#action-modal').hidden)closeModal(false);});
   tg?.ready();tg?.expand();tg?.setHeaderColor?.('#f5f5f7');tg?.setBackgroundColor?.('#f5f5f7');
-  if(!initData&&!previewMode){fail(new Error('Mini Appni kompaniyangizning Admin botidagi “Boshqaruv paneli” tugmasidan oching.'));}else{loadDashboard();}
+  (async()=>{
+    await ensureInitData();
+    if(!initData&&!previewMode){fail(new Error('Telegram sessiyasi olinmadi. Admin botdagi “Boshqaruv paneli” menu tugmasini yopib, qayta bosing.'));}
+    else{loadDashboard();}
+  })();
 })();

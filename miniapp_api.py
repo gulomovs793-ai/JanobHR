@@ -16,7 +16,7 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, unquote
 
 from aiogram import Bot
 from aiohttp import web
@@ -92,6 +92,24 @@ async def security_headers(request: web.Request, handler):
     return response
 
 
+def _request_init_data(request: web.Request) -> str:
+    value = (request.headers.get("X-Telegram-Init-Data") or "").strip()
+    if value:
+        return value
+    authorization = (request.headers.get("Authorization") or "").strip()
+    if authorization.lower().startswith("tma "):
+        value = authorization[4:].strip()
+        if value:
+            return value
+    cookie = request.cookies.get("jh_tg_init") or ""
+    if cookie:
+        try:
+            return unquote(cookie).strip()
+        except Exception:
+            return ""
+    return ""
+
+
 async def _authorize(request: web.Request) -> tuple[dict, dict]:
     try:
         tenant_id = int(request.match_info["tenant_id"])
@@ -104,9 +122,7 @@ async def _authorize(request: web.Request) -> tuple[dict, dict]:
         or not tenant.get("admin_bot_token")
     ):
         raise web.HTTPNotFound()
-    auth = verify_init_data(
-        request.headers.get("X-Telegram-Init-Data", ""), tenant["admin_bot_token"]
-    )
+    auth = verify_init_data(_request_init_data(request), tenant["admin_bot_token"])
     if auth["user_id"] not in tenant.get("admin_user_ids", []):
         raise web.HTTPForbidden(text="Bu kompaniya paneliga kirish huquqingiz yo'q.")
     key = (tenant_id, auth["user_id"])

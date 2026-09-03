@@ -2,7 +2,7 @@
   'use strict';
   const tg = window.Telegram?.WebApp;
   const tenant = document.body.dataset.tenant;
-  const initData = tg?.initData || '';
+  let initData = tg?.initData || '';
   const previewMode = location.protocol === 'file:' || ['localhost', '127.0.0.1'].includes(location.hostname);
   let selectedCandidateId = null;
   let detailEnhancing = false;
@@ -24,9 +24,13 @@
       if (path === '/onboarding/quick-setup' && options.method === 'POST') return {ok:true,vacancy_key:'sales'};
       return {};
     }
+    if(window.JanobHRAuth?.ensure) initData = await window.JanobHRAuth.ensure();
+    const headers = window.JanobHRAuth?.headers
+      ? window.JanobHRAuth.headers(options.headers||{})
+      : {'Content-Type':'application/json', ...(initData?{'X-Telegram-Init-Data':initData,'Authorization':`tma ${initData}`}:{ }), ...options.headers};
     const response = await fetch(`/api/miniapp/${tenant}${path}`, {
       ...options,
-      headers: {'Content-Type':'application/json','X-Telegram-Init-Data':initData,...options.headers}
+      headers
     });
     if (!response.ok) throw new Error((await response.text()) || 'Server xatosi');
     return response.json();

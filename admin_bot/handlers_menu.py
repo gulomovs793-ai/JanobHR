@@ -1,8 +1,10 @@
 """Admin bot — asosiy menyu va statistika."""
 
+import logging
 import time
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -28,6 +30,7 @@ from services.plans import (
 )
 
 router = Router(name="admin_menu")
+logger = logging.getLogger("janob_hr_bot")
 
 ADMIN_MENU = {
     "panel": "🖥 Boshqaruv paneli",
@@ -59,9 +62,13 @@ async def _refresh_chat_menu_button(message: Message, tenant_id: int) -> None:
                 web_app=WebAppInfo(url=_fresh_miniapp_url(tenant_id)),
             ),
         )
-    except Exception:
-        # Menyu tugmasini yangilash asosiy admin bot oqimini to'xtatmasligi kerak.
-        return
+    except TelegramAPIError as exc:
+        logger.warning(
+            "Admin Mini App chat menu tugmasi yangilanmadi: tenant_id=%s chat_id=%s error=%s",
+            tenant_id,
+            message.chat.id,
+            exc,
+        )
 
 
 def _service_keyboard(tenant_id: int) -> ReplyKeyboardMarkup:
@@ -147,8 +154,13 @@ async def service_panel(message: Message, tenant_id: int):
                 web_app=WebAppInfo(url=fresh_url),
             ),
         )
-    except Exception:
-        pass
+    except TelegramAPIError as exc:
+        logger.warning(
+            "Admin Mini App menu tugmasi yangilanmadi: tenant_id=%s chat_id=%s error=%s",
+            tenant_id,
+            message.chat.id,
+            exc,
+        )
     builder = InlineKeyboardBuilder()
     builder.button(
         text="🖥 Boshqaruv panelini ochish",
@@ -185,7 +197,7 @@ async def _stats_content(tenant_id: int):
         "",
         f"📥 Jami ariza: <b>{overall['total']}</b>",
         f"⏳ Kutilmoqda: {overall['pending']}",
-        f"✅ Suhbatga: {overall['accepted']}",
+        f"✅ Suhbatga: {overall['accepted']}</b>",
         f"❌ Rad etilgan: {overall['rejected_total']}",
     ]
     builder = InlineKeyboardBuilder()
@@ -209,18 +221,14 @@ async def _stats_content(tenant_id: int):
                 "",
                 "<b>30 kunlik hiring funnel:</b>",
                 (
-                f"Ariza: {funnel['applications']} → Filtrdan o'tdi: {funnel['passed_filter']} "
-                f"→ Kuchli: {funnel['strong']} → Suhbat: {funnel['interview']} "
-                f"→ Ishga olindi: {funnel['hired']}"
-            ),
+                    f"Ariza: {funnel['applications']} → Filtrdan o'tdi: {funnel['passed_filter']} "
+                    f"→ Kuchli: {funnel['strong']} → Suhbat: {funnel['interview']} "
+                    f"→ Ishga olindi: {funnel['hired']}"
+                ),
             ]
         )
 
-    if (
-        funnel
-        and premium_active
-        and has_feature(plan_code, FEATURE_ADVANCED_REPORTING)
-    ):
+    if funnel and premium_active and has_feature(plan_code, FEATURE_ADVANCED_REPORTING):
         rates = funnel["rates"]
         lines.extend(
             [
@@ -306,30 +314,35 @@ async def _send_stats(message: Message, tenant_id: int):
 @router.message(F.text == ADMIN_MENU["new"])
 async def service_new_applications(message: Message, tenant_id: int):
     from admin_bot.handlers_candidates import show_list_message
+
     await show_list_message(message, tenant_id, "pending", 0)
 
 
 @router.message(F.text == ADMIN_MENU["candidates"])
 async def service_candidates(message: Message, tenant_id: int):
     from admin_bot.handlers_candidates import show_list_message
+
     await show_list_message(message, tenant_id, "all", 0)
 
 
 @router.message(F.text == ADMIN_MENU["vacancies"])
 async def service_vacancies(message: Message, tenant_id: int):
     from admin_bot.handlers_vacancy_list import list_vacancies_message
+
     await list_vacancies_message(message, tenant_id)
 
 
 @router.message(F.text == ADMIN_MENU["interviews"])
 async def service_interviews(message: Message, state: FSMContext, tenant_id: int):
     from admin_bot.handlers_interview import _show_menu
+
     await _show_menu(message, state, tenant_id)
 
 
 @router.message(F.text == ADMIN_MENU["billing"])
 async def service_billing(message: Message, tenant_id: int):
     from admin_bot.handlers_billing import show_billing_message
+
     await show_billing_message(message, tenant_id)
 
 

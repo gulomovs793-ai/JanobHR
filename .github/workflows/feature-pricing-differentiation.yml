@@ -23,6 +23,24 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Apply feature differentiation
         run: python .github/scripts/apply_feature_pricing.py
+      - name: Clean generated lint
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("admin_bot/handlers_menu.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''                f"Ariza: {funnel['applications']} → Filtrdan o'tdi: {funnel['passed_filter']} "
+                          f"→ Kuchli: {funnel['strong']} → Suhbat: {funnel['interview']} "
+                          f"→ Ishga olindi: {funnel['hired']}",'''
+          new = '''                (
+                          f"Ariza: {funnel['applications']} → Filtrdan o'tdi: {funnel['passed_filter']} "
+                          f"→ Kuchli: {funnel['strong']} → Suhbat: {funnel['interview']} "
+                          f"→ Ishga olindi: {funnel['hired']}"
+                      ),'''
+          if old not in text:
+              raise SystemExit("generated funnel block not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
       - name: Auto-fix lint
         run: ruff check . --fix
       - name: Validate lint

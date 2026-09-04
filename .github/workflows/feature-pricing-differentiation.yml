@@ -41,6 +41,25 @@ jobs:
               raise SystemExit("generated funnel block not found")
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
+      - name: Update regression fixture for plan-aware notification
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tests/test_regressions.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''            patch.object(database, "get_vacancy", AsyncMock(return_value=None)),
+                      patch.object(database, "add_admin_message", AsyncMock()) as add_message,'''
+          new = '''            patch.object(database, "get_vacancy", AsyncMock(return_value=None)),
+                      patch.object(
+                          database,
+                          "get_subscription_usage",
+                          AsyncMock(return_value={"expired": False, "plan": get_plan("growth")}),
+                      ),
+                      patch.object(database, "add_admin_message", AsyncMock()) as add_message,'''
+          if old not in text:
+              raise SystemExit("regression fixture block not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
       - name: Auto-fix lint
         run: ruff check . --fix
       - name: Validate lint

@@ -1,0 +1,42 @@
+name: Feature pricing differentiation
+
+on:
+  push:
+    branches: [feature-pricing-differentiation]
+    paths:
+      - .github/workflows/feature-pricing-differentiation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature-pricing-differentiation
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Apply feature differentiation
+        run: python .github/scripts/apply_feature_pricing.py
+      - name: Auto-fix lint
+        run: ruff check . --fix
+      - name: Validate lint
+        run: ruff check .
+      - name: Validate syntax
+        run: python -m compileall -q .
+      - name: Run complete test suite
+        run: python -m unittest discover -s tests -v
+      - name: Commit validated feature gates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Differentiate START GROWTH and BUSINESS features"
+            git push origin feature-pricing-differentiation
+          fi

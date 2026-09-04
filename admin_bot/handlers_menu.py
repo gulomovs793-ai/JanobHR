@@ -197,7 +197,7 @@ async def _stats_content(tenant_id: int):
         "",
         f"📥 Jami ariza: <b>{overall['total']}</b>",
         f"⏳ Kutilmoqda: {overall['pending']}",
-        f"✅ Suhbatga: {overall['accepted']}</b>",
+        f"✅ Suhbatga: {overall['accepted']}",
         f"❌ Rad etilgan: {overall['rejected_total']}",
     ]
     builder = InlineKeyboardBuilder()

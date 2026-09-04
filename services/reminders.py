@@ -10,6 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
 from services import database
+from services.plans import FEATURE_AUTO_INTERVIEW_REMINDERS, has_feature
 from services.storage import (
     list_stale_candidate_sessions,
     mark_candidate_session_reminded,
@@ -198,6 +199,17 @@ async def _send_abandoned_application_reminders() -> None:
 async def _send_interview_automatic_followups() -> None:
     now = datetime.now(timezone.utc)
     for item in await database.list_interview_followup_candidates():
+        plan_code = item.get("plan_code")
+        if not has_feature(plan_code, FEATURE_AUTO_INTERVIEW_REMINDERS):
+            continue
+        if plan_code not in {"trial", "legacy"}:
+            expires_at = item.get("subscription_expires_at")
+            try:
+                expiry = datetime.fromisoformat(expires_at) if expires_at else None
+                if expiry is None or expiry <= now:
+                    continue
+            except (TypeError, ValueError):
+                continue
         try:
             starts_at = datetime.fromisoformat(item["starts_at"])
             if starts_at.tzinfo is None:

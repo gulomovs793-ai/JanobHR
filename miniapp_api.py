@@ -37,7 +37,18 @@ from services.hiring_intelligence import (
 from services.payment_automation import (
     create_payment_order as create_payment_order_for_plan,
 )
-from services.plans import PUBLIC_PLAN_CODES, get_plan, get_plan_transition
+from services.plans import (
+    FEATURE_FUNNEL_ANALYTICS,
+    FEATURE_RISK_SIGNALS,
+    FEATURE_TOP_CANDIDATE_COMPARE,
+    PUBLIC_PLAN_CODES,
+    feature_label,
+    get_plan,
+    get_plan_transition,
+    has_feature,
+    market_feature_labels,
+    minimum_plan_for_feature,
+)
 
 logger = logging.getLogger("janob_hr_bot")
 STATIC_DIR = Path(__file__).with_name("miniapp")
@@ -133,6 +144,21 @@ async def _authorize(request: web.Request) -> tuple[dict, dict]:
         )
     bucket.append(time.monotonic())
     return tenant, auth
+
+
+async def _feature_enabled_for_tenant(tenant_id: int, feature: str) -> bool:
+    usage = await database.get_subscription_usage(tenant_id)
+    return not usage["expired"] and has_feature(usage["plan"].code, feature)
+
+
+async def _require_feature(tenant_id: int, feature: str) -> None:
+    if await _feature_enabled_for_tenant(tenant_id, feature):
+        return
+    required_code = minimum_plan_for_feature(feature)
+    required = get_plan(required_code).name
+    raise web.HTTPForbidden(
+        text=f"{feature_label(feature)} — {required} tarifidan boshlab mavjud."
+    )
 
 
 def _candidate_summary(app: dict) -> dict:
@@ -411,7 +437,11 @@ async def candidate_detail(request: web.Request):
             "suspect_flags": app.get("ai_suspect_flags") or [],
             "has_resume": bool(app.get("resume_file_id")),
             "has_voice": bool(app.get("voice_answers")),
-            "risk_signals": candidate_risks(app, vacancy),
+            "risk_signals": (
+                candidate_risks(app, vacancy)
+                if await _feature_enabled_for_tenant(tenant["id"], FEATURE_RISK_SIGNALS)
+                else []
+            ),
         }
     )
     return web.json_response(result)
@@ -507,6 +537,7 @@ async def candidate_outcome(request: web.Request):
 
 async def analytics_funnel(request: web.Request):
     tenant, _ = await _authorize(request)
+    await _require_feature(tenant["id"], FEATURE_FUNNEL_ANALYTICS)
     try:
         days = max(1, min(90, int(request.query.get("days", "30"))))
     except ValueError:
@@ -520,6 +551,7 @@ async def analytics_funnel(request: web.Request):
 
 async def compare_top_candidates(request: web.Request):
     tenant, _ = await _authorize(request)
+    await _require_feature(tenant["id"], FEATURE_TOP_CANDIDATE_COMPARE)
     vacancy_key = (request.query.get("vacancy_key") or "").strip()
     if not vacancy_key:
         raise web.HTTPBadRequest(text="Vakansiyani tanlang.")
@@ -851,6 +883,7 @@ async def billing(request: web.Request):
                     "price": get_plan(code).price,
                     "applications": get_plan(code).application_limit,
                     "vacancies": get_plan(code).vacancy_limit,
+                    "features": market_feature_labels(code),
                     "purchase_state": get_plan_transition(
                         usage["plan"].code,
                         code,

@@ -7,6 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from handlers.admin import format_application_full_text, format_candidate_card
 from services import database
 from services.ai_scoring import aggregate_scores
+from services.plans import FEATURE_RISK_SIGNALS, has_feature
 
 router = Router(name="admin_candidates")
 PAGE_SIZE = 5
@@ -87,7 +88,12 @@ async def view_candidate(callback: CallbackQuery, tenant_id: int):
     if not app:
         await callback.answer("Nomzod topilmadi.", show_alert=True)
         return
-    text = format_candidate_card(app)
+    usage = await database.get_subscription_usage(tenant_id)
+    text = format_candidate_card(
+        app,
+        show_risks=not usage["expired"]
+        and has_feature(usage["plan"].code, FEATURE_RISK_SIGNALS),
+    )
     text += f"\n\n📌 {_STATUS.get(app['status'], app['status'])}"
 
     builder = InlineKeyboardBuilder()

@@ -1,11 +1,14 @@
 """Admin bot — asosiy menyu va statistika."""
 
+import time
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
     KeyboardButton,
+    MenuButtonWebApp,
     Message,
     ReplyKeyboardMarkup,
     WebAppInfo,
@@ -38,6 +41,29 @@ ADMIN_MENU = {
 }
 
 
+def _fresh_miniapp_url(tenant_id: int) -> str:
+    """Har ochishda yangi URL berib, Telegram Desktop stale WebView'ini chetlab o'tadi."""
+    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
+    return f"{miniapp_base}/{tenant_id}?launch={time.time_ns()}"
+
+
+async def _refresh_chat_menu_button(message: Message, tenant_id: int) -> None:
+    """Private chat menu tugmasini ham ayni paytdagi yangi launch URLga yangilaydi."""
+    if not WEBHOOK_BASE_URL:
+        return
+    try:
+        await message.bot.set_chat_menu_button(
+            chat_id=message.chat.id,
+            menu_button=MenuButtonWebApp(
+                text="Boshqaruv paneli",
+                web_app=WebAppInfo(url=_fresh_miniapp_url(tenant_id)),
+            ),
+        )
+    except Exception:
+        # Menyu tugmasini yangilash asosiy admin bot oqimini to'xtatmasligi kerak.
+        return
+
+
 def _service_keyboard(tenant_id: int) -> ReplyKeyboardMarkup:
     # Reply-keyboard WebApp tugmasi ayrim Telegram klientlarida SimpleWebView
     # sifatida ochilib, server auth uchun kerakli initData'ni bermasligi mumkin.
@@ -60,11 +86,10 @@ def _service_keyboard(tenant_id: int) -> ReplyKeyboardMarkup:
 
 def _main_menu_keyboard(overall: dict, tenant_id: int):
     builder = InlineKeyboardBuilder()
-    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
     if WEBHOOK_BASE_URL:
         builder.button(
             text="🖥 Boshqaruv paneli",
-            web_app=WebAppInfo(url=f"{miniapp_base}/{tenant_id}"),
+            web_app=WebAppInfo(url=_fresh_miniapp_url(tenant_id)),
         )
     builder.button(
         text=f"📥 Yangi arizalar · {overall['pending']}",
@@ -82,6 +107,7 @@ def _main_menu_keyboard(overall: dict, tenant_id: int):
 
 async def show_main_menu(message: Message, tenant_id: int, *, edit: bool = False):
     overall = await database.get_overall_stats(tenant_id)
+    await _refresh_chat_menu_button(message, tenant_id)
     text = (
         "👔 <b>Janob HR · Ishga qabul</b>\n\n"
         f"Yangi: <b>{overall['pending']}</b>   ·   "
@@ -112,11 +138,21 @@ async def service_panel(message: Message, tenant_id: int):
     if not WEBHOOK_BASE_URL:
         await message.answer("Boshqaruv paneli vaqtincha mavjud emas. Keyinroq urinib ko'ring.")
         return
-    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
+    fresh_url = _fresh_miniapp_url(tenant_id)
+    try:
+        await message.bot.set_chat_menu_button(
+            chat_id=message.chat.id,
+            menu_button=MenuButtonWebApp(
+                text="Boshqaruv paneli",
+                web_app=WebAppInfo(url=fresh_url),
+            ),
+        )
+    except Exception:
+        pass
     builder = InlineKeyboardBuilder()
     builder.button(
         text="🖥 Boshqaruv panelini ochish",
-        web_app=WebAppInfo(url=f"{miniapp_base}/{tenant_id}"),
+        web_app=WebAppInfo(url=fresh_url),
     )
     await message.answer(
         "Boshqaruv panelini Telegram orqali xavfsiz oching:",

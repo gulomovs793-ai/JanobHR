@@ -2153,3 +2153,6 @@ a:focus-visible {
     transition-duration: .01ms !important;
   }
 }
+
+
+.plan-features{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:6px;font-size:13px;line-height:1.35}.plan-features li{opacity:.82}.price-card.popular .plan-features li{opacity:.92}

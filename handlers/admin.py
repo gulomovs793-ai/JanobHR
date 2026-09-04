@@ -18,6 +18,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from services import database
 from services.ai_scoring import aggregate_scores, get_ai_unavailable_keys
+from services.plans import FEATURE_RISK_SIGNALS, has_feature
 from vacancies import build_questions
 
 logger = logging.getLogger("janob_hr_bot")
@@ -43,7 +44,7 @@ _RED_FLAG_LABELS = {
 _MAX_TEXT_LENGTH = 3800
 
 
-def format_candidate_card(app: dict) -> str:
+def format_candidate_card(app: dict, *, show_risks: bool = True) -> str:
     ai_scores = app.get("ai_scores") or {}
     aggregate = aggregate_scores(ai_scores)
     unavailable_keys = get_ai_unavailable_keys(ai_scores)
@@ -55,13 +56,15 @@ def format_candidate_card(app: dict) -> str:
     strongest = max(scored, key=lambda value: value["score"], default=None)
     weakest = min(scored, key=lambda value: value["score"], default=None)
     strength = (strongest or {}).get("evidence") or (strongest or {}).get("izoh") or "Javoblarini to'liq ko'rib chiqing."
-    risk = "Aniq xavf aniqlanmadi."
-    if aggregate and aggregate.get("red_flags"):
-        risk = _RED_FLAG_LABELS.get(
-            aggregate["red_flags"][0], aggregate["red_flags"][0]
-        )
-    elif weakest and weakest.get("score", 100) < 70:
-        risk = weakest.get("izoh") or "Ayrim javoblari yetarlicha aniq emas."
+    risk = "Risk signallari GROWTH tarifida mavjud."
+    if show_risks:
+        risk = "Aniq xavf aniqlanmadi."
+        if aggregate and aggregate.get("red_flags"):
+            risk = _RED_FLAG_LABELS.get(
+                aggregate["red_flags"][0], aggregate["red_flags"][0]
+            )
+        elif weakest and weakest.get("score", 100) < 70:
+            risk = weakest.get("izoh") or "Ayrim javoblari yetarlicha aniq emas."
 
     if unavailable_keys:
         ai_note = f"⚠️ AI tahlili {len(unavailable_keys)} ta savolda ishlamadi."
@@ -100,6 +103,10 @@ async def format_application_full_text(app: dict) -> str:
     ai_scores = app.get("ai_scores") or {}
     unavailable_keys = get_ai_unavailable_keys(ai_scores)
     tenant_id = app["tenant_id"]
+    usage = await database.get_subscription_usage(tenant_id)
+    show_risks = not usage["expired"] and has_feature(
+        usage["plan"].code, FEATURE_RISK_SIGNALS
+    )
 
     for key, value in app["answers"].items():
         text = escape(str(value))
@@ -161,12 +168,14 @@ async def format_application_full_text(app: dict) -> str:
             f"Aniqlik: {aggregate['avg_aniqlik']}"
         )
 
-        if aggregate["red_flags"]:
+        if aggregate["red_flags"] and show_risks:
             flag_labels = [_RED_FLAG_LABELS.get(f, f) for f in aggregate["red_flags"]]
             lines.append("🚩 Bayroqlar: " + "; ".join(flag_labels))
+        elif aggregate["red_flags"]:
+            lines.append("🔒 Red flag tahlili GROWTH tarifidan boshlab ochiladi.")
 
     suspect_keys = app.get("ai_suspect_flags") or []
-    if suspect_keys and vacancy:
+    if suspect_keys and vacancy and show_risks:
         key_to_text = {q["key"]: q["text"] for q in build_questions(vacancy)}
         total_ai_questions = len(expected_keys) or len(suspect_keys)
         percent = (
@@ -218,7 +227,12 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
     if not app:
         return
 
-    text = format_candidate_card(app)
+    usage = await database.get_subscription_usage(tenant_id)
+    text = format_candidate_card(
+        app,
+        show_risks=not usage["expired"]
+        and has_feature(usage["plan"].code, FEATURE_RISK_SIGNALS),
+    )
     builder = InlineKeyboardBuilder()
     builder.button(
         text="✅ Suhbatga chaqirish", callback_data=f"decision:accept:{app_id}"

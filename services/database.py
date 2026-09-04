@@ -1980,7 +1980,7 @@ async def list_interview_followup_candidates() -> list[dict]:
         cursor = await db.execute(
             "SELECT a.id AS app_id, a.tenant_id, a.user_id, a.full_name, a.vacancy_title, "
             "a.lang, a.selected_slot, a.status, s.starts_at, t.bot_token, t.admin_bot_token, "
-            "t.admin_user_ids FROM applications a "
+            "t.admin_user_ids, t.plan_code, t.subscription_expires_at FROM applications a "
             "JOIN interview_slots s ON s.tenant_id=a.tenant_id AND s.label=a.selected_slot "
             "JOIN tenants t ON t.id=a.tenant_id "
             "WHERE a.status='accepted' AND s.starts_at IS NOT NULL "

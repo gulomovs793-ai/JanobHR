@@ -14,6 +14,15 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import MINI_APP_BASE_URL, WEBHOOK_BASE_URL
 from services import database
+from services.hiring_intelligence import compare_candidates, hiring_funnel
+from services.plans import (
+    FEATURE_ADVANCED_REPORTING,
+    FEATURE_FUNNEL_ANALYTICS,
+    FEATURE_PER_VACANCY_REPORTING,
+    FEATURE_PRIORITY_SUPPORT,
+    FEATURE_TOP_CANDIDATE_COMPARE,
+    has_feature,
+)
 
 router = Router(name="admin_menu")
 
@@ -124,48 +133,138 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext, tenant_id: in
 
 @router.callback_query(F.data == "menu:stats")
 async def show_stats(callback: CallbackQuery, tenant_id: int):
+    text, markup = await _stats_content(tenant_id)
+    await callback.message.edit_text(text, reply_markup=markup)
+    await callback.answer()
+
+
+async def _stats_content(tenant_id: int):
+    usage = await database.get_subscription_usage(tenant_id)
+    plan_code = usage["plan"].code
+    premium_active = not usage["expired"]
     overall = await database.get_overall_stats(tenant_id)
-    per_vacancy = await database.get_vacancy_stats(tenant_id)
 
     lines = [
-        "📊 <b>Umumiy statistika</b>",
+        f"📊 <b>Hisobot · {usage['plan'].name}</b>",
         "",
         f"📥 Jami ariza: <b>{overall['total']}</b>",
         f"⏳ Kutilmoqda: {overall['pending']}",
-        f"✅ Qabul qilingan: {overall['accepted']}",
-        f"❌ Rad etilgan (jami): {overall['rejected_total']}",
-        f"   • Admin tomonidan: {overall['declined_by_admin']}",
-        f"   • Talabga javob bermadi: {overall['rejected_hard_filter']}",
-        f"   • Mavzuga mos kelmadi: {overall['rejected_irrelevant']}",
-        f"   • AI orqali yozilgan deb topildi: {overall['rejected_ai_generated']}",
+        f"✅ Suhbatga: {overall['accepted']}",
+        f"❌ Rad etilgan: {overall['rejected_total']}",
     ]
+    builder = InlineKeyboardBuilder()
 
-    if per_vacancy:
-        lines.append("")
-        lines.append("<b>Vakansiyalar bo'yicha:</b>")
-        for v in per_vacancy:
-            lines.append(
-                f"\n<b>{v['vacancy_title']}</b>\n"
-                f"  Jami: {v['total']} | Kutilmoqda: {v['pending']} | "
-                f"Qabul: {v['accepted']} | Rad: {v['rejected']}"
-            )
+    if premium_active and has_feature(plan_code, FEATURE_PER_VACANCY_REPORTING):
+        per_vacancy = await database.get_vacancy_stats(tenant_id)
+        if per_vacancy:
+            lines.extend(["", "<b>Vakansiyalar bo'yicha:</b>"])
+            for item in per_vacancy:
+                lines.append(
+                    f"• <b>{item['vacancy_title']}</b>: {item['total']} ariza · "
+                    f"{item['accepted']} suhbat · {item['rejected']} rad"
+                )
+
+    funnel = None
+    if premium_active and has_feature(plan_code, FEATURE_FUNNEL_ANALYTICS):
+        apps = await database.list_funnel_applications(tenant_id, days=30)
+        funnel = hiring_funnel(apps)
+        lines.extend(
+            [
+                "",
+                "<b>30 kunlik hiring funnel:</b>",
+                (
+                f"Ariza: {funnel['applications']} → Filtrdan o'tdi: {funnel['passed_filter']} "
+                f"→ Kuchli: {funnel['strong']} → Suhbat: {funnel['interview']} "
+                f"→ Ishga olindi: {funnel['hired']}"
+            ),
+            ]
+        )
+
+    if (
+        funnel
+        and premium_active
+        and has_feature(plan_code, FEATURE_ADVANCED_REPORTING)
+    ):
+        rates = funnel["rates"]
+        lines.extend(
+            [
+                "",
+                "<b>BUSINESS conversion:</b>",
+                f"Filtrdan o'tish: <b>{rates['filter_pass']}%</b>",
+                f"Kuchli nomzod: <b>{rates['strong']}%</b>",
+                f"Suhbatga o'tish: <b>{rates['interview']}%</b>",
+                f"Suhbatdan hire: <b>{rates['hire']}%</b>",
+                f"No-show: <b>{funnel['no_show']}</b>",
+            ]
+        )
+
+    if premium_active and has_feature(plan_code, FEATURE_TOP_CANDIDATE_COMPARE):
+        vacancies = await database.list_vacancies(tenant_id, active_only=False)
+        active = [item for item in vacancies if item.get("active")]
+        if active:
+            lines.extend(["", "🏆 <b>Top-3 taqqoslash uchun vakansiyani tanlang:</b>"])
+            for vacancy in active[:10]:
+                builder.button(
+                    text=f"🏆 {vacancy['title']}",
+                    callback_data=f"intel:top:{vacancy['key']}",
+                )
+
+    if not premium_active or not has_feature(plan_code, FEATURE_FUNNEL_ANALYTICS):
+        lines.extend(
+            [
+                "",
+                "🔒 Funnel, Top-3 va risk analytics GROWTH tarifidan boshlab mavjud.",
+            ]
+        )
+
+    builder.button(text="⬅️ Orqaga", callback_data="menu:main")
+    builder.adjust(1)
+    return "\n".join(lines), builder.as_markup()
+
+
+@router.callback_query(F.data.startswith("intel:top:"))
+async def top_candidates(callback: CallbackQuery, tenant_id: int):
+    usage = await database.get_subscription_usage(tenant_id)
+    if usage["expired"] or not has_feature(
+        usage["plan"].code, FEATURE_TOP_CANDIDATE_COMPARE
+    ):
+        await callback.answer(
+            "Top nomzodlarni taqqoslash GROWTH tarifidan boshlab mavjud.",
+            show_alert=True,
+        )
+        return
+    vacancy_key = callback.data.split(":", 2)[2]
+    vacancy = await database.get_vacancy(tenant_id, vacancy_key)
+    if not vacancy:
+        await callback.answer("Vakansiya topilmadi.", show_alert=True)
+        return
+    apps = await database.list_funnel_applications(
+        tenant_id, days=90, vacancy_key=vacancy_key
+    )
+    comparison = compare_candidates(apps, vacancy, limit=3)
+    lines = [f"🏆 <b>{vacancy['title']} · Top nomzodlar</b>", ""]
+    if not comparison["items"]:
+        lines.append("Taqqoslash uchun yetarli faol nomzod yo'q.")
+    else:
+        for item in comparison["items"]:
+            score = item["score"] if item["score"] is not None else "—"
+            lines.append(f"<b>{item['rank']}. {item['full_name']}</b> · {score}/100")
+            lines.append(f"   Kuchli tomon: {item['strength']['summary']}")
+            if item["risks"]:
+                risk_text = "; ".join(risk["label"] for risk in item["risks"][:2])
+                lines.append(f"   ⚠️ {risk_text}")
+        if comparison.get("recommendation"):
+            lines.extend(["", f"🎯 {comparison['recommendation']['text']}"])
 
     builder = InlineKeyboardBuilder()
-    builder.button(text="⬅️ Orqaga", callback_data="menu:main")
-
+    builder.button(text="⬅️ Hisobot", callback_data="menu:stats")
     await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
     await callback.answer()
 
 
 async def _send_stats(message: Message, tenant_id: int):
-    overall = await database.get_overall_stats(tenant_id)
-    await message.answer(
-        "📊 <b>Statistika</b>\n\n"
-        f"Jami ariza: <b>{overall['total']}</b>\n"
-        f"Yangi: <b>{overall['pending']}</b>\n"
-        f"Suhbatga chaqirilgan: <b>{overall['accepted']}</b>\n"
-        f"Rad etilgan: <b>{overall['rejected_total']}</b>"
-    )
+    text, markup = await _stats_content(tenant_id)
+    await message.answer(text, reply_markup=markup)
 
 
 @router.message(F.text == ADMIN_MENU["new"])
@@ -204,7 +303,16 @@ async def service_stats(message: Message, tenant_id: int):
 
 
 @router.message(F.text == ADMIN_MENU["help"])
-async def service_help(message: Message):
-    await message.answer(
-        "☎️ <b>Yordam</b>\n\nSavol yoki muammo bo'lsa, <b>@F45746</b> ga yozing."
-    )
+async def service_help(message: Message, tenant_id: int):
+    usage = await database.get_subscription_usage(tenant_id)
+    if not usage["expired"] and has_feature(
+        usage["plan"].code, FEATURE_PRIORITY_SUPPORT
+    ):
+        text = (
+            "⚡ <b>BUSINESS Priority Support</b>\n\n"
+            "Savol yoki muammo bo'lsa, <b>@F45746</b> ga yozing. "
+            "BUSINESS murojaatlari ustuvor ko'rib chiqiladi."
+        )
+    else:
+        text = "☎️ <b>Yordam</b>\n\nSavol yoki muammo bo'lsa, <b>@F45746</b> ga yozing."
+    await message.answer(text)

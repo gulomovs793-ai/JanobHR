@@ -237,6 +237,11 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
             patch.object(database, "get_tenant", AsyncMock(return_value=tenant)),
             patch.object(database, "get_application", AsyncMock(return_value=app)),
             patch.object(database, "get_vacancy", AsyncMock(return_value=None)),
+            patch.object(
+                database,
+                "get_subscription_usage",
+                AsyncMock(return_value={"expired": False, "plan": get_plan("growth")}),
+            ),
             patch.object(database, "add_admin_message", AsyncMock()) as add_message,
             patch.object(admin_handlers, "Bot", FakeAdminBot),
         ):

@@ -45,17 +45,18 @@ class MarketReadyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(button.text, ADMIN_MENU["panel"])
         self.assertIsNone(button.web_app)
 
-    async def test_admin_panel_text_button_returns_inline_webapp(self):
+    async def test_admin_panel_text_button_returns_fresh_inline_webapp(self):
         message = type("FakeMessage", (), {"answer": AsyncMock()})()
         with (
             patch("admin_bot.handlers_menu.WEBHOOK_BASE_URL", "https://example.test"),
             patch("admin_bot.handlers_menu.MINI_APP_BASE_URL", ""),
+            patch("admin_bot.handlers_menu.time.time_ns", return_value=123456789),
         ):
             await service_panel(message, self.tenant_id)
         markup = message.answer.await_args.kwargs["reply_markup"]
         self.assertEqual(
             markup.inline_keyboard[0][0].web_app.url,
-            f"https://example.test/miniapp/{self.tenant_id}",
+            f"https://example.test/miniapp/{self.tenant_id}?launch=123456789",
         )
 
     async def test_submission_key_is_idempotent(self):

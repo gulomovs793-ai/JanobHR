@@ -1,5 +1,7 @@
 """Admin bot — asosiy menyu va statistika."""
 
+import time
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -36,6 +38,12 @@ ADMIN_MENU = {
     "billing": "💳 Tarif va to'lov",
     "help": "☎️ Yordam",
 }
+
+
+def _fresh_miniapp_url(tenant_id: int) -> str:
+    """Har panel bosilishida Telegram Desktop uchun yangi WebApp URL yaratadi."""
+    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
+    return f"{miniapp_base}/{tenant_id}?launch={time.time_ns()}"
 
 
 def _service_keyboard(tenant_id: int) -> ReplyKeyboardMarkup:
@@ -112,11 +120,10 @@ async def service_panel(message: Message, tenant_id: int):
     if not WEBHOOK_BASE_URL:
         await message.answer("Boshqaruv paneli vaqtincha mavjud emas. Keyinroq urinib ko'ring.")
         return
-    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
     builder = InlineKeyboardBuilder()
     builder.button(
         text="🖥 Boshqaruv panelini ochish",
-        web_app=WebAppInfo(url=f"{miniapp_base}/{tenant_id}"),
+        web_app=WebAppInfo(url=_fresh_miniapp_url(tenant_id)),
     )
     await message.answer(
         "Boshqaruv panelini Telegram orqali xavfsiz oching:",
@@ -173,18 +180,14 @@ async def _stats_content(tenant_id: int):
                 "",
                 "<b>30 kunlik hiring funnel:</b>",
                 (
-                f"Ariza: {funnel['applications']} → Filtrdan o'tdi: {funnel['passed_filter']} "
-                f"→ Kuchli: {funnel['strong']} → Suhbat: {funnel['interview']} "
-                f"→ Ishga olindi: {funnel['hired']}"
-            ),
+                    f"Ariza: {funnel['applications']} → Filtrdan o'tdi: {funnel['passed_filter']} "
+                    f"→ Kuchli: {funnel['strong']} → Suhbat: {funnel['interview']} "
+                    f"→ Ishga olindi: {funnel['hired']}"
+                ),
             ]
         )
 
-    if (
-        funnel
-        and premium_active
-        and has_feature(plan_code, FEATURE_ADVANCED_REPORTING)
-    ):
+    if funnel and premium_active and has_feature(plan_code, FEATURE_ADVANCED_REPORTING):
         rates = funnel["rates"]
         lines.extend(
             [
@@ -270,30 +273,35 @@ async def _send_stats(message: Message, tenant_id: int):
 @router.message(F.text == ADMIN_MENU["new"])
 async def service_new_applications(message: Message, tenant_id: int):
     from admin_bot.handlers_candidates import show_list_message
+
     await show_list_message(message, tenant_id, "pending", 0)
 
 
 @router.message(F.text == ADMIN_MENU["candidates"])
 async def service_candidates(message: Message, tenant_id: int):
     from admin_bot.handlers_candidates import show_list_message
+
     await show_list_message(message, tenant_id, "all", 0)
 
 
 @router.message(F.text == ADMIN_MENU["vacancies"])
 async def service_vacancies(message: Message, tenant_id: int):
     from admin_bot.handlers_vacancy_list import list_vacancies_message
+
     await list_vacancies_message(message, tenant_id)
 
 
 @router.message(F.text == ADMIN_MENU["interviews"])
 async def service_interviews(message: Message, state: FSMContext, tenant_id: int):
     from admin_bot.handlers_interview import _show_menu
+
     await _show_menu(message, state, tenant_id)
 
 
 @router.message(F.text == ADMIN_MENU["billing"])
 async def service_billing(message: Message, tenant_id: int):
     from admin_bot.handlers_billing import show_billing_message
+
     await show_billing_message(message, tenant_id)
 
 

@@ -6,3 +6,125 @@
 .jh2-compare-grid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:10px;overflow-x:auto;padding-bottom:8px}.jh2-candidate-card{background:#fff;border:1px solid #e5e5ea;border-radius:18px;padding:15px;min-width:220px}.jh2-rank{display:inline-flex;border-radius:20px;background:#f2f2f7;padding:5px 8px;font-size:11px;font-weight:800}.jh2-candidate-card h3{margin:10px 0 2px;font-size:17px}.jh2-big-score{font-size:32px;font-weight:800;margin:12px 0}.jh2-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.jh2-metrics span{background:#f5f5f7;border-radius:10px;padding:8px 4px;text-align:center;font-size:10px;color:#6e6e73}.jh2-metrics b{display:block;color:#111;font-size:14px}.jh2-strength{margin:12px 0 0;font-size:12px;line-height:1.45}.jh2-risk{display:inline-block;margin:5px 4px 0 0;padding:5px 7px;border-radius:8px;background:#fff2f2;color:#b42318;font-size:10px;font-weight:700}.jh2-recommend{background:#eef7ff;border-radius:14px;padding:12px;font-size:13px;line-height:1.45;margin-bottom:12px}
 .jh2-insights{margin-top:14px;border-top:1px solid #e5e5ea;padding-top:14px}.jh2-insights h3{font-size:15px;margin:0 0 9px}.jh2-evidence{background:#f5f5f7;border-radius:12px;padding:10px;margin:7px 0}.jh2-evidence b{display:block;font-size:11px;margin-bottom:4px}.jh2-evidence p{font-size:12px;line-height:1.45;margin:0;color:#3a3a3c}.jh2-evidence small{display:block;margin-top:5px;color:#6e6e73}.jh2-loading{padding:18px;text-align:center;color:#6e6e73}
 @media(max-width:520px){.jh2-card-head{flex-direction:column}.jh2-card-head .jh2-primary{width:100%}.jh2-funnel{grid-template-columns:repeat(5,92px)}.jh2-compare-tools{flex-direction:column}.jh2-compare-tools button{padding:11px}.jh2-sheet{max-height:94vh}.jh2-compare-grid{grid-template-columns:repeat(3,230px)}}
+
+/* Approved dashboard hero: real tenant data, no decorative AI-style chrome. */
+#dashboard .hero{
+  min-height:260px;
+  padding:34px 30px 30px;
+  display:flex;
+  align-items:stretch;
+  justify-content:flex-start;
+  border-radius:30px;
+  background:linear-gradient(145deg,#0b78e9 0%,#087cf4 52%,#0568d4 100%);
+  box-shadow:none;
+}
+#dashboard .hero::after{display:none}
+#dashboard .hero-copy{
+  width:100%;
+  max-width:none;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  padding-top:62px;
+}
+#dashboard .eyebrow{display:none}
+#dashboard .hero h1{
+  max-width:calc(100% - 150px);
+  margin:0 0 12px;
+  color:#fff;
+  font-size:clamp(34px,8vw,52px);
+  font-weight:790;
+  line-height:.98;
+  letter-spacing:-.055em;
+  overflow-wrap:anywhere;
+}
+#dashboard .hero-copy>p:not(.eyebrow){
+  max-width:520px;
+  margin:0;
+  color:transparent;
+  font-size:0;
+  line-height:1.35;
+}
+#dashboard .hero-copy>p:not(.eyebrow)::after{
+  content:"Nomzodlardan suhbatgacha — bir joyda.";
+  display:block;
+  color:rgba(255,255,255,.78);
+  font-size:clamp(16px,4.4vw,21px);
+  font-weight:430;
+  letter-spacing:-.025em;
+}
+#dashboard .hero-meta{
+  margin-top:auto;
+  padding-top:30px;
+}
+#dashboard #hero-vacancies{
+  min-height:48px;
+  padding:0 18px 0 15px;
+  gap:10px;
+  border:1px solid rgba(255,255,255,.22);
+  border-radius:999px;
+  background:rgba(255,255,255,.11);
+  color:#fff;
+  font-size:15px;
+  font-weight:720;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+}
+#dashboard #hero-vacancies::before{
+  content:"";
+  width:23px;
+  height:23px;
+  flex:0 0 23px;
+  background:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Ccircle cx='9' cy='8' r='3'/%3E%3Ccircle cx='16.5' cy='9' r='2.5' opacity='.9'/%3E%3Cpath d='M3.5 19c.25-4 2.15-6 5.5-6s5.25 2 5.5 6H3.5Z'/%3E%3Cpath d='M14 14.1c.8-.4 1.7-.6 2.6-.6 2.7 0 4.1 1.7 4.4 5.5h-5.4c-.15-1.9-.65-3.5-1.6-4.9Z' opacity='.9'/%3E%3C/svg%3E");
+}
+#dashboard #hero-interviews{display:none}
+#dashboard .health{
+  width:auto;
+  height:46px;
+  min-width:106px;
+  padding:0 18px;
+  position:absolute;
+  top:28px;
+  right:28px;
+  flex-direction:row;
+  gap:10px;
+  border:1px solid rgba(255,255,255,.2);
+  border-radius:999px;
+  background:rgba(255,255,255,.1);
+  text-align:left;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+}
+#dashboard .health::before{
+  content:"";
+  width:13px;
+  height:13px;
+  flex:0 0 13px;
+  border-radius:50%;
+  background:#16d99a;
+}
+#dashboard .health svg,#dashboard .health p{display:none}
+#dashboard .health div,#dashboard .health span,#dashboard .health b{display:block}
+#dashboard .health b{
+  color:#fff;
+  font-size:15px;
+  font-weight:740;
+  line-height:1;
+}
+@media(max-width:520px){
+  #dashboard .hero{min-height:244px;padding:26px 22px 24px;border-radius:26px}
+  #dashboard .hero-copy{padding-top:58px}
+  #dashboard .hero h1{max-width:100%;font-size:clamp(30px,10vw,44px);margin-bottom:10px}
+  #dashboard .hero-copy>p:not(.eyebrow)::after{font-size:16px;max-width:290px}
+  #dashboard .health{top:20px;right:20px;height:40px;min-width:92px;padding:0 14px;gap:8px}
+  #dashboard .health::before{width:11px;height:11px;flex-basis:11px}
+  #dashboard .health b{font-size:14px}
+  #dashboard #hero-vacancies{min-height:43px;padding:0 15px 0 13px;font-size:13px}
+  #dashboard #hero-vacancies::before{width:20px;height:20px;flex-basis:20px}
+}
+@media(max-width:350px){
+  #dashboard .hero{padding-left:18px;padding-right:18px}
+  #dashboard .health{right:16px}
+  #dashboard .hero h1{font-size:29px}
+}

@@ -1,20 +1,11 @@
 """Admin bot — asosiy menyu va statistika."""
 
-import time
-
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import (
-    CallbackQuery,
-    KeyboardButton,
-    Message,
-    ReplyKeyboardMarkup,
-    WebAppInfo,
-)
+from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import MINI_APP_BASE_URL, WEBHOOK_BASE_URL
 from services import database
 from services.hiring_intelligence import compare_candidates, hiring_funnel
 from services.plans import (
@@ -29,7 +20,6 @@ from services.plans import (
 router = Router(name="admin_menu")
 
 ADMIN_MENU = {
-    "panel": "🖥 Boshqaruv paneli",
     "new": "📥 Yangi arizalar",
     "candidates": "👥 Nomzodlar",
     "vacancies": "💼 Vakansiyalar",
@@ -40,21 +30,10 @@ ADMIN_MENU = {
 }
 
 
-def _fresh_miniapp_url(tenant_id: int) -> str:
-    """Har panel bosilishida Telegram Desktop uchun yangi WebApp URL yaratadi."""
-    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
-    return f"{miniapp_base}/{tenant_id}?launch={time.time_ns()}"
-
-
-def _service_keyboard(tenant_id: int) -> ReplyKeyboardMarkup:
-    # Reply-keyboard WebApp tugmasi ayrim Telegram klientlarida SimpleWebView
-    # sifatida ochilib, server auth uchun kerakli initData'ni bermasligi mumkin.
-    # Shuning uchun persistent tugma oddiy matn; bosilganda quyidagi handler
-    # signed initData beradigan inline WebApp tugmasini yuboradi.
-    panel = KeyboardButton(text=ADMIN_MENU["panel"])
+def _service_keyboard(_tenant_id: int) -> ReplyKeyboardMarkup:
+    """Admin chat menyusi. Mini App faqat Telegram yon menyu tugmasidan ochiladi."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [panel],
             [KeyboardButton(text=ADMIN_MENU["new"]), KeyboardButton(text=ADMIN_MENU["candidates"])],
             [KeyboardButton(text=ADMIN_MENU["vacancies"]), KeyboardButton(text=ADMIN_MENU["interviews"])],
             [KeyboardButton(text=ADMIN_MENU["stats"]), KeyboardButton(text=ADMIN_MENU["billing"])],
@@ -66,14 +45,9 @@ def _service_keyboard(tenant_id: int) -> ReplyKeyboardMarkup:
     )
 
 
-def _main_menu_keyboard(overall: dict, tenant_id: int):
+def _main_menu_keyboard(overall: dict, _tenant_id: int):
+    """Chat ichidagi menyu. Boshqaruv paneli bu yerda takrorlanmaydi."""
     builder = InlineKeyboardBuilder()
-    miniapp_base = (MINI_APP_BASE_URL or f"{WEBHOOK_BASE_URL}/miniapp").rstrip("/")
-    if WEBHOOK_BASE_URL:
-        builder.button(
-            text="🖥 Boshqaruv paneli",
-            web_app=WebAppInfo(url=f"{miniapp_base}/{tenant_id}"),
-        )
     builder.button(
         text=f"📥 Yangi arizalar · {overall['pending']}",
         callback_data="apps:list:pending:0",
@@ -84,7 +58,7 @@ def _main_menu_keyboard(overall: dict, tenant_id: int):
     builder.button(text="📊 Hisobot", callback_data="menu:stats")
     builder.button(text="💳 Tarif va limitlar", callback_data="menu:billing")
     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
-    builder.adjust(1, 1, 1, 2, 1, 1, 1)
+    builder.adjust(1, 1, 1, 2, 1, 1)
     return builder.as_markup()
 
 
@@ -113,22 +87,6 @@ async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
 async def cmd_cancel(message: Message, state: FSMContext, tenant_id: int):
     await state.clear()
     await show_main_menu(message, tenant_id)
-
-
-@router.message(F.text == ADMIN_MENU["panel"])
-async def service_panel(message: Message, tenant_id: int):
-    if not WEBHOOK_BASE_URL:
-        await message.answer("Boshqaruv paneli vaqtincha mavjud emas. Keyinroq urinib ko'ring.")
-        return
-    builder = InlineKeyboardBuilder()
-    builder.button(
-        text="🖥 Boshqaruv panelini ochish",
-        web_app=WebAppInfo(url=_fresh_miniapp_url(tenant_id)),
-    )
-    await message.answer(
-        "Boshqaruv panelini Telegram orqali xavfsiz oching:",
-        reply_markup=builder.as_markup(),
-    )
 
 
 @router.callback_query(F.data == "menu:main")

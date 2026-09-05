@@ -54,16 +54,11 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
             [button.text for row in founder.keyboard for button in row],
         )
 
-    async def test_admin_menu_has_real_miniapp_button(self):
-        overall = {"pending": 2}
-        with (
-            patch("admin_bot.handlers_menu.WEBHOOK_BASE_URL", "https://example.test"),
-            patch("admin_bot.handlers_menu.MINI_APP_BASE_URL", ""),
-        ):
-            markup = _main_menu_keyboard(overall, 7)
-        button = markup.inline_keyboard[0][0]
-        self.assertEqual(button.text, "🖥 Boshqaruv paneli")
-        self.assertEqual(button.web_app.url, "https://example.test/miniapp/7")
+    async def test_admin_chat_menus_do_not_duplicate_miniapp_button(self):
+        markup = _main_menu_keyboard({"pending": 2}, 7)
+        buttons = [button for row in markup.inline_keyboard for button in row]
+        self.assertNotIn("🖥 Boshqaruv paneli", [button.text for button in buttons])
+        self.assertTrue(all(button.web_app is None for button in buttons))
 
     async def test_business_lead_is_sent_by_janob_hr_admin_bot(self):
         admin_bot = type("AdminBot", (), {"send_message": AsyncMock()})()

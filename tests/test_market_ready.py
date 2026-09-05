@@ -2,9 +2,9 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
-from admin_bot.handlers_menu import ADMIN_MENU, _service_keyboard, service_panel
+from admin_bot.handlers_menu import ADMIN_MENU, _main_menu_keyboard, _service_keyboard
 from services import database
 
 
@@ -39,25 +39,23 @@ class MarketReadyTests(unittest.IsolatedAsyncioTestCase):
             status="pending",
         )
 
-    async def test_admin_persistent_panel_button_is_not_reply_webapp(self):
+    async def test_admin_chat_menu_has_no_management_panel_button(self):
         markup = _service_keyboard(self.tenant_id)
-        button = markup.keyboard[0][0]
-        self.assertEqual(button.text, ADMIN_MENU["panel"])
-        self.assertIsNone(button.web_app)
+        labels = [button.text for row in markup.keyboard for button in row]
+        self.assertNotIn("panel", ADMIN_MENU)
+        self.assertNotIn("🖥 Boshqaruv paneli", labels)
 
-    async def test_admin_panel_text_button_returns_fresh_inline_webapp(self):
-        message = type("FakeMessage", (), {"answer": AsyncMock()})()
-        with (
-            patch("admin_bot.handlers_menu.WEBHOOK_BASE_URL", "https://example.test"),
-            patch("admin_bot.handlers_menu.MINI_APP_BASE_URL", ""),
-            patch("admin_bot.handlers_menu.time.time_ns", return_value=123456789),
-        ):
-            await service_panel(message, self.tenant_id)
-        markup = message.answer.await_args.kwargs["reply_markup"]
-        self.assertEqual(
-            markup.inline_keyboard[0][0].web_app.url,
-            f"https://example.test/miniapp/{self.tenant_id}?launch=123456789",
-        )
+    async def test_admin_inline_menu_has_no_management_panel_button(self):
+        markup = _main_menu_keyboard({"pending": 2}, self.tenant_id)
+        buttons = [button for row in markup.inline_keyboard for button in row]
+        self.assertNotIn("🖥 Boshqaruv paneli", [button.text for button in buttons])
+        self.assertTrue(all(button.web_app is None for button in buttons))
+
+    def test_admin_panel_remains_on_telegram_side_menu(self):
+        source = Path("webhook_app.py").read_text(encoding="utf-8")
+        self.assertIn('text="Boshqaruv paneli"', source)
+        self.assertIn("set_chat_menu_button", source)
+        self.assertIn("MenuButtonWebApp", source)
 
     async def test_submission_key_is_idempotent(self):
         first = await self._save("same-key", user_id=10)

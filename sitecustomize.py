@@ -9,6 +9,7 @@ import asyncio
 import importlib.abc
 import importlib.machinery
 import logging
+import os
 import sys
 
 logger = logging.getLogger("janob_hr_runtime")
@@ -143,6 +144,56 @@ def _install_partner_bot_main_guard() -> None:
         sys.meta_path.insert(0, _PartnerBotGuardFinder())
 
 
+async def _configure_partner_miniapp_menu() -> None:
+    token = os.getenv("PARTNER_BOT_TOKEN", "").strip()
+    base_url = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
+    if not token or not base_url:
+        return
+    try:
+        from aiogram import Bot
+        from aiogram.types import MenuButtonWebApp, WebAppInfo
+
+        bot = Bot(token=token)
+        try:
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="Hamkor paneli",
+                    web_app=WebAppInfo(url=f"{base_url}/partner"),
+                )
+            )
+            logger.info("Partner Mini App menu tugmasi o'rnatildi: %s/partner", base_url)
+        finally:
+            await bot.session.close()
+    except Exception:
+        logger.exception("Partner Mini App menu tugmasi o'rnatilmadi")
+
+
+def _install_partner_miniapp_runtime_hook() -> None:
+    try:
+        from aiohttp import web
+    except Exception:
+        return
+
+    original_run_app = web.run_app
+    if getattr(original_run_app, "_janobhr_partner_miniapp_guarded", False):
+        return
+
+    def guarded_run_app(app, *args, **kwargs):
+        try:
+            from partner_miniapp_api import register_partner_miniapp
+
+            register_partner_miniapp(app)
+            app.on_startup.append(lambda _app: _configure_partner_miniapp_menu())
+            logger.info("Partner Mini App route ulandi: /partner")
+        except Exception:
+            logger.exception("Partner Mini App route ulanmadi")
+        return original_run_app(app, *args, **kwargs)
+
+    guarded_run_app._janobhr_partner_miniapp_guarded = True
+    web.run_app = guarded_run_app
+
+
 _install_asyncio_partner_task_guard()
 _install_aiogram_router_reattach_guard()
 _install_partner_bot_main_guard()
+_install_partner_miniapp_runtime_hook()

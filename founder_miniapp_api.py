@@ -1,5 +1,7 @@
 """Janob HR founder-only Telegram Mini App API."""
 
+import asyncio
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +14,7 @@ from services import database
 
 STATIC_DIR = Path(__file__).with_name("founder_miniapp")
 _TEST_REVENUE_RESET_KEY = "founder_test_revenue_reset_2026_09_06"
+logger = logging.getLogger("janob_hr_partner_runtime")
 
 
 def _authorize_founder(request: web.Request) -> dict:
@@ -66,6 +69,20 @@ async def _startup_reset_test_revenue(app: web.Application) -> None:
     await _reset_test_revenue_once()
 
 
+async def _startup_partner_bot(app: web.Application) -> None:
+    """Partner botni shu Render web-service ichida alohida background task sifatida yuritadi."""
+    import partner_bot
+
+    if not partner_bot.PARTNER_BOT_TOKEN:
+        logger.info("PARTNER_BOT_TOKEN sozlanmagan — Partner Bot ishga tushirilmadi.")
+        return
+
+    task = asyncio.create_task(partner_bot.main(), name="janob-hr-partner-bot")
+    app["background_tasks"].add(task)
+    task.add_done_callback(app["background_tasks"].discard)
+    logger.info("Janob HR Partner Bot background task ishga tushirildi.")
+
+
 async def founder_index(request: web.Request) -> web.Response:
     return web.Response(
         text=(STATIC_DIR / "index.html").read_text(encoding="utf-8"),
@@ -80,6 +97,7 @@ async def founder_dashboard(request: web.Request) -> web.Response:
 
 def register_founder_miniapp(app: web.Application) -> None:
     app.on_startup.append(_startup_reset_test_revenue)
+    app.on_startup.append(_startup_partner_bot)
     app.router.add_get("/founder", founder_index)
     app.router.add_static(
         "/founder-assets", STATIC_DIR, show_index=False, append_version=True

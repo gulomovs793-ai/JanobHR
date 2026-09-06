@@ -26,7 +26,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-from config import FOUNDER_USER_IDS
+from config import BOT_TOKEN, FOUNDER_USER_IDS
 from services import partner_database as pdb
 from services.partner_ai import generate_partner_advice
 
@@ -37,6 +37,7 @@ PARTNER_BOT_TOKEN = os.getenv("PARTNER_BOT_TOKEN", "").strip()
 PARTNER_REFERRAL_TARGET_USERNAME = os.getenv(
     "PARTNER_REFERRAL_TARGET_USERNAME", ""
 ).strip().lstrip("@")
+_candidate_username_cache: str | None = None
 
 ROLE_LABELS = {
     "targetolog": "🎯 Targetolog",
@@ -107,6 +108,26 @@ def founder_review_keyboard(partner_id: int) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+async def get_candidate_bot_username() -> str | None:
+    """Return the username of the main Janob HR candidate bot from BOT_TOKEN."""
+    global _candidate_username_cache
+    if _candidate_username_cache:
+        return _candidate_username_cache
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN sozlanmagan — referral link yaratib bo'lmaydi")
+        return None
+    candidate_bot = Bot(token=BOT_TOKEN)
+    try:
+        me = await candidate_bot.get_me()
+        _candidate_username_cache = me.username
+        return _candidate_username_cache
+    except Exception:
+        logger.exception("Asosiy nomzod bot username'ini olib bo'lmadi")
+        return None
+    finally:
+        await candidate_bot.session.close()
 
 
 def question_1(role: str):
@@ -258,25 +279,24 @@ async def send_partner_home(message: Message, partner: dict) -> None:
 
 
 async def handle_referral_entry(message: Message, code: str) -> bool:
+    """Backward compatibility for old links that pointed to the partner bot."""
     partner = await pdb.get_partner_by_code(code.upper())
     if not partner:
         return False
-    await pdb.record_referral_click(partner["id"], message.from_user.id)
 
-    if PARTNER_REFERRAL_TARGET_USERNAME:
-        target_url = f"https://t.me/{PARTNER_REFERRAL_TARGET_USERNAME}?start=ref_{code.upper()}"
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🎁 5 ta bepul ariza bilan boshlash", url=target_url)]]
-        )
-        await message.answer(
-            "👔 <b>Xodim qidiryapsizmi?</b>\n\n"
-            "Har bir nomzod bilan alohida gaplashib, savol berib, keyin solishtirish ko'p vaqt oladi.\n\n"
-            "Janob HR nomzodlarni qabul qiladi, savollar beradi, AI bilan baholaydi va kuchli nomzodlarni ajratib beradi.\n\n"
-            "🎁 Birinchi 5 ta ariza bepul.",
-            reply_markup=kb,
-        )
-    else:
-        await message.answer("👔 Referral qabul qilindi. Setup bot manzili hali sozlanmagan.")
+    candidate_username = await get_candidate_bot_username()
+    if not candidate_username:
+        await message.answer("⚠️ Asosiy Janob HR bot manzilini hozir olib bo'lmadi. Keyinroq qayta urinib ko'ring.")
+        return True
+
+    target_url = f"https://t.me/{candidate_username}?start=ref_{code.upper()}"
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="👔 Janob HR'ga o'tish", url=target_url)]]
+    )
+    await message.answer(
+        "Bu eski referral link. Hozir referral oqimi to'g'ridan-to'g'ri asosiy Janob HR nomzod botiga o'tadi.",
+        reply_markup=kb,
+    )
     return True
 
 
@@ -473,12 +493,18 @@ async def my_link(message: Message, bot: Bot) -> None:
     partner = await require_approved(message)
     if not partner:
         return
-    me = await bot.get_me()
-    link = f"https://t.me/{me.username}?start=r_{partner['referral_code']}"
+
+    candidate_username = await get_candidate_bot_username()
+    if not candidate_username:
+        await message.answer("⚠️ Asosiy Janob HR bot manzilini hozir olib bo'lmadi. Keyinroq qayta urinib ko'ring.")
+        return
+
+    link = f"https://t.me/{candidate_username}?start=ref_{partner['referral_code']}"
     await message.answer(
         "🔗 <b>Sizning shaxsiy linkingiz</b>\n\n"
         f"<code>{link}</code>\n\n"
-        "Mijoz shu link orqali kirsa, sizning referral sifatida qayd qilinadi."
+        "Bu link to'g'ridan-to'g'ri Janob HR'ning asosiy nomzod botiga olib boradi. "
+        "Kirgan odam referral kodingiz bilan qayd qilinadi."
     )
 
 

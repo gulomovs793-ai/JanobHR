@@ -27,7 +27,7 @@ from aiogram.types import (
 )
 
 from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, FOUNDER_USER_IDS
-from services import bot_registry, database
+from services import bot_registry, database, partner_database as pdb
 from services.tenant_activation import activate_tenant
 
 logger = logging.getLogger("janob_hr_bot")
@@ -92,10 +92,27 @@ async def _validate_token(token: str) -> str | None:
             await test_bot.session.close()
 
 
-async def _start_business_flow(message: Message, state: FSMContext):
+async def _start_business_flow(
+    message: Message,
+    state: FSMContext,
+    *,
+    partner_referral_code: str | None = None,
+    partner_id: int | None = None,
+    partner_name: str | None = None,
+):
     await state.clear()
+    if partner_id:
+        await state.update_data(
+            partner_id=int(partner_id),
+            partner_referral_code=partner_referral_code or "",
+            partner_name=partner_name or "Hamkor",
+        )
+    prefix = ""
+    if partner_id:
+        prefix = "Siz hamkor tavsiyasi orqali keldingiz. Endi sizdagi yollash muammosini tushunib olamiz.\n\n"
     await message.answer(
-        "Har bir kompaniyada xodim yollashdagi asosiy muammo har xil bo'ladi: "
+        prefix
+        + "Har bir kompaniyada xodim yollashdagi asosiy muammo har xil bo'ladi: "
         "ba'zilarida mos nomzod topish, ba'zilarida saralashga ketadigan vaqt, "
         "boshqalarida esa ishga olingan xodimning uzoq ishlamasligi muammo bo'ladi.\n\n"
         "<b>Hozir orzuyingizdagi xodimni yollashda sizni eng ko'p qiynayotgan "
@@ -238,6 +255,9 @@ async def receive_contact(message: Message, state: FSMContext):
     )
     await state.set_state(CreateBotForm.waiting_candidate_token)
 
+    partner_line = ""
+    if data.get("partner_id"):
+        partner_line = f"\nHamkor: <b>{escape(str(data.get('partner_name') or 'Hamkor'))}</b> (<code>{escape(str(data.get('partner_referral_code') or ''))}</code>)"
     notice = (
         "🔥 <b>Yangi biznes lead!</b>\n\n"
         f"Kompaniya: <b>{escape(data['company_name'])}</b>\n"
@@ -247,6 +267,7 @@ async def receive_contact(message: Message, state: FSMContext):
         f"Kontakt: {escape(message.from_user.full_name)}\n"
         f"Telefon: <code>{escape(message.contact.phone_number)}</code>\n"
         f"Telegram: @{escape(message.from_user.username or '—')}"
+        f"{partner_line}"
     )
     await _send_to_janob_hr_admin(notice)
 
@@ -346,6 +367,14 @@ async def receive_admin_token(message: Message, state: FSMContext):
             await database.attach_business_lead_to_tenant(
                 data["business_lead_id"], tenant_id
             )
+        if data.get("partner_id"):
+            await pdb.record_referral_trial(
+                int(data["partner_id"]),
+                message.from_user.id,
+                tenant_id,
+                source="referral_link",
+                referral_code=data.get("partner_referral_code") or "",
+            )
     except Exception:
         logger.exception("Mijozni bazaga yozishda kutilmagan xato.")
         await wait_msg.edit_text(
@@ -400,6 +429,9 @@ async def receive_admin_token(message: Message, state: FSMContext):
         admin_username,
     )
 
+    partner_line = ""
+    if data.get("partner_id"):
+        partner_line = f"\nHamkor: <b>{escape(str(data.get('partner_name') or 'Hamkor'))}</b> (<code>{escape(str(data.get('partner_referral_code') or ''))}</code>)"
     notice = (
         f"🆕 <b>Yangi buyurtma (2 bot)!</b>\n\n"
         f"№{tenant_id} — {escape(data['company_name'])}\n"
@@ -407,6 +439,7 @@ async def receive_admin_token(message: Message, state: FSMContext):
         f"Admin-bot: @{escape(admin_username)}\n"
         f"Telefon: <code>{escape(data.get('contact_phone') or '—')}</code>\n"
         f"Kim orqali: <code>{admin_id}</code>"
+        f"{partner_line}"
     )
     await _send_to_janob_hr_admin(notice)
 

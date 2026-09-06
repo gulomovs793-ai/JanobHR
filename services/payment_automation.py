@@ -467,13 +467,46 @@ async def handle_payment_notification(
         )
         return {"status": "no_match", "amount": amount}
 
+    partner_sale = None
+    try:
+        from services import partner_database as pdb
+
+        partner_sale = await pdb.finalize_sale_for_order(order["id"], actual_amount=amount)
+    except Exception:
+        logger.exception(
+            "Partner komissiyasini yakunlashda xato (order=%s).",
+            order["order_code"],
+        )
+
+    partner_note = ""
+    if partner_sale:
+        try:
+            from services import partner_database as pdb
+
+            partner_note = (
+                "\n\n🤝 Partner komissiyasi yozildi: "
+                f"{pdb.format_uzs(partner_sale['commission_amount'])}"
+            )
+            if partner_sale.get("promo_code"):
+                partner_note += (
+                    f"\nPromo: {partner_sale['promo_code']} "
+                    f"(-{partner_sale['discount_percent']}%)"
+                )
+        except Exception:
+            partner_note = "\n\n🤝 Partner komissiyasi yozildi."
+
     await notify_founders(
         f"🤖✅ Avtomatik tasdiqlandi!\n\nBuyurtma: {order['order_code']}\n"
         f"Mijoz (tenant_id): {order['tenant_id']}\nSumma: {amount:,} so'm"
+        f"{partner_note}"
     )
-    return {
+    result = {
         "status": "approved",
         "amount": amount,
         "order_code": order["order_code"],
         "tenant_id": order["tenant_id"],
     }
+    if partner_sale:
+        result["partner_commission"] = partner_sale.get("commission_amount")
+        result["partner_promo_code"] = partner_sale.get("promo_code") or ""
+    return result

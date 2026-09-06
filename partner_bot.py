@@ -34,6 +34,7 @@ from aiogram.types import (
 )
 
 from config import BOT_TOKEN, FOUNDER_USER_IDS, SETUP_BOT_TOKEN
+from partner_payout_bot import payout_router, run_payout_reminders
 from services import partner_database as pdb
 from services.partner_ai import generate_partner_advice
 
@@ -143,6 +144,7 @@ def main_menu() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
             [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
+            [KeyboardButton(text="💸 Pul yechish")],
             [KeyboardButton(text="📦 Reklama materiallari")],
             [KeyboardButton(text="❓ Tez-tez so'raladigan savollar")],
             [KeyboardButton(text="🆘 Yordam")],
@@ -404,9 +406,10 @@ async def send_phone_step(message: Message, state: FSMContext) -> None:
 async def send_partner_home(message: Message, partner: dict) -> None:
     await message.answer(
         "🤝 <b>Janob HR Hamkor</b>\n\n"
-        "Profilingiz faol. Endi sizda 2 xil sotuv yo'li bor:\n\n"
+        "Profilingiz faol. Endi sizda 3 ta asosiy bo'lim bor:\n\n"
         "🔗 <b>Referral link</b> — mijozni asosiy Janob HR botga olib kiradi.\n"
-        "🎟 <b>Promo kod</b> — mijozga chegirma beradi, chegirma sizning komissiyangizdan ayriladi.\n\n"
+        "🎟 <b>Promo kod</b> — mijozga chegirma beradi, chegirma sizning komissiyangizdan ayriladi.\n"
+        "💸 <b>Pul yechish</b> — tasdiqlangan komissiya bo'yicha ariza yuboradi.\n\n"
         "Mijoz tarif sotib olsa — sizga komissiya hisoblanadi.\n\n"
         "Savollar bo'lsa, <b>❓ Tez-tez so'raladigan savollar</b> bo'limini oching.",
         reply_markup=main_menu(),
@@ -597,11 +600,12 @@ async def approve_partner(callback: CallbackQuery) -> None:
         await callback.bot.send_message(
             partner["telegram_user_id"],
             "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
-            "Endi sizda 2 xil yo'l bor:\n\n"
+            "Endi sizda 3 ta asosiy yo'l bor:\n\n"
             "🔗 Referral link — mijozni asosiy Janob HR botga olib kiradi.\n"
-            "🎟 Promo kod — mijozga chegirma beradi. Chegirma sizning komissiyangizdan ayriladi.\n\n"
+            "🎟 Promo kod — mijozga chegirma beradi. Chegirma sizning komissiyangizdan ayriladi.\n"
+            "💸 Pul yechish — tasdiqlangan komissiya bo'yicha ariza yuboradi.\n\n"
             "❓ Tez-tez so'raladigan savollar bo'limida komissiya, promo kod va to'lov yechish tartibi yozilgan.\n\n"
-            "Quyidagi menyudan linkingiz va promo kodingizni oling.",
+            "Quyidagi menyudan linkingiz, promo kodingiz va pul yechish bo'limini oching.",
             reply_markup=main_menu(),
         )
     except Exception:
@@ -805,9 +809,15 @@ async def main() -> None:
         logger.error("Partner referral target topilmadi")
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
+    dp.include_router(payout_router)
+    reminder_task = asyncio.create_task(run_payout_reminders(bot))
     await bot.delete_webhook(drop_pending_updates=False)
     logger.info("Janob HR Partner Bot ishga tushdi")
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        reminder_task.cancel()
+        await asyncio.gather(reminder_task, return_exceptions=True)
 
 
 if __name__ == "__main__":

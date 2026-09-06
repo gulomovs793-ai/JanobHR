@@ -7,18 +7,50 @@
 .jh2-insights{margin-top:14px;border-top:1px solid #e5e5ea;padding-top:14px}.jh2-insights h3{font-size:15px;margin:0 0 9px}.jh2-evidence{background:#f5f5f7;border-radius:12px;padding:10px;margin:7px 0}.jh2-evidence b{display:block;font-size:11px;margin-bottom:4px}.jh2-evidence p{font-size:12px;line-height:1.45;margin:0;color:#3a3a3c}.jh2-evidence small{display:block;margin-top:5px;color:#6e6e73}.jh2-loading{padding:18px;text-align:center;color:#6e6e73}
 @media(max-width:520px){.jh2-card-head{flex-direction:column}.jh2-card-head .jh2-primary{width:100%}.jh2-funnel{grid-template-columns:repeat(5,92px)}.jh2-compare-tools{flex-direction:column}.jh2-compare-tools button{padding:11px}.jh2-sheet{max-height:94vh}.jh2-compare-grid{grid-template-columns:repeat(3,230px)}}
 
-/* Approved dashboard hero: real tenant data, no decorative AI-style chrome. */
+/* Dashboard hero — approved Nova Textile reference. Text remains real tenant data. */
 #dashboard .hero{
-  min-height:260px;
-  padding:34px 30px 30px;
+  min-height:338px;
+  padding:42px 42px 40px;
   display:flex;
   align-items:stretch;
   justify-content:flex-start;
-  border-radius:30px;
-  background:linear-gradient(145deg,#0b78e9 0%,#087cf4 52%,#0568d4 100%);
-  box-shadow:none;
+  gap:0;
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  border:0;
+  border-radius:36px;
+  background:
+    radial-gradient(95% 115% at 68% 8%,rgba(63,174,255,.70) 0%,rgba(39,149,255,.42) 32%,rgba(8,124,244,0) 68%),
+    linear-gradient(138deg,#0665d9 0%,#087cf4 53%,#1695ff 100%);
+  box-shadow:0 18px 42px rgba(4,101,220,.13);
 }
-#dashboard .hero::after{display:none}
+#dashboard .hero::before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  width:78%;
+  height:60%;
+  right:-18%;
+  bottom:-27%;
+  border-radius:50% 0 0 0;
+  transform:rotate(-8deg);
+  background:linear-gradient(150deg,rgba(6,110,225,.28),rgba(7,107,224,.10));
+  pointer-events:none;
+}
+#dashboard .hero::after{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  width:46%;
+  height:48%;
+  left:24%;
+  top:-28%;
+  border-radius:50%;
+  background:rgba(47,165,255,.16);
+  filter:blur(8px);
+  pointer-events:none;
+}
 #dashboard .hero-copy{
   width:100%;
   max-width:none;
@@ -26,105 +58,122 @@
   display:flex;
   flex-direction:column;
   align-items:flex-start;
-  padding-top:62px;
+  padding-top:74px;
+  position:relative;
+  z-index:1;
 }
 #dashboard .eyebrow{display:none}
 #dashboard .hero h1{
-  max-width:calc(100% - 150px);
-  margin:0 0 12px;
+  max-width:calc(100% - 170px);
+  margin:0 0 18px;
   color:#fff;
-  font-size:clamp(34px,8vw,52px);
+  font-size:clamp(42px,8.4vw,68px);
   font-weight:790;
-  line-height:.98;
-  letter-spacing:-.055em;
+  line-height:.95;
+  letter-spacing:-.058em;
   overflow-wrap:anywhere;
+  text-wrap:balance;
+  text-shadow:0 1px 1px rgba(0,63,153,.06);
 }
 #dashboard .hero-copy>p:not(.eyebrow){
-  max-width:520px;
+  max-width:570px;
   margin:0;
-  color:transparent;
-  font-size:0;
-  line-height:1.35;
+  color:rgba(255,255,255,.76);
+  font-size:clamp(20px,4.1vw,28px);
+  font-weight:420;
+  line-height:1.34;
+  letter-spacing:-.03em;
 }
-#dashboard .hero-copy>p:not(.eyebrow)::after{
-  content:"Nomzodlardan suhbatgacha — bir joyda.";
-  display:block;
-  color:rgba(255,255,255,.78);
-  font-size:clamp(16px,4.4vw,21px);
-  font-weight:430;
-  letter-spacing:-.025em;
-}
+#dashboard .hero-copy>p:not(.eyebrow)::after{content:none}
 #dashboard .hero-meta{
   margin-top:auto;
-  padding-top:30px;
+  padding-top:34px;
+  display:flex;
+  align-items:center;
+  gap:10px;
 }
 #dashboard #hero-vacancies{
-  min-height:48px;
-  padding:0 18px 0 15px;
-  gap:10px;
+  min-height:58px;
+  padding:0 24px 0 18px;
+  display:inline-flex;
+  align-items:center;
+  gap:13px;
   border:1px solid rgba(255,255,255,.22);
   border-radius:999px;
-  background:rgba(255,255,255,.11);
+  background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.085));
   color:#fff;
-  font-size:15px;
+  font-size:18px;
   font-weight:720;
+  letter-spacing:-.025em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
   backdrop-filter:none;
   -webkit-backdrop-filter:none;
 }
 #dashboard #hero-vacancies::before{
   content:"";
-  width:23px;
-  height:23px;
-  flex:0 0 23px;
+  width:28px;
+  height:28px;
+  flex:0 0 28px;
   background:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Ccircle cx='9' cy='8' r='3'/%3E%3Ccircle cx='16.5' cy='9' r='2.5' opacity='.9'/%3E%3Cpath d='M3.5 19c.25-4 2.15-6 5.5-6s5.25 2 5.5 6H3.5Z'/%3E%3Cpath d='M14 14.1c.8-.4 1.7-.6 2.6-.6 2.7 0 4.1 1.7 4.4 5.5h-5.4c-.15-1.9-.65-3.5-1.6-4.9Z' opacity='.9'/%3E%3C/svg%3E");
 }
 #dashboard #hero-interviews{display:none}
 #dashboard .health{
   width:auto;
-  height:46px;
-  min-width:106px;
-  padding:0 18px;
+  height:58px;
+  min-width:132px;
+  padding:0 24px;
   position:absolute;
-  top:28px;
-  right:28px;
+  top:34px;
+  right:34px;
+  z-index:2;
+  display:flex;
+  align-items:center;
+  justify-content:center;
   flex-direction:row;
-  gap:10px;
-  border:1px solid rgba(255,255,255,.2);
+  gap:14px;
+  border:1px solid rgba(255,255,255,.20);
   border-radius:999px;
-  background:rgba(255,255,255,.1);
+  background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.08));
   text-align:left;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
   backdrop-filter:none;
   -webkit-backdrop-filter:none;
 }
 #dashboard .health::before{
   content:"";
-  width:13px;
-  height:13px;
-  flex:0 0 13px;
+  width:17px;
+  height:17px;
+  flex:0 0 17px;
   border-radius:50%;
-  background:#16d99a;
+  background:#12e4af;
+  box-shadow:0 0 0 1px rgba(18,228,175,.08);
 }
 #dashboard .health svg,#dashboard .health p{display:none}
 #dashboard .health div,#dashboard .health span,#dashboard .health b{display:block}
 #dashboard .health b{
   color:#fff;
-  font-size:15px;
-  font-weight:740;
+  font-size:20px;
+  font-weight:650;
   line-height:1;
+  letter-spacing:-.025em;
 }
-@media(max-width:520px){
-  #dashboard .hero{min-height:244px;padding:26px 22px 24px;border-radius:26px}
+@media(max-width:600px){
+  #dashboard .hero{min-height:286px;padding:28px 24px 26px;border-radius:28px}
+  #dashboard .hero-copy{padding-top:64px}
+  #dashboard .hero h1{max-width:100%;font-size:clamp(34px,10.8vw,50px);margin-bottom:14px;line-height:.97}
+  #dashboard .hero-copy>p:not(.eyebrow){max-width:330px;font-size:17px;line-height:1.38}
+  #dashboard .health{top:20px;right:20px;height:44px;min-width:100px;padding:0 15px;gap:9px}
+  #dashboard .health::before{width:12px;height:12px;flex-basis:12px}
+  #dashboard .health b{font-size:15px}
+  #dashboard .hero-meta{padding-top:28px}
+  #dashboard #hero-vacancies{min-height:48px;padding:0 17px 0 14px;gap:10px;font-size:14px}
+  #dashboard #hero-vacancies::before{width:22px;height:22px;flex-basis:22px}
+}
+@media(max-width:370px){
+  #dashboard .hero{min-height:268px;padding-left:20px;padding-right:20px;border-radius:26px}
   #dashboard .hero-copy{padding-top:58px}
-  #dashboard .hero h1{max-width:100%;font-size:clamp(30px,10vw,44px);margin-bottom:10px}
-  #dashboard .hero-copy>p:not(.eyebrow)::after{font-size:16px;max-width:290px}
-  #dashboard .health{top:20px;right:20px;height:40px;min-width:92px;padding:0 14px;gap:8px}
-  #dashboard .health::before{width:11px;height:11px;flex-basis:11px}
-  #dashboard .health b{font-size:14px}
-  #dashboard #hero-vacancies{min-height:43px;padding:0 15px 0 13px;font-size:13px}
-  #dashboard #hero-vacancies::before{width:20px;height:20px;flex-basis:20px}
-}
-@media(max-width:350px){
-  #dashboard .hero{padding-left:18px;padding-right:18px}
-  #dashboard .health{right:16px}
-  #dashboard .hero h1{font-size:29px}
+  #dashboard .health{right:16px;top:17px}
+  #dashboard .hero h1{font-size:32px}
+  #dashboard .hero-copy>p:not(.eyebrow){font-size:15px;max-width:270px}
+  #dashboard #hero-vacancies{font-size:13px}
 }

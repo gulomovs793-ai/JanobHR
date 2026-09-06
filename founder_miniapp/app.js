@@ -44,7 +44,7 @@
   }
   function renderPayments(){
     const items=data.recent_payments.filter(p=>paymentFilter==='all'||p.status===paymentFilter);
-    $('#payment-list').innerHTML=items.length?items.map(p=>`<article class="item"><div class="item-head"><div><h3>${esc(p.company_name)}</h3><p>${esc(p.order_code)} · ${date(p.created_at)}</p></div><span class="tag ${esc(p.status)}">${esc(statusNames[p.status]||p.status)}</span></div><div class="item-meta"><span class="amount">${money(p.amount)} so‘m</span><span class="tag">${esc(planNames[p.plan_code]||p.plan_code)}</span>${p.contact_phone?`<span class="tag">${esc(p.contact_phone)}</span>`:''}</div></article>`).join(''):'<div class="empty">Bu holatda to‘lov topilmadi</div>';
+    $('#payment-list').innerHTML=items.length?items.map(p=>`<article class="item"><div class="item-head"><div><h3>${esc(p.company_name)}</h3><p>${esc(p.order_code)} · ${date(p.created_at)}</p></div><span class="tag ${esc(p.status)}">${esc(statusNames[p.status]||p.status)}</span></div><div class="item-meta"><span class="amount">${money(p.amount)} UZS</span><span class="tag">${esc(planNames[p.plan_code]||p.plan_code)}</span>${p.contact_phone?`<span class="tag">${esc(p.contact_phone)}</span>`:''}</div></article>`).join(''):'<div class="empty">Bu holatda to‘lov topilmadi</div>';
   }
   function show(id){document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id===id));document.querySelectorAll('nav [data-go]').forEach(b=>b.classList.toggle('active',b.dataset.go===id));scrollTo({top:0,behavior:'smooth'});if(id==='overview'&&data)render()}
   function showError(message){text('#error-text',message);show('error')}

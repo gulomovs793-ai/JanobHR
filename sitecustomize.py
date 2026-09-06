@@ -85,13 +85,46 @@ def _install_aiogram_router_reattach_guard() -> None:
     Router.include_router = guarded_include_router
 
 
+def _patch_partner_reply_keyboard(module) -> None:
+    """Mini Appni reply-keyboard ichidan olib tashlaydi.
+
+    Hamkor paneli faqat Telegramning input yonidagi ko'k MenuButtonWebApp
+    tugmasidan ochiladi. Qolgan hamkor menyusi o'zgarishsiz qoladi.
+    """
+    if getattr(module, "_janobhr_partner_keyboard_patched", False):
+        return
+    try:
+        from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+
+        def main_menu() -> ReplyKeyboardMarkup:
+            return ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
+                    [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
+                    [KeyboardButton(text="💸 Pul yechish")],
+                    [KeyboardButton(text="📦 Reklama materiallari")],
+                    [KeyboardButton(text="❓ Tez-tez so'raladigan savollar")],
+                    [KeyboardButton(text="🆘 Yordam")],
+                ],
+                resize_keyboard=True,
+            )
+
+        module.main_menu = main_menu
+        module._janobhr_partner_keyboard_patched = True
+        logger.info("Partner reply keyboarddan Hamkor paneli tugmasi olib tashlandi.")
+    except Exception:
+        logger.exception("Partner reply keyboard patch qo'llanmadi")
+
+
 def _wrap_partner_bot_main(module) -> None:
     if getattr(module, "_janobhr_partner_main_guarded", False):
+        _patch_partner_reply_keyboard(module)
         return
     original_main = getattr(module, "main", None)
     if original_main is None:
         return
 
+    _patch_partner_reply_keyboard(module)
     running = False
 
     async def guarded_main(*args, **kwargs):

@@ -67,6 +67,42 @@ COMMISSION_TEXT = (
     "Sizning komissiyangiz: 99 000 - 29 900 = 69 100 UZS."
 )
 
+FAQ_TEXT = (
+    "❓ <b>Tez-tez so'raladigan savollar</b>\n\n"
+    "<b>1. Hamkorlik qanday ishlaydi?</b>\n"
+    "Siz Janob HR'ni biznes egalariga tavsiya qilasiz. Mijoz linkingiz yoki promo kodingiz orqali kelib tarif sotib olsa, sizga komissiya yoziladi.\n\n"
+    "<b>2. Janob HR mijozga nima qilib beradi?</b>\n"
+    "Janob HR nomzodlarni Telegramda qabul qiladi, ularga savollar beradi, javoblarni AI bilan baholaydi va ish beruvchiga kuchli nomzodlarni ajratib beradi.\n\n"
+    "<b>3. Mijozga foydasi nima?</b>\n"
+    "Saralashga kamroq vaqt ketadi, nomzodlar chatlarda yo'qolib qolmaydi, suhbatga kimni chaqirish kerakligi aniqroq bo'ladi.\n\n"
+    "<b>4. Men mahsulotni sotishim shartmi?</b>\n"
+    "Siz tavsiya qilasiz. Mahsulotni tushuntirish, mijoz savollariga javob berish va ishga tushirishda Janob HR jamoasi yordam beradi.\n\n"
+    "<b>5. Referral link nima?</b>\n"
+    "Bu sizga biriktirilgan maxsus link. Mijoz shu link orqali kirsa, tizim uni siz olib kelgan mijoz sifatida eslab qoladi.\n\n"
+    "<b>6. Promo kod nima?</b>\n"
+    "Promo kod mijozga chegirma beradi. Partner 0%, 5%, 10%, 15% yoki 20% chegirma tanlashi mumkin.\n\n"
+    "<b>7. Promo chegirma kim hisobidan ketadi?</b>\n"
+    "Chegirma Janob HR hisobidan emas, sizning komissiyangizdan ayriladi. Masalan START 299 000 UZS, 10% promo = 29 900 UZS. Sizning komissiyangiz 99 000 - 29 900 = 69 100 UZS bo'ladi.\n\n"
+    "<b>8. Komissiya qancha?</b>\n"
+    "START — 99 000 UZS, GROWTH — 199 000 UZS, BUSINESS — 299 000 UZS. Promo ishlatilsa, chegirma shu summadan ayriladi.\n\n"
+    "<b>9. Komissiya qachon yoziladi?</b>\n"
+    "Mijoz haqiqiy tarif sotib olib, to'lovi tasdiqlangandan keyin yoziladi. Faqat bepul sinov uchun komissiya berilmaydi.\n\n"
+    "<b>10. To'lovni qachon yechib olsam bo'ladi?</b>\n"
+    "Hamkor komissiyasini oyiga 3 marta yechib olish mumkin: <b>1-sana, 11-sana va 21-sana</b>. Shu sanalarda tasdiqlangan komissiya bo'yicha to'lov so'rash mumkin.\n\n"
+    "<b>11. 1, 11 yoki 21-sana dam olish kuniga tushsa-chi?</b>\n"
+    "To'lov keyingi ish kunida ko'rib chiqiladi. Asosiysi, komissiya avval tasdiqlangan bo'lishi kerak.\n\n"
+    "<b>12. Mijoz link orqali kirib, keyin promo kod ishlatsa nima bo'ladi?</b>\n"
+    "Agar ikkalasi ham sizniki bo'lsa, mijoz bitta hamkor sifatida sizga bog'lanadi. Takror hisoblanmaydi.\n\n"
+    "<b>13. Mijoz boshqa partner promo kodini ishlatsa-chi?</b>\n"
+    "Bunday holat alohida tekshiriladi. Odatda komissiya mijoz ishlatgan oxirgi aniq promo/referral bo'yicha belgilanadi.\n\n"
+    "<b>14. Komissiyani qayerga olaman?</b>\n"
+    "To'lov yechish vaqtida sizdan karta yoki kerakli to'lov ma'lumoti so'raladi. Ma'lumotlar to'g'ri bo'lishi kerak.\n\n"
+    "<b>15. Daromad kafolatlanadimi?</b>\n"
+    "Yo'q. Komissiya faqat real mijoz kelib, tarif sotib olganda yoziladi. Lekin biz sizga referral link, promo kod va tayyor xabar matnlarini beramiz.\n\n"
+    "<b>16. Savolim qolsa nima qilaman?</b>\n"
+    "🆘 Yordam bo'limiga yozing. Jamoa profilingiz orqali siz bilan bog'lanadi."
+)
+
 
 class PartnerForm(StatesGroup):
     role = State()
@@ -104,6 +140,7 @@ def main_menu() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
             [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
             [KeyboardButton(text="📦 Reklama materiallari")],
+            [KeyboardButton(text="❓ Savollar va javoblar")],
             [KeyboardButton(text="🆘 Yordam")],
         ],
         resize_keyboard=True,
@@ -366,7 +403,8 @@ async def send_partner_home(message: Message, partner: dict) -> None:
         "Profilingiz faol. Endi sizda 2 xil sotuv yo'li bor:\n\n"
         "🔗 <b>Referral link</b> — mijozni asosiy Janob HR botga olib kiradi.\n"
         "🎟 <b>Promo kod</b> — mijozga chegirma beradi, chegirma sizning komissiyangizdan ayriladi.\n\n"
-        "Mijoz tarif sotib olsa — sizga komissiya hisoblanadi.",
+        "Mijoz tarif sotib olsa — sizga komissiya hisoblanadi.\n\n"
+        "Savollar bo'lsa, <b>❓ Savollar va javoblar</b> bo'limini oching.",
         reply_markup=main_menu(),
     )
 
@@ -413,7 +451,7 @@ async def start(message: Message, state: FSMContext, bot: Bot) -> None:
             await send_partner_home(message, partner)
             return
         if partner["status"] == "pending":
-            await message.answer("⏳ Arizangiz ko'rib chiqilmoqda. Tasdiqlangach bot sizga referral link va promo kod beradi.")
+            await message.answer("⏳ Arizangiz ko'rib chiqilmoqda. Tasdiqlangach bot sizga referral link, promo kod va FAQ bo'limini beradi.")
             return
         if partner["status"] == "rejected":
             await message.answer(
@@ -507,7 +545,7 @@ async def receive_phone(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(
         "✅ Arizangiz yuborildi.\n\n"
-        "Tasdiqlangach sizga referral link va promo kod bo'limi ochiladi.\n\n"
+        "Tasdiqlangach sizga referral link, promo kod va savollar-javoblar bo'limi ochiladi.\n\n"
         "Mijoz link yoki promo kod orqali tarif sotib olsa, komissiya sizga yoziladi.",
         reply_markup=ReplyKeyboardRemove(),
     )
@@ -558,6 +596,7 @@ async def approve_partner(callback: CallbackQuery) -> None:
             "Endi sizda 2 xil yo'l bor:\n\n"
             "🔗 Referral link — mijozni asosiy Janob HR botga olib kiradi.\n"
             "🎟 Promo kod — mijozga chegirma beradi. Chegirma sizning komissiyangizdan ayriladi.\n\n"
+            "❓ Savollar va javoblar bo'limida komissiya, promo kod va to'lov yechish tartibi yozilgan.\n\n"
             "Quyidagi menyudan linkingiz va promo kodingizni oling.",
             reply_markup=main_menu(),
         )
@@ -712,11 +751,18 @@ async def materials(message: Message) -> None:
     )
 
 
+@router.message(F.text.in_({"❓ Savollar va javoblar", "❓ Tez-tez so'raladigan savollar", "FAQ", "Faq"}))
+async def faq_section(message: Message) -> None:
+    if await require_approved(message):
+        await message.answer(FAQ_TEXT)
+
+
 @router.message(F.text == "🆘 Yordam")
 async def help_section(message: Message) -> None:
     if await require_approved(message):
         await message.answer(
-            "🆘 Savol bo'lsa shu chatga yozing. Founder jamoasi partner profilingiz orqali siz bilan bog'lanadi."
+            "🆘 Savol bo'lsa shu chatga yozing. Founder jamoasi partner profilingiz orqali siz bilan bog'lanadi.\n\n"
+            "Ko'p so'raladigan savollar uchun <b>❓ Savollar va javoblar</b> bo'limini oching."
         )
 
 

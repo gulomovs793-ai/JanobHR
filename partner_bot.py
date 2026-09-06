@@ -2,11 +2,14 @@
 
 Maqsad:
 - SMM/targetolog/agentlik/blogger hamkorlarga avval ularning muammosi va foydasini tushuntirish;
-- founder tasdig'idan keyin unique referral link yoki promo kod berish;
+- founder tasdig'idan keyin referral link yoki promo kod berish;
 - partnerga tayyor matnlar va statistikani ko'rsatish;
-- biznes leadni asosiy Janob HR botga uzatish.
+- biznes leadni hamkor botiga emas, asosiy Janob HR nomzod/biznes botiga uzatish.
 
-PARTNER_BOT_TOKEN va PARTNER_REFERRAL_TARGET_USERNAME env orqali beriladi.
+Referral link uchun asosiy bot username'i:
+1) JANOBHR_MAIN_BOT_USERNAME
+2) PARTNER_REFERRAL_TARGET_USERNAME (orqaga moslik)
+3) BOT_TOKEN orqali avtomatik getMe()
 """
 
 import asyncio
@@ -30,7 +33,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-from config import FOUNDER_USER_IDS
+from config import BOT_TOKEN, FOUNDER_USER_IDS, SETUP_BOT_TOKEN
 from services import partner_database as pdb
 from services.partner_ai import generate_partner_advice
 
@@ -38,9 +41,12 @@ logger = logging.getLogger("janob_hr_partner")
 router = Router(name="partner")
 
 PARTNER_BOT_TOKEN = os.getenv("PARTNER_BOT_TOKEN", "").strip()
-PARTNER_REFERRAL_TARGET_USERNAME = os.getenv(
+JANOBHR_MAIN_BOT_USERNAME = os.getenv("JANOBHR_MAIN_BOT_USERNAME", "").strip().lstrip("@")
+LEGACY_REFERRAL_TARGET_USERNAME = os.getenv(
     "PARTNER_REFERRAL_TARGET_USERNAME", ""
 ).strip().lstrip("@")
+SETUP_BOT_USERNAME = os.getenv("SETUP_BOT_USERNAME", "").strip().lstrip("@")
+_REFERRAL_TARGET_CACHE = ""
 
 ROLE_LABELS = {
     "targetolog": "🎯 Targetolog",
@@ -129,6 +135,74 @@ def promo_discount_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="20%", callback_data="promo:20")],
         ]
     )
+
+
+async def _safe_bot_username(bot: Bot | None) -> str:
+    if bot is None:
+        return ""
+    try:
+        me = await bot.get_me()
+        return (me.username or "").strip().lstrip("@")
+    except Exception:
+        logger.exception("Bot username aniqlanmadi")
+        return ""
+
+
+async def _username_from_token(token: str, current_partner_username: str) -> str:
+    token = (token or "").strip()
+    if not token or token == PARTNER_BOT_TOKEN:
+        return ""
+    bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    try:
+        me = await bot.get_me()
+        username = (me.username or "").strip().lstrip("@")
+    except Exception:
+        logger.exception("Referral target bot token orqali aniqlanmadi")
+        return ""
+    finally:
+        await bot.session.close()
+    if username and username.lower() != current_partner_username.lower():
+        return username
+    return ""
+
+
+async def referral_target_username(current_bot: Bot | None = None) -> str | None:
+    """Mijoz kiradigan ASOSIY bot username'ini qaytaradi.
+
+    Eng muhim himoya: target hech qachon partner botning o'zi bo'lmasligi kerak.
+    Aks holda referral link yana hamkor botga qaytib qoladi.
+    """
+    global _REFERRAL_TARGET_CACHE
+    if _REFERRAL_TARGET_CACHE:
+        return _REFERRAL_TARGET_CACHE
+
+    partner_username = await _safe_bot_username(current_bot)
+    configured = (
+        JANOBHR_MAIN_BOT_USERNAME,
+        LEGACY_REFERRAL_TARGET_USERNAME,
+        SETUP_BOT_USERNAME,
+    )
+    for username in configured:
+        username = (username or "").strip().lstrip("@")
+        if not username:
+            continue
+        if partner_username and username.lower() == partner_username.lower():
+            logger.error(
+                "Referral target noto'g'ri: @%s partner botning o'zi. E'tiborsiz qoldirildi.",
+                username,
+            )
+            continue
+        _REFERRAL_TARGET_CACHE = username
+        return username
+
+    # Env noto'g'ri bo'lsa ham asosiy bot tokenidan username'ni o'zimiz topamiz.
+    for token in (BOT_TOKEN, SETUP_BOT_TOKEN):
+        username = await _username_from_token(token, partner_username)
+        if username:
+            _REFERRAL_TARGET_CACHE = username
+            return username
+
+    return None
 
 
 def question_1(role: str) -> tuple[str, list[tuple[str, str]]]:
@@ -304,22 +378,23 @@ async def handle_referral_entry(message: Message, code: str) -> bool:
         return False
 
     await pdb.record_referral_click(partner["id"], message.from_user.id)
+    target_username = await referral_target_username(message.bot)
 
-    if PARTNER_REFERRAL_TARGET_USERNAME:
-        target_url = f"https://t.me/{PARTNER_REFERRAL_TARGET_USERNAME}?start=ref_{partner['referral_code']}"
+    if target_username:
+        target_url = f"https://t.me/{target_username}?start=ref_{partner['referral_code']}"
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="👔 Asosiy Janob HR botga o'tish", url=target_url)]
             ]
         )
         await message.answer(
-            "Bu link eski formatda ochildi.\n\n"
-            "Mijozlar endi hamkor botiga emas, asosiy Janob HR botga kirishi kerak. Pastdagi tugmani bosing:",
+            "Bu eski link edi.\n\n"
+            "Mijoz endi hamkorlar botida qolmaydi. Pastdagi tugma uni to'g'ridan-to'g'ri asosiy Janob HR botga olib kiradi:",
             reply_markup=kb,
         )
     else:
         await message.answer(
-            "Referral qabul qilindi, lekin asosiy Janob HR bot username'i hali sozlanmagan."
+            "Referral qabul qilindi, lekin asosiy Janob HR bot topilmadi. JANOBHR_MAIN_BOT_USERNAME sozlanishi kerak."
         )
     return True
 
@@ -526,17 +601,18 @@ async def my_link(message: Message, bot: Bot) -> None:
     partner = await require_approved(message)
     if not partner:
         return
-    if not PARTNER_REFERRAL_TARGET_USERNAME:
+    target_username = await referral_target_username(bot)
+    if not target_username:
         await message.answer(
-            "⚠️ Asosiy Janob HR bot username'i hali Render envda sozlanmagan.\n\n"
-            "Kerakli env: PARTNER_REFERRAL_TARGET_USERNAME"
+            "⚠️ Asosiy Janob HR bot topilmadi.\n\n"
+            "Render envda <code>JANOBHR_MAIN_BOT_USERNAME=janobHR_bot</code> bo'lishi kerak."
         )
         return
-    link = f"https://t.me/{PARTNER_REFERRAL_TARGET_USERNAME}?start=ref_{partner['referral_code']}"
+    link = f"https://t.me/{target_username}?start=ref_{partner['referral_code']}"
     await message.answer(
         "🔗 <b>Sizning referral linkingiz</b>\n\n"
         f"<code>{link}</code>\n\n"
-        "Bu link mijozni hamkor botiga emas, <b>asosiy Janob HR botga</b> olib kiradi.\n"
+        "Bu link mijozni hamkorlar botiga qaytarmaydi. U to'g'ridan-to'g'ri <b>asosiy Janob HR botga</b> kiradi.\n"
         "Mijoz shu link orqali botini ochsa, u sizga bog'lanadi."
     )
 
@@ -652,6 +728,11 @@ async def main() -> None:
         token=PARTNER_BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    target_username = await referral_target_username(bot)
+    if target_username:
+        logger.info("Partner referral target: @%s", target_username)
+    else:
+        logger.error("Partner referral target topilmadi")
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     await bot.delete_webhook(drop_pending_updates=False)

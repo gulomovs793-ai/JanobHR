@@ -28,9 +28,11 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
+    MenuButtonWebApp,
     Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
+    WebAppInfo,
 )
 
 from config import BOT_TOKEN, FOUNDER_USER_IDS, SETUP_BOT_TOKEN
@@ -42,6 +44,7 @@ logger = logging.getLogger("janob_hr_partner")
 router = Router(name="partner")
 
 PARTNER_BOT_TOKEN = os.getenv("PARTNER_BOT_TOKEN", "").strip()
+WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
 JANOBHR_MAIN_BOT_USERNAME = os.getenv("JANOBHR_MAIN_BOT_USERNAME", "").strip().lstrip("@")
 LEGACY_REFERRAL_TARGET_USERNAME = os.getenv(
     "PARTNER_REFERRAL_TARGET_USERNAME", ""
@@ -139,9 +142,21 @@ def options_keyboard(prefix: str, options: list[tuple[str, str]]) -> InlineKeybo
     )
 
 
+def partner_miniapp_url() -> str:
+    return f"{WEBHOOK_BASE_URL}/partner" if WEBHOOK_BASE_URL else ""
+
+
+def partner_panel_button() -> KeyboardButton:
+    url = partner_miniapp_url()
+    if url:
+        return KeyboardButton(text="📱 Hamkor paneli", web_app=WebAppInfo(url=url))
+    return KeyboardButton(text="📱 Hamkor paneli")
+
+
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
+            [partner_panel_button()],
             [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
             [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
             [KeyboardButton(text="💸 Pul yechish")],
@@ -601,11 +616,11 @@ async def approve_partner(callback: CallbackQuery) -> None:
             partner["telegram_user_id"],
             "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
             "Endi sizda 3 ta asosiy yo'l bor:\n\n"
+            "📱 Hamkor paneli — statistika, referral, komissiya va FAQ bir joyda.\n"
             "🔗 Referral link — mijozni asosiy Janob HR botga olib kiradi.\n"
             "🎟 Promo kod — mijozga chegirma beradi. Chegirma sizning komissiyangizdan ayriladi.\n"
             "💸 Pul yechish — tasdiqlangan komissiya bo'yicha ariza yuboradi.\n\n"
-            "❓ Tez-tez so'raladigan savollar bo'limida komissiya, promo kod va to'lov yechish tartibi yozilgan.\n\n"
-            "Quyidagi menyudan linkingiz, promo kodingiz va pul yechish bo'limini oching.",
+            "Quyidagi menyudan Hamkor panelini oching.",
             reply_markup=main_menu(),
         )
     except Exception:
@@ -641,6 +656,12 @@ async def require_approved(message: Message) -> dict | None:
         await message.answer("Bu bo'lim faqat tasdiqlangan partnerlar uchun. /start yuboring.")
         return None
     return partner
+
+
+@router.message(F.text == "📱 Hamkor paneli")
+async def partner_panel_fallback(message: Message) -> None:
+    if await require_approved(message):
+        await message.answer("📱 Hamkor panelini Telegram menyusidagi Mini App tugmasidan oching.")
 
 
 @router.message(F.text.in_({"🔗 Referral link", "🔗 Mening referral linkim"}))
@@ -794,6 +815,22 @@ async def help_section(message: Message) -> None:
         )
 
 
+async def configure_partner_miniapp_menu(bot: Bot) -> None:
+    url = partner_miniapp_url()
+    if not url:
+        return
+    try:
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="Hamkor paneli",
+                web_app=WebAppInfo(url=url),
+            )
+        )
+        logger.info("Partner Mini App menu tugmasi o'rnatildi: %s", url)
+    except Exception:
+        logger.exception("Partner Mini App menu tugmasi o'rnatilmadi")
+
+
 async def main() -> None:
     if not PARTNER_BOT_TOKEN:
         raise RuntimeError("PARTNER_BOT_TOKEN sozlanmagan")
@@ -807,6 +844,7 @@ async def main() -> None:
         logger.info("Partner referral target: @%s", target_username)
     else:
         logger.error("Partner referral target topilmadi")
+    await configure_partner_miniapp_menu(bot)
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     dp.include_router(payout_router)

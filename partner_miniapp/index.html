@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f5f5f7">
+  <title>Janob HR — Hamkor paneli</title>
+  <link rel="stylesheet" href="/partner-miniapp-assets/app.css?v=20260906-1">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">JH</span><span><b>janob<span>HR</span></b><small>Hamkor paneli</small></span></div>
+      <span class="live-dot">Hamkorlik faol</span>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <small>HAMKOR DASHBOARD</small>
+          <h1>Referral, promo va komissiya bir joyda.</h1>
+          <p>Mijoz olib keling, tizim sotuvni tekshiradi, tasdiqlangan komissiya balansga yoziladi.</p>
+        </div>
+        <div class="hero-card"><span>💸</span><b id="earned">—</b><small>Hisoblangan komissiya</small></div>
+      </section>
+
+      <section class="metrics">
+        <article><span>Referral kirishlar</span><strong id="clicks">—</strong><small>link bosganlar</small></article>
+        <article><span>Trial</span><strong id="trials">—</strong><small>sinov boshlaganlar</small></article>
+        <article><span>Sotuv</span><strong id="sales">—</strong><small>to‘lov tasdiqlangan</small></article>
+        <article><span>Promo sotuv</span><strong id="promo_sales">—</strong><small>promo orqali</small></article>
+      </section>
+
+      <section class="card accent-card">
+        <div><small>REFERAL LINK</small><h2>Mijozni Janob HR sinoviga olib kiring</h2><p id="referral_link">Bot ichida “Referral link” tugmasini bosib linkingizni oling.</p></div>
+        <button id="copyReferral" type="button">Nusxa olish</button>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><div><small>KOMISSIYA</small><h2>Tarif bo‘yicha bonuslar</h2></div></div>
+        <div class="plans">
+          <div><b>START</b><span>99 000 UZS</span></div>
+          <div><b>GROWTH</b><span>199 000 UZS</span></div>
+          <div><b>BUSINESS</b><span>299 000 UZS</span></div>
+        </div>
+        <p class="note">Promo chegirma ishlatilsa, chegirma summasi hamkor komissiyasidan ayriladi.</p>
+      </section>
+
+      <section class="card payout">
+        <div><small>PUL YECHISH</small><h2>1 / 11 / 21-sana</h2><p>Tasdiqlangan komissiyalar oyiga 3 marta to‘lanadi. Kechiksa 7 kungacha har ish kuni uchun +3 000 UZS qo‘shiladi.</p></div>
+        <button id="openPayout" type="button">Pul yechish</button>
+      </section>
+
+      <section class="card faq">
+        <div class="section-head"><div><small>FAQ</small><h2>Tez-tez so‘raladigan savollar</h2></div></div>
+        <details open><summary>Komissiya qachon yoziladi?</summary><p>Mijoz tarif sotib olib, to‘lovi tasdiqlangandan keyin balansga yoziladi. Bepul sinov uchun komissiya berilmaydi.</p></details>
+        <details><summary>Promo kod chegirmasi kim hisobidan?</summary><p>Chegirma sizning komissiyangizdan ayriladi. Masalan START 299 000 UZS, 10% promo = 29 900 UZS chegirma.</p></details>
+        <details><summary>Kechikish bonusi qanday hisoblanadi?</summary><p>Belgilangan payout sanasidan keyin 7 kungacha har hisoblanadigan kun uchun +3 000 UZS. Yakshanba va bayram kunlari kirmaydi.</p></details>
+      </section>
+    </main>
+  </div>
+  <script src="/partner-miniapp-assets/app.js?v=20260906-1"></script>
+</body>
+</html>

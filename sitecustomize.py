@@ -5,12 +5,50 @@ sys.path. Keep this file tiny and defensive: it must never change business
 logic, only protect the service from known startup duplication issues.
 """
 
+import asyncio
 import importlib.abc
 import importlib.machinery
 import logging
 import sys
 
 logger = logging.getLogger("janob_hr_runtime")
+print("JANOBHR_SITECUSTOMIZE_LOADED", file=sys.stderr)
+
+_PARTNER_TASK_STARTED = False
+
+
+def _is_partner_bot_main_coro(coro) -> bool:
+    code = getattr(coro, "cr_code", None)
+    if code is None:
+        return False
+    filename = (getattr(code, "co_filename", "") or "").replace("\\", "/")
+    name = getattr(code, "co_name", "") or ""
+    return filename.endswith("/partner_bot.py") and name in {"main", "guarded_main"}
+
+
+async def _skipped_partner_task() -> None:
+    logger.warning("Partner Bot duplicate polling task skipped before router re-attach.")
+
+
+def _install_asyncio_partner_task_guard() -> None:
+    original_create_task = asyncio.create_task
+    if getattr(original_create_task, "_janobhr_partner_task_guarded", False):
+        return
+
+    def guarded_create_task(coro, *args, **kwargs):
+        global _PARTNER_TASK_STARTED
+        if _is_partner_bot_main_coro(coro):
+            if _PARTNER_TASK_STARTED:
+                try:
+                    coro.close()
+                except Exception:
+                    pass
+                return original_create_task(_skipped_partner_task(), *args, **kwargs)
+            _PARTNER_TASK_STARTED = True
+        return original_create_task(coro, *args, **kwargs)
+
+    guarded_create_task._janobhr_partner_task_guarded = True
+    asyncio.create_task = guarded_create_task
 
 
 def _install_aiogram_router_reattach_guard() -> None:
@@ -32,7 +70,6 @@ def _install_aiogram_router_reattach_guard() -> None:
             if "Router is already attached" not in message or router is self:
                 raise
             try:
-                # aiogram keeps the parent router on this private field.
                 object.__setattr__(router, "_parent_router", None)
                 logger.warning(
                     "Aiogram router re-attach guard applied: router=%s target=%s",
@@ -48,13 +85,6 @@ def _install_aiogram_router_reattach_guard() -> None:
 
 
 def _wrap_partner_bot_main(module) -> None:
-    """Make partner_bot.main idempotent inside one Render web process.
-
-    The web service can import/start the partner bot during startup more than
-    once. The first call should keep polling; repeated calls must not attach the
-    same aiogram routers to another Dispatcher because that creates:
-    RuntimeError: Router is already attached.
-    """
     if getattr(module, "_janobhr_partner_main_guarded", False):
         return
     original_main = getattr(module, "main", None)
@@ -66,9 +96,7 @@ def _wrap_partner_bot_main(module) -> None:
     async def guarded_main(*args, **kwargs):
         nonlocal running
         if running:
-            logger.warning(
-                "Partner bot already running in this process; duplicate startup skipped."
-            )
+            logger.warning("Partner Bot already running; duplicate startup skipped.")
             return None
         running = True
         try:
@@ -115,5 +143,6 @@ def _install_partner_bot_main_guard() -> None:
         sys.meta_path.insert(0, _PartnerBotGuardFinder())
 
 
+_install_asyncio_partner_task_guard()
 _install_aiogram_router_reattach_guard()
 _install_partner_bot_main_guard()

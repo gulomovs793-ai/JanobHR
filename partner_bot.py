@@ -140,7 +140,7 @@ def main_menu() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
             [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
             [KeyboardButton(text="📦 Reklama materiallari")],
-            [KeyboardButton(text="❓ Savollar va javoblar")],
+            [KeyboardButton(text="❓ Tez-tez so'raladigan savollar")],
             [KeyboardButton(text="🆘 Yordam")],
         ],
         resize_keyboard=True,
@@ -404,7 +404,7 @@ async def send_partner_home(message: Message, partner: dict) -> None:
         "🔗 <b>Referral link</b> — mijozni asosiy Janob HR botga olib kiradi.\n"
         "🎟 <b>Promo kod</b> — mijozga chegirma beradi, chegirma sizning komissiyangizdan ayriladi.\n\n"
         "Mijoz tarif sotib olsa — sizga komissiya hisoblanadi.\n\n"
-        "Savollar bo'lsa, <b>❓ Savollar va javoblar</b> bo'limini oching.",
+        "Savollar bo'lsa, <b>❓ Tez-tez so'raladigan savollar</b> bo'limini oching.",
         reply_markup=main_menu(),
     )
 
@@ -545,7 +545,7 @@ async def receive_phone(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(
         "✅ Arizangiz yuborildi.\n\n"
-        "Tasdiqlangach sizga referral link, promo kod va savollar-javoblar bo'limi ochiladi.\n\n"
+        "Tasdiqlangach sizga referral link, promo kod va tez-tez so'raladigan savollar bo'limi ochiladi.\n\n"
         "Mijoz link yoki promo kod orqali tarif sotib olsa, komissiya sizga yoziladi.",
         reply_markup=ReplyKeyboardRemove(),
     )
@@ -596,7 +596,7 @@ async def approve_partner(callback: CallbackQuery) -> None:
             "Endi sizda 2 xil yo'l bor:\n\n"
             "🔗 Referral link — mijozni asosiy Janob HR botga olib kiradi.\n"
             "🎟 Promo kod — mijozga chegirma beradi. Chegirma sizning komissiyangizdan ayriladi.\n\n"
-            "❓ Savollar va javoblar bo'limida komissiya, promo kod va to'lov yechish tartibi yozilgan.\n\n"
+            "❓ Tez-tez so'raladigan savollar bo'limida komissiya, promo kod va to'lov yechish tartibi yozilgan.\n\n"
             "Quyidagi menyudan linkingiz va promo kodingizni oling.",
             reply_markup=main_menu(),
         )
@@ -751,7 +751,7 @@ async def materials(message: Message) -> None:
     )
 
 
-@router.message(F.text.in_({"❓ Savollar va javoblar", "❓ Tez-tez so'raladigan savollar", "FAQ", "Faq"}))
+@router.message(F.text.in_({"❓ Tez-tez so'raladigan savollar", "❓ Savollar va javoblar", "FAQ", "Faq"}))
 async def faq_section(message: Message) -> None:
     if await require_approved(message):
         await message.answer(FAQ_TEXT)
@@ -762,7 +762,7 @@ async def help_section(message: Message) -> None:
     if await require_approved(message):
         await message.answer(
             "🆘 Savol bo'lsa shu chatga yozing. Founder jamoasi partner profilingiz orqali siz bilan bog'lanadi.\n\n"
-            "Ko'p so'raladigan savollar uchun <b>❓ Savollar va javoblar</b> bo'limini oching."
+            "Ko'p so'raladigan savollar uchun <b>❓ Tez-tez so'raladigan savollar</b> bo'limini oching."
         )
 
 

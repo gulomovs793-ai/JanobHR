@@ -62,6 +62,10 @@ async def _reset_test_revenue_once() -> None:
             raise
 
 
+async def _startup_reset_test_revenue(app: web.Application) -> None:
+    await _reset_test_revenue_once()
+
+
 async def founder_index(request: web.Request) -> web.Response:
     return web.Response(
         text=(STATIC_DIR / "index.html").read_text(encoding="utf-8"),
@@ -71,11 +75,11 @@ async def founder_index(request: web.Request) -> web.Response:
 
 async def founder_dashboard(request: web.Request) -> web.Response:
     _authorize_founder(request)
-    await _reset_test_revenue_once()
     return web.json_response(await database.get_founder_dashboard_data())
 
 
 def register_founder_miniapp(app: web.Application) -> None:
+    app.on_startup.append(_startup_reset_test_revenue)
     app.router.add_get("/founder", founder_index)
     app.router.add_static(
         "/founder-assets", STATIC_DIR, show_index=False, append_version=True

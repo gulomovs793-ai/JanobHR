@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardM
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from i18n import CHOOSE_LANGUAGE_PROMPT, DEFAULT_LANG, LANGUAGES, t
-from services import database
+from services import database, partner_database as pdb
 from states import ApplyForm
 
 router = Router(name="start")
@@ -137,6 +137,27 @@ async def _show_vacancy_menu(
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) == 2 and args[1].startswith("ref_"):
+        code = args[1][4:].strip().upper()
+        partner = await pdb.get_partner_by_code(code)
+        if partner:
+            await pdb.record_referral_click(partner["id"], message.from_user.id)
+            await message.answer(
+                "👔 <b>Janob HR</b>\n\n"
+                "Siz hamkor tavsiyasi orqali keldingiz. Avval sizda xodim yollashda nima muammo borligini bilib olamiz, keyin botni sozlashga o'tamiz."
+            )
+            from handlers.create_bot import _start_business_flow
+
+            await _start_business_flow(
+                message,
+                state,
+                partner_referral_code=partner["referral_code"],
+                partner_id=partner["id"],
+                partner_name=partner.get("full_name") or partner.get("username") or "Hamkor",
+            )
+            return
+
     await state.clear()
 
     builder = InlineKeyboardBuilder()

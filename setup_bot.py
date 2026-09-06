@@ -27,6 +27,7 @@ from aiogram.types import (
 )
 
 from config import FOUNDER_USER_IDS, SETUP_BOT_TOKEN
+from services import partner_database as pdb
 from services.tenant_activation import activate_tenant
 
 logger = logging.getLogger("janob_hr_setup")
@@ -44,8 +45,23 @@ class SetupForm(StatesGroup):
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
+    args = (message.text or "").split(maxsplit=1)
+    partner = None
+    if len(args) == 2 and args[1].startswith("ref_"):
+        partner = await pdb.get_partner_by_code(args[1][4:].strip().upper())
+        if partner:
+            await pdb.record_referral_click(partner["id"], message.from_user.id)
+            await state.update_data(
+                partner_id=partner["id"],
+                partner_referral_code=partner["referral_code"],
+                partner_name=partner.get("full_name") or partner.get("username") or "Hamkor",
+            )
+    intro = ""
+    if partner:
+        intro = "Siz hamkor tavsiyasi orqali keldingiz.\n\n"
     await message.answer(
-        "👔 <b>Janob HR</b> tizimiga xush kelibsiz!\n\n"
+        intro
+        + "👔 <b>Janob HR</b> tizimiga xush kelibsiz!\n\n"
         "Bir necha daqiqada o'zingizning shaxsiy AI-HR botingizni sozlaymiz.\n\n"
         "Avval, kompaniyangiz nomini yozing:"
     )
@@ -183,6 +199,14 @@ async def receive_admin_token(message: Message, state: FSMContext):
             contact_phone=data.get("contact_phone", ""),
             contact_username=data.get("contact_username", ""),
         )
+        if data.get("partner_id"):
+            await pdb.record_referral_trial(
+                int(data["partner_id"]),
+                message.from_user.id,
+                tenant_id,
+                source="referral_link",
+                referral_code=data.get("partner_referral_code") or "",
+            )
     except Exception:
         logger.exception("Mijozni bazaga yozishda kutilmagan xato.")
         await wait_msg.edit_text(
@@ -225,6 +249,9 @@ async def receive_admin_token(message: Message, state: FSMContext):
     )
 
     if FOUNDER_USER_IDS:
+        partner_line = ""
+        if data.get("partner_id"):
+            partner_line = f"\nHamkor: {data.get('partner_name') or 'Hamkor'} ({data.get('partner_referral_code') or ''})"
         notice_text = (
             f"🆕 <b>Yangi mijoz ro'yxatdan o'tdi</b>\n\n"
             f"№{tenant_id} — {data['company_name']}\n"
@@ -233,6 +260,7 @@ async def receive_admin_token(message: Message, state: FSMContext):
             f"Admin Telegram ID: <code>{admin_id}</code>\n\n"
             f"Telefon: <code>{data.get('contact_phone') or '—'}</code>\n"
             "To'lov tushgach, boshqaruv panelidan faollashtiring."
+            f"{partner_line}"
         )
         for founder_id in FOUNDER_USER_IDS:
             try:
@@ -253,6 +281,7 @@ async def main():
     from services import database
 
     await database.init_db()
+    await pdb.init_partner_db()
     bot = Bot(
         token=SETUP_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )

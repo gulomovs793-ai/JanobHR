@@ -86,15 +86,11 @@ def _install_aiogram_router_reattach_guard() -> None:
 
 
 def _patch_partner_reply_keyboard(module) -> None:
-    """Mini Appni reply-keyboard ichidan olib tashlaydi.
-
-    Hamkor paneli faqat Telegramning input yonidagi ko'k MenuButtonWebApp
-    tugmasidan ochiladi. Qolgan hamkor menyusi o'zgarishsiz qoladi.
-    """
+    """Mini Appni reply-keyboard ichidan olib tashlaydi va ko'k menu tugmasini chatga majburan ulaydi."""
     if getattr(module, "_janobhr_partner_keyboard_patched", False):
         return
     try:
-        from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+        from aiogram.types import KeyboardButton, MenuButtonWebApp, ReplyKeyboardMarkup, WebAppInfo
 
         def main_menu() -> ReplyKeyboardMarkup:
             return ReplyKeyboardMarkup(
@@ -110,6 +106,34 @@ def _patch_partner_reply_keyboard(module) -> None:
             )
 
         module.main_menu = main_menu
+
+        original_send_partner_home = getattr(module, "send_partner_home", None)
+        if original_send_partner_home and not getattr(original_send_partner_home, "_janobhr_menu_wrapped", False):
+            async def send_partner_home(message, partner):
+                base_url = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
+                if base_url:
+                    try:
+                        await message.bot.set_chat_menu_button(
+                            chat_id=message.chat.id,
+                            menu_button=MenuButtonWebApp(
+                                text="Hamkor paneli",
+                                web_app=WebAppInfo(url=f"{base_url}/partner"),
+                            ),
+                        )
+                        logger.info(
+                            "Partner Mini App menu tugmasi chatga o'rnatildi: chat_id=%s",
+                            message.chat.id,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Partner Mini App menu tugmasi chatga o'rnatilmadi: chat_id=%s",
+                            getattr(getattr(message, "chat", None), "id", None),
+                        )
+                return await original_send_partner_home(message, partner)
+
+            send_partner_home._janobhr_menu_wrapped = True
+            module.send_partner_home = send_partner_home
+
         module._janobhr_partner_keyboard_patched = True
         logger.info("Partner reply keyboarddan Hamkor paneli tugmasi olib tashlandi.")
     except Exception:
@@ -194,11 +218,11 @@ async def _configure_partner_miniapp_menu() -> None:
                     web_app=WebAppInfo(url=f"{base_url}/partner"),
                 )
             )
-            logger.info("Partner Mini App menu tugmasi o'rnatildi: %s/partner", base_url)
+            logger.info("Partner Mini App global menu tugmasi o'rnatildi: %s/partner", base_url)
         finally:
             await bot.session.close()
     except Exception:
-        logger.exception("Partner Mini App menu tugmasi o'rnatilmadi")
+        logger.exception("Partner Mini App global menu tugmasi o'rnatilmadi")
 
 
 def _install_partner_miniapp_runtime_hook() -> None:

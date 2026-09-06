@@ -9,10 +9,8 @@ on:
 permissions:
   contents: write
 
-# Runs on every production branch update and can also be started manually.
 jobs:
   patch-partner-startup:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,30 +20,17 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           path = Path('partner_bot.py')
           text = path.read_text(encoding='utf-8')
-          needle = 'Partner Bot routerlari allaqachon Dispatcherga ulangan'
-          if needle in text:
-              print('partner_bot.py already patched')
+          if 'Partner Bot routerlari allaqachon Dispatcherga ulangan' in text:
+              print('already patched')
               raise SystemExit(0)
-
-          start_marker = 'async def main() -> None:\n'
-          end_marker = '\n\nif __name__ == "__main__":'
-          start = text.index(start_marker)
-          end = text.index(end_marker, start)
-
+          start = text.index('async def main() -> None:\n')
+          end = text.index('\n\nif __name__ == "__main__":', start)
           replacement = '''_PARTNER_MAIN_RUNNING = False
 
 
 async def main() -> None:
-    """Start Partner Bot once per Python process.
-
-    webhook_app embeds this bot as a background task. During Render startup the
-    startup path can be invoked more than once; starting twice attaches the same
-    aiogram Router objects to two Dispatchers and crashes with
-    `Router is already attached`. Repeated startup calls are now ignored safely.
-    """
     global _PARTNER_MAIN_RUNNING
 
     if _PARTNER_MAIN_RUNNING:
@@ -86,9 +71,8 @@ async def main() -> None:
         if bot is not None:
             await bot.session.close()
         _PARTNER_MAIN_RUNNING = False'''
-
           path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
-          print('partner_bot.py patched')
+          print('patched')
           PY
       - name: Commit partner bot patch
         run: |
@@ -103,8 +87,6 @@ async def main() -> None:
           git push origin HEAD:multi-tenant
 
   test:
-    needs: patch-partner-startup
-    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,12 +1,8 @@
 """Janob HR Partner Bot.
 
-Maqsad:
-- SMM/targetolog/agentlik/blogger hamkorlarga avval ularning muammosi va foydasini tushuntirish;
-- founder tasdig'idan keyin unique referral link berish;
-- partnerga tayyor matnlar va statistikani ko'rsatish;
-- biznes leadni Setup botga uzatish.
-
-PARTNER_BOT_TOKEN va PARTNER_REFERRAL_TARGET_USERNAME env orqali beriladi.
+Kasbga mos qisqa diagnostika qiladi, javoblardan keyin nomzod botdagi kabi
+AI orqali odamiy tilda shaxsiy yechim beradi va founder tasdig'idan keyin
+referral link/statistika/materiallarni ochadi.
 """
 
 import asyncio
@@ -32,6 +28,7 @@ from aiogram.types import (
 
 from config import FOUNDER_USER_IDS
 from services import partner_database as pdb
+from services.partner_ai import generate_partner_advice
 
 logger = logging.getLogger("janob_hr_partner")
 router = Router(name="partner")
@@ -54,7 +51,7 @@ COMMISSION_TEXT = (
     "START — 99 000 UZS\n"
     "GROWTH — 199 000 UZS\n"
     "BUSINESS — 299 000 UZS\n\n"
-    "Siz mijozni olib kelasiz. Mahsulotni tushuntirish, onboarding va xizmat ko'rsatishni Janob HR jamoasi bajaradi.\n\n"
+    "Siz mijozni tavsiya qilasiz. Mahsulotni tushuntirish va keyingi ishni Janob HR jamoasi bajaradi.\n\n"
     "Komissiya mijozning haqiqiy to'lovi tasdiqlangandan keyin hisoblanadi."
 )
 
@@ -105,18 +102,14 @@ def founder_review_keyboard(partner_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="✅ Tasdiqlash", callback_data=f"partner_approve:{partner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="❌ Rad etish", callback_data=f"partner_reject:{partner_id}"
-                ),
+                InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"partner_approve:{partner_id}"),
+                InlineKeyboardButton(text="❌ Rad etish", callback_data=f"partner_reject:{partner_id}"),
             ]
         ]
     )
 
 
-def question_1(role: str) -> tuple[str, list[tuple[str, str]]]:
+def question_1(role: str):
     if role in {"targetolog", "smm"}:
         return (
             "1/3. <b>Hozir nechta kompaniya bilan ishlayapsiz?</b>",
@@ -143,7 +136,7 @@ def question_1(role: str) -> tuple[str, list[tuple[str, str]]]:
     )
 
 
-def question_2(role: str) -> tuple[str, list[tuple[str, str]]]:
+def question_2(role: str):
     if role in {"targetolog", "smm"}:
         return (
             "2/3. <b>Mijozlaringiz orasida tez-tez xodim qidiradiganlari bormi?</b>",
@@ -165,7 +158,7 @@ def question_2(role: str) -> tuple[str, list[tuple[str, str]]]:
     )
 
 
-def question_3(role: str) -> tuple[str, list[tuple[str, str]]]:
+def question_3(role: str):
     if role == "blogger":
         return (
             "3/4. <b>Hozir blogingizdan asosan qanday daromad olasiz?</b>",
@@ -182,117 +175,41 @@ def question_3(role: str) -> tuple[str, list[tuple[str, str]]]:
     )
 
 
-def question_4(role: str) -> tuple[str, list[tuple[str, str]]]:
+def question_4(role: str):
     return (
         "4/4. <b>Qo'shimcha daromad taklifi sizga qiziqmi?</b>",
         [("Ha", "yes"), ("Batafsil bilmoqchiman", "details"), ("Hozircha yo'q", "no")],
     )
 
 
-def build_diagnosis(data: dict) -> str:
-    role = data.get("role", "other")
-    q1, q2, q3, q4 = data.get("q1"), data.get("q2"), data.get("q3"), data.get("q4")
+def fallback_diagnosis(data: dict) -> str:
+    role = data.get("role")
+    q1 = data.get("q1")
+    q2 = data.get("q2")
 
     if role in {"targetolog", "smm"}:
-        profession = "Targetolog" if role == "targetolog" else "SMM manager"
         if q1 == "0":
-            opening = (
-                f"{profession} sifatida hozir faol biznes mijozlaringiz bo'lmasa ham, sizga hamkorlik yopiq emas. "
-                "Sizga tayyor referral link va sotuv matnlari beriladi, shu orqali yangi biznes aloqalarini monetizatsiya qilishingiz mumkin."
-            )
-        elif q2 == "often":
-            opening = (
-                f"Siz {profession.lower()} sifatida bizneslar bilan allaqachon ishlaysiz va ularning xodim qidirish muammosini tez-tez ko'rasiz. "
-                "Hozir bu muammo sizning daromadingizga aylanmayapti."
-            )
-        elif q2 == "sometimes":
-            opening = (
-                f"Sizda biznes mijozlar bilan tayyor aloqa bor. Xodim qidirish muammosi har kuni bo'lmasa ham, paydo bo'lgan paytda sizda unga beradigan tayyor yechim bo'lishi mumkin."
-            )
-        else:
-            opening = (
-                f"Sizning asosiy kuchingiz — biznes egalarining sizga bo'lgan ishonchi. Hozir ular HR muammosini ko'p aytmasa ham, ehtiyoj paydo bo'lganda birinchi tavsiya beradigan odam siz bo'lishingiz mumkin."
+            return (
+                "Hozir faol biznes mijozingiz yo'q ekan. Shuning uchun sizga avval tayyor referral link va matnlar bilan boshlash osonroq. "
+                "Biznesga xodim kerak bo'lsa Janob HR'ni tavsiya qilasiz, qolgan jarayonni biz olib ketamiz. Mijoz tarif olsa sizga komissiya yoziladi."
             )
         return (
-            f"🧩 <b>Sizning holatingiz</b>\n\n{opening}\n\n"
-            "<b>Janob HR sizga qanday yordam beradi?</b>\n"
-            "• mijozga xodimlarni avtomatik qabul qilish va AI bilan saralash yechimini taklif qilasiz;\n"
-            "• mahsulotni tushuntirish, onboarding va xizmatni biz bajaramiz;\n"
-            "• siz alohida HR xizmatini yaratishingiz shart emas;\n"
-            "• mijoz tarif sotib olsa, sizga komissiya hisoblanadi.\n\n"
-            "Ya'ni mavjud biznes aloqalaringizdan qo'shimcha daromad kanali ochasiz."
+            "Siz bizneslar bilan allaqachon ishlayapsiz. Mijozlaringizdan biriga xodim kerak bo'lsa, odatda bu sizning ishingiz emas va shu yerda qo'shimcha pul olish imkoniyati qolib ketadi. "
+            "Janob HR'ni tavsiya qilasiz, biz nomzodlarni qabul qilib AI bilan saralaymiz va mijoz bilan keyingi ishni o'zimiz qilamiz. Tarif sotilsa sizga komissiya yoziladi."
         )
-
-    if role == "agency":
-        if q1 in {"4-10", "10+"}:
-            scale = "Agentligingizda allaqachon yaxshi biznes mijozlar bazasi bor."
-        elif q1 == "1-3":
-            scale = "Mijozlar soni katta bo'lmasa ham, sizda hamkorlikni boshlash uchun real biznes aloqalari bor."
-        else:
-            scale = "Hozir faol mijozlar kam bo'lsa ham, keyingi biznes mijozlar uchun HR yechimini xizmat portfelingizga tayyor qo'shib qo'yishingiz mumkin."
-
-        if q2 == "no":
-            gap = "Hozir HR muammolari sizning xizmat doirangizdan tashqarida qoladi — aynan shu joyda qo'shimcha daromad imkoniyati yo'qoladi."
-        elif q2 == "sometimes":
-            gap = "Siz HR muammolariga ba'zida kirishasiz, lekin uni alohida tizim sifatida yuritmasligingiz mumkin."
-        else:
-            gap = "Siz HR bilan ham ishlaysiz; Janob HR qo'lda bajariladigan saralash ishini kamaytirib, mavjud xizmatingizni kuchaytirishi mumkin."
-
-        return (
-            f"🧩 <b>Agentligingiz uchun imkoniyat</b>\n\n{scale} {gap}\n\n"
-            "<b>Janob HR qanday yordam beradi?</b>\n"
-            "• agentlik yangi HR mahsulotini noldan qurmaydi;\n"
-            "• mijozga tayyor avtomatik saralash tizimini tavsiya qiladi;\n"
-            "• onboarding va xizmat ko'rsatishni Janob HR jamoasi bajaradi;\n"
-            "• mijoz tarif olsa, agentlikka komissiya yoziladi.\n\n"
-            "Shunday qilib bitta mijozdan faqat marketing emas, qo'shimcha HR yechimi orqali ham daromad qilish imkoniyati paydo bo'ladi."
-        )
-
     if role == "blogger":
-        if q1 == "business" or q2 == "many":
-            audience = "Auditoriyangizda biznes egalari ko'p — bu Janob HR uchun eng mos auditoriyalardan biri."
-        elif q1 == "mixed" or q2 == "some":
-            audience = "Auditoriyangiz aralash, lekin uning ichida biznes yuritadigan segment bor. Janob HR'ni aynan shu segmentga taklif qilish mumkin."
-        else:
-            audience = "Biznes auditoriyangiz katta bo'lmasa ham, tavsiyani faqat biznes yuritadigan kuzatuvchilarga yo'naltirish mumkin."
-
-        if q3 == "ads":
-            income = "Hozir daromadingiz reklama buyurtmalariga bog'liq; reklama tushmagan davrda auditoriya daromad keltirmaydi."
-        elif q3 == "own":
-            income = "Siz auditoriyangizni o'z mahsulotingiz orqali allaqachon monetizatsiya qilyapsiz. Janob HR asosiy mahsulotingizga tegmasdan qo'shimcha taklif bo'la oladi."
-        elif q3 == "both":
-            income = "Siz auditoriyani bir nechta usulda monetizatsiya qilasiz; Janob HR uchinchi, natijaga bog'liq daromad kanaliga aylanishi mumkin."
-        else:
-            income = "Hozir auditoriyadan muntazam daromad qilmayapsiz; referral model mahsulot yaratmasdan monetizatsiyani boshlash imkonini beradi."
-
         return (
-            f"🧩 <b>Blogingiz uchun imkoniyat</b>\n\n{audience}\n{income}\n\n"
-            "<b>Janob HR sizga qanday yordam beradi?</b>\n"
-            "• siz o'z auditoriyangizga bizneslar uchun foydali HR yechimini tavsiya qilasiz;\n"
-            "• sizga shaxsiy referral link va tayyor reklama matnlari beriladi;\n"
-            "• mahsulot, onboarding va mijoz bilan ishlashni biz bajaramiz;\n"
-            "• referral orqali kelgan mijoz tarif olsa, siz komissiya olasiz.\n\n"
-            "Ya'ni faqat yangi reklama buyurtmasini kutish emas, mavjud auditoriyadan qo'shimcha daromad olish imkoniyati paydo bo'ladi."
+            "Sizda auditoriya bor. Reklama har doim ham muntazam tushmaydi, lekin auditoriyangiz ichida biznes egalari bo'lsa ularga Janob HR'ni tavsiya qilib qo'shimcha pul ishlashingiz mumkin. "
+            "Siz faqat tavsiya qilasiz, mahsulotni tushuntirish va mijoz bilan ishlashni biz bajaramiz. Tarif sotilsa komissiya sizga yoziladi."
         )
-
-    # other
-    if q1 in {"work", "friends", "often"} and q2 in {"active", "small"}:
-        channel = "Sizda ikkita kuchli kanal bor: biznes egalari bilan shaxsiy aloqa va ijtimoiy tarmoq auditoriyasi."
-    elif q1 in {"work", "friends", "often"}:
-        channel = "Sizda biznes egalari bilan to'g'ridan-to'g'ri aloqa bor — referral tavsiya uchun shu yetarli boshlang'ich kanal."
-    elif q2 in {"active", "small"}:
-        channel = "Bizneslar bilan shaxsiy aloqangiz kam bo'lsa ham, auditoriyangiz orqali kerakli segmentga chiqishingiz mumkin."
-    else:
-        channel = "Hozir biznes aloqasi va auditoriya kuchli emas. Shuning uchun sizga tayyor referral link va sotuv materiali bilan asta-sekin boshlash modeli mosroq."
-
+    if role == "agency":
+        return (
+            "Siz allaqachon bizneslar bilan ishlaysiz. Mijozda xodim topish muammosi chiqsa, HR sizning xizmatlaringiz ichida bo'lmasa bu imkoniyat shunchaki o'tib ketadi. "
+            "Janob HR'ni tavsiya qilasiz, tizim va mijoz bilan ishlashni biz bajaramiz. Mijoz tarif olsa agentlikka komissiya yoziladi."
+        )
     return (
-        f"🧩 <b>Sizning holatingiz</b>\n\n{channel}\n\n"
-        "<b>Janob HR sizga qanday yordam beradi?</b>\n"
-        "• biznesga tayyor HR yechimini tavsiya qilasiz;\n"
-        "• siz uchun alohida referral link beriladi;\n"
-        "• mahsulotni tushuntirish, onboarding va xizmatni biz bajaramiz;\n"
-        "• mijoz tarif sotib olsa, sizga komissiya hisoblanadi.\n\n"
-        "Siz HR mutaxassisi bo'lishingiz yoki alohida xizmat yaratishingiz shart emas."
+        "Siz biznes egalari yoki auditoriyangiz orqali Janob HR'ni tavsiya qilishingiz mumkin. Biz xodim qidirayotgan biznesning nomzodlarini qabul qilib AI bilan saralaymiz. "
+        "Siz faqat tavsiya qilasiz, qolgan ishni biz qilamiz. Mijoz tarif olsa sizga komissiya yoziladi."
     )
 
 
@@ -300,7 +217,6 @@ def derive_partner_db_fields(data: dict) -> tuple[bool, str]:
     role = data.get("role")
     q1 = data.get("q1")
     q2 = data.get("q2")
-
     if role in {"targetolog", "smm", "agency"}:
         band = q1 if q1 in {"0", "1-3", "4-10", "10+"} else "0"
         return band != "0", band
@@ -313,15 +229,20 @@ def derive_partner_db_fields(data: dict) -> tuple[bool, str]:
 
 async def send_phone_step(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
-    await message.answer(build_diagnosis(data))
+    await message.answer("Bir soniya, javoblaringizga qarab sizga mos variantni aytaman... ⏳")
+    diagnosis = await generate_partner_advice(data)
+    if not diagnosis:
+        diagnosis = fallback_diagnosis(data)
+    await message.answer(f"💡 <b>Sizga mos variant</b>\n\n{diagnosis}")
+
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
     await message.answer(
-        "Agar shu model sizga mos bo'lsa, arizani yakunlaymiz. Tasdiqlangach sizga referral link, tayyor sotuv matnlari va statistika ochiladi.\n\n"
-        "Bog'lanish uchun telefon raqamingizni yuboring.",
+        "Agar qiziq bo'lsa, arizani tugatamiz. Tasdiqlangach sizga shaxsiy referral link, tayyor matnlar va statistika ochiladi.\n\n"
+        "Telefon raqamingizni yuboring.",
         reply_markup=kb,
     )
     await state.set_state(PartnerForm.phone)
@@ -330,9 +251,8 @@ async def send_phone_step(message: Message, state: FSMContext) -> None:
 async def send_partner_home(message: Message, partner: dict) -> None:
     await message.answer(
         "🤝 <b>Janob HR Hamkor</b>\n\n"
-        "Sizning hamkor profilingiz faol. Endi biznesga kerak bo'ladigan HR yechimini "
-        "o'zingiz yaratmasdan va xizmat ko'rsatmasdan taklif qilishingiz mumkin.\n\n"
-        "Mijoz Janob HR tarifini sotib olsa — sizga komissiya hisoblanadi.",
+        "Hamkor profilingiz faol. Referral linkingiz orqali biznesni Janob HR'ga tavsiya qilishingiz mumkin. "
+        "Mijoz tarif sotib olsa, sizga komissiya hisoblanadi.",
         reply_markup=main_menu(),
     )
 
@@ -341,28 +261,22 @@ async def handle_referral_entry(message: Message, code: str) -> bool:
     partner = await pdb.get_partner_by_code(code.upper())
     if not partner:
         return False
-
     await pdb.record_referral_click(partner["id"], message.from_user.id)
 
     if PARTNER_REFERRAL_TARGET_USERNAME:
         target_url = f"https://t.me/{PARTNER_REFERRAL_TARGET_USERNAME}?start=ref_{code.upper()}"
         kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🎁 5 ta bepul ariza bilan boshlash", url=target_url)]
-            ]
+            inline_keyboard=[[InlineKeyboardButton(text="🎁 5 ta bepul ariza bilan boshlash", url=target_url)]]
         )
         await message.answer(
-            "👔 <b>Xodim qidirishda eng ko'p vaqt nimaga ketadi?</b>\n\n"
-            "Ko'p nomzod yozadi, lekin kim yaxshi ekanini bilish uchun har biri bilan gaplashish, "
-            "savol berish va solishtirishga vaqt ketadi.\n\n"
-            "<b>Janob HR nima qiladi?</b>\n"
-            "Nomzodlarni qabul qiladi, savollar beradi, AI bilan baholaydi va kuchli nomzodlarni "
-            "sizga ajratib beradi.\n\n"
-            "🎁 Birinchi 5 ta ariza bepul — avval natijani ko'rib, keyin qaror qilasiz.",
+            "👔 <b>Xodim qidiryapsizmi?</b>\n\n"
+            "Har bir nomzod bilan alohida gaplashib, savol berib, keyin solishtirish ko'p vaqt oladi.\n\n"
+            "Janob HR nomzodlarni qabul qiladi, savollar beradi, AI bilan baholaydi va kuchli nomzodlarni ajratib beradi.\n\n"
+            "🎁 Birinchi 5 ta ariza bepul.",
             reply_markup=kb,
         )
     else:
-        await message.answer("👔 Janob HR referral qabul qilindi. Setup bot manzili hali sozlanmagan.")
+        await message.answer("👔 Referral qabul qilindi. Setup bot manzili hali sozlanmagan.")
     return True
 
 
@@ -380,12 +294,11 @@ async def start(message: Message, state: FSMContext, bot: Bot) -> None:
             await send_partner_home(message, partner)
             return
         if partner["status"] == "pending":
-            await message.answer("⏳ Arizangiz ko'rib chiqilmoqda. Tasdiqlangach bot sizga shaxsiy referral link beradi.")
+            await message.answer("⏳ Arizangiz ko'rib chiqilmoqda. Tasdiqlangach referral link beriladi.")
             return
         if partner["status"] == "rejected":
             await message.answer(
-                "Arizangiz hozircha tasdiqlanmagan. Ma'lumotlarni yangilab qayta topshirishingiz mumkin.\n\n"
-                "Boshlash uchun kasbingizni tanlang:",
+                "Arizangiz hozircha tasdiqlanmagan. Qayta topshirishingiz mumkin.\n\nKasbingizni tanlang:",
                 reply_markup=role_keyboard(),
             )
             await state.set_state(PartnerForm.role)
@@ -393,8 +306,7 @@ async def start(message: Message, state: FSMContext, bot: Bot) -> None:
 
     await message.answer(
         "🤝 <b>Janob HR hamkorlik dasturi</b>\n\n"
-        "Sizga mos hamkorlik modelini topish uchun avval kasbingiz va hozirgi imkoniyatlaringizni bilib olamiz.\n\n"
-        "Javoblaringizga qarab bot sizga Janob HR aynan qanday yordam berishi va qayerdan qo'shimcha daromad olish mumkinligini ko'rsatadi.\n\n"
+        "Siz haqingizda 3–4 ta qisqa savol beraman. Keyin javoblaringizga qarab bu hamkorlik sizga qayerda foyda berishini aytaman.\n\n"
         "<b>Siz kimsiz?</b>",
         reply_markup=role_keyboard(),
     )
@@ -474,10 +386,7 @@ async def receive_phone(message: Message, state: FSMContext) -> None:
     )
     await state.clear()
     await message.answer(
-        "✅ Arizangiz yuborildi.\n\n"
-        "Tasdiqlangach sizga tayyor tizim ochiladi: referral link → mijoz Janob HR'ni sinaydi → "
-        "tarif sotib olsa komissiya sizga yoziladi.\n\n"
-        "Siz mahsulot yaratmaysiz va mijozga HR xizmatini o'zingiz ko'rsatishingiz shart emas.",
+        "✅ Arizangiz yuborildi.\n\nTasdiqlangach shaxsiy referral link ochiladi. Mijoz tarif sotib olsa komissiya sizga yoziladi.",
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -488,7 +397,7 @@ async def receive_phone(message: Message, state: FSMContext) -> None:
         "🤝 <b>Yangi partner arizasi</b>\n\n"
         f"#{partner['id']} — {partner['full_name']}\n"
         f"Rol: {ROLE_LABELS.get(partner['role'], partner['role'])}\n"
-        f"Profil javoblari: {answers}\n"
+        f"Javoblar: {answers}\n"
         f"Biznes aloqasi: {'Ha' if partner['has_business_clients'] else 'Yo‘q'}\n"
         f"Segment: {partner['client_band']}\n"
         f"Telefon: <code>{partner['phone']}</code>\n"
@@ -496,9 +405,7 @@ async def receive_phone(message: Message, state: FSMContext) -> None:
     )
     for founder_id in FOUNDER_USER_IDS:
         try:
-            await message.bot.send_message(
-                founder_id, notice, reply_markup=founder_review_keyboard(partner["id"])
-            )
+            await message.bot.send_message(founder_id, notice, reply_markup=founder_review_keyboard(partner["id"]))
         except Exception:
             logger.exception("Founderga partner arizasini yuborib bo'lmadi: %s", founder_id)
 
@@ -523,10 +430,7 @@ async def approve_partner(callback: CallbackQuery) -> None:
     try:
         await callback.bot.send_message(
             partner["telegram_user_id"],
-            "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
-            "Endi sizda yangi daromad kanali bor: biznesni Janob HR'ga yo'naltirasiz, "
-            "qolgan jarayonni biz bajaramiz.\n\n"
-            "Quyidagi menyudan referral linkingiz va tayyor materiallarni oling.",
+            "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\nEndi menyudan referral linkingiz va tayyor materiallarni olishingiz mumkin.",
             reply_markup=main_menu(),
         )
     except Exception:
@@ -549,7 +453,7 @@ async def reject_partner(callback: CallbackQuery) -> None:
     try:
         await callback.bot.send_message(
             partner["telegram_user_id"],
-            "Arizangiz hozircha tasdiqlanmadi. Keyinroq /start orqali ma'lumotlarni yangilab qayta topshirishingiz mumkin.",
+            "Arizangiz hozircha tasdiqlanmadi. Keyinroq /start orqali qayta topshirishingiz mumkin.",
         )
     except Exception:
         logger.exception("Rad etilgan partnerga xabar yuborilmadi: %s", partner_id)
@@ -574,7 +478,7 @@ async def my_link(message: Message, bot: Bot) -> None:
     await message.answer(
         "🔗 <b>Sizning shaxsiy linkingiz</b>\n\n"
         f"<code>{link}</code>\n\n"
-        "Mijoz aynan shu link orqali kirsa, sizning referral sifatida qayd qilinadi."
+        "Mijoz shu link orqali kirsa, sizning referral sifatida qayd qilinadi."
     )
 
 
@@ -606,9 +510,9 @@ async def materials(message: Message) -> None:
     await message.answer(
         "📦 <b>Tayyor reklama materiallari</b>\n\n"
         "<b>1. Story matni</b>\n"
-        "Xodim topish uchun yuzlab CV ko'rishga vaqt ketayaptimi? Janob HR nomzodlarni qabul qiladi, savollar beradi va AI bilan saralaydi. Birinchi 5 ta ariza bepul. Link orqali sinab ko'ring.\n\n"
-        "<b>2. Biznes egasiga shaxsiy xabar</b>\n"
-        "Assalomu alaykum. Xodim yollash jarayonini yengillashtiradigan Janob HR degan tizim bor. Nomzodlarni avtomatik qabul qilib, baholab beradi. 5 ta ariza bepul, xohlasangiz link yuboraman.\n\n"
+        "Xodim topish uchun yuzlab CV ko'rishga vaqt ketayaptimi? Janob HR nomzodlarni qabul qiladi, savollar beradi va AI bilan saralaydi. Birinchi 5 ta ariza bepul.\n\n"
+        "<b>2. Biznes egasiga xabar</b>\n"
+        "Assalomu alaykum. Xodim yollashni yengillashtiradigan Janob HR degan tizim bor. Nomzodlarni avtomatik qabul qilib, baholab beradi. 5 ta ariza bepul, xohlasangiz link yuboraman.\n\n"
         "<b>3. Qisqa hook</b>\n"
         "Har bir nomzod bilan alohida gaplashishni to'xtating — Janob HR birinchi saralashni siz uchun qiladi."
     )
@@ -617,19 +521,14 @@ async def materials(message: Message) -> None:
 @router.message(F.text == "🆘 Yordam")
 async def help_section(message: Message) -> None:
     if await require_approved(message):
-        await message.answer(
-            "🆘 Savol bo'lsa shu chatga yozing. Founder jamoasi partner profilingiz orqali siz bilan bog'lanadi."
-        )
+        await message.answer("🆘 Savol bo'lsa shu chatga yozing. Founder jamoasi siz bilan bog'lanadi.")
 
 
 async def main() -> None:
     if not PARTNER_BOT_TOKEN:
         raise RuntimeError("PARTNER_BOT_TOKEN sozlanmagan")
     await pdb.init_partner_db()
-    bot = Bot(
-        token=PARTNER_BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = Bot(token=PARTNER_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     await bot.delete_webhook(drop_pending_updates=False)
@@ -638,8 +537,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
     asyncio.run(main())

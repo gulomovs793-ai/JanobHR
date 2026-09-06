@@ -193,10 +193,6 @@ def _build_dispatcher() -> Dispatcher:
         admin_root.include_router(r)
     dp.include_router(admin_root)
 
-    # Founder Bot — asosiy webhook server bilan BIR XIL dispatcher/bazani
-    # ishlatadi (alohida Render xizmati sifatida emas). Shu tufayli u
-    # webhook_app.py bilan bir xil (jonli) data.db faylini ko'radi —
-    # ikkita ajratilgan fayl tizimi orasida ma'lumot uzilib qolmaydi.
     founder_root = Router(name="founder_root")
     founder_root.message.filter(IsFounderBot())
     founder_root.callback_query.filter(IsFounderBot())
@@ -239,9 +235,6 @@ async def configure_admin_miniapp(tenant: dict) -> None:
             text="Boshqaruv paneli",
             web_app=WebAppInfo(url=f"{miniapp_base}/{tenant['id']}"),
         )
-        # Keep a default for future admins, but explicitly bind the button to
-        # every known private admin chat as well. Telegram's Bot API supports
-        # per-chat menu buttons and this preserves the correct user context.
         await admin_bot.set_chat_menu_button(menu_button=menu_button)
         for admin_id in tenant.get("admin_user_ids", []):
             try:
@@ -277,9 +270,6 @@ async def configure_founder_miniapp() -> None:
 
 async def on_startup(app: web.Application):
     await database.init_db()
-    # Dispatcher ishlatadigan persistent FSM jadvali database.init_db() tarkibiga
-    # kirmaydi. Uni alohida yaratmasak, yangi serverda birinchi /start so'rovi
-    # "no such table: fsm_storage" bilan yiqiladi.
     await app["dispatcher"].storage.init()
     from services.backup import run_backups_forever
     from services.reminders import run_reminders_forever
@@ -288,10 +278,6 @@ async def on_startup(app: web.Application):
     _spawn_background_task(app, run_reminders_forever())
     _spawn_background_task(app, run_backups_forever())
 
-    # Eski self-service bug sabab ikki tokeni saqlangan, ammo `pending`da
-    # qolib ketgan trial mijozlarni avtomatik tiklaymiz. Trial uchun payment
-    # talab qilinmaydi: birinchi 5 ariza bepul. activate_tenant idempotent,
-    # shuning uchun restartda qayta urinish xavfsiz.
     pending_trials = await database.list_tenants(status="pending")
     for pending in pending_trials:
         if pending.get("plan_code") != "trial":
@@ -329,28 +315,12 @@ async def on_startup(app: web.Application):
         except Exception:
             logger.exception("Founder Bot webhookini ornatib bolmadi.")
 
-    # Hamkor bot shu web service ichida alohida background polling sifatida
-    # ishlaydi. Bu payout arizalari va eslatmalari aynan jonli /data/data.db
-    # bilan ishlashi uchun kerak; alohida xizmat bo'lsa, baza ajralib qoladi.
-    try:
-        from partner_bot import PARTNER_BOT_TOKEN, main as partner_bot_main
+    # Partner bot boshqa runtime guard orqali shu service ichida start bo'lyapti.
+    # Bu yerda qayta start qilish aiogram routerlarini ikkinchi marta ulab,
+    # "Router is already attached" xatosini chiqaradi. Shuning uchun webhook
+    # startup ichida partner pollingni takroran ishga tushirmaymiz.
+    logger.info("Partner Bot webhook startup ichida qayta start qilinmadi.")
 
-        if PARTNER_BOT_TOKEN:
-            _spawn_background_task(app, partner_bot_main())
-            logger.info("Janob HR Partner Bot background task ishga tushirildi.")
-        else:
-            logger.info("PARTNER_BOT_TOKEN sozlanmagan — Partner Bot o'tkazib yuborildi.")
-    except Exception:
-        logger.exception("Partner Bot background task ishga tushmadi — asosiy web server davom etadi.")
-
-    # To'lovlarni avtomatik aniqlovchi userbot — ALOHIDA Render xizmati
-    # sifatida EMAS, balki shu jarayon ichida fon vazifasi (background task)
-    # sifatida ishga tushiriladi. Sabab: u ham xuddi shu (jonli) data.db
-    # faylini ko'rishi SHART — aks holda yangi mijozlarning to'lov
-    # buyurtmalarini hech qachon topa olmaydi.
-    # try/except bilan o'ralgan: bu — QO'SHIMCHA (ixtiyoriy) xususiyat,
-    # undagi har qanday kutilmagan xato ASOSIY bot serverini yiqitmasligi
-    # SHART (nomzodlar va adminlar uchun bot ishlashda davom etishi kerak).
     try:
         from userbot import is_userbot_configured, start_userbot
 
@@ -423,8 +393,6 @@ def create_app() -> web.Application:
     app["background_tasks"] = set()
     app.on_shutdown.append(on_shutdown)
 
-    # Opaque route ID + Telegram secret-token. BotFather tokeni URL/access-logga
-    # hech qachon tushmaydi.
     handler = SecureMultiBotRequestHandler(
         dispatcher=dp,
         handle_in_background=True,

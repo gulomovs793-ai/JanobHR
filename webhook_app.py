@@ -401,9 +401,11 @@ def create_app() -> web.Application:
     handler.register(app, path=WEBHOOK_PATH)
     from founder_miniapp_api import register_founder_miniapp
     from miniapp_api import register_miniapp
+    from partner_miniapp_api import register_partner_miniapp
 
     register_miniapp(app)
     register_founder_miniapp(app)
+    register_partner_miniapp(app)
     app.router.add_get("/health", health)
     app.router.add_post("/internal/payment-notification", internal_payment_notification)
     setup_application(app, dp)

@@ -1,3 +1,4 @@
+# Triggered again to apply the source-level partner_bot.py startup guard.
 name: Hotfix partner startup guard
 
 on:

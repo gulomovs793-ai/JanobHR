@@ -329,6 +329,20 @@ async def on_startup(app: web.Application):
         except Exception:
             logger.exception("Founder Bot webhookini ornatib bolmadi.")
 
+    # Hamkor bot shu web service ichida alohida background polling sifatida
+    # ishlaydi. Bu payout arizalari va eslatmalari aynan jonli /data/data.db
+    # bilan ishlashi uchun kerak; alohida xizmat bo'lsa, baza ajralib qoladi.
+    try:
+        from partner_bot import PARTNER_BOT_TOKEN, main as partner_bot_main
+
+        if PARTNER_BOT_TOKEN:
+            _spawn_background_task(app, partner_bot_main())
+            logger.info("Janob HR Partner Bot background task ishga tushirildi.")
+        else:
+            logger.info("PARTNER_BOT_TOKEN sozlanmagan — Partner Bot o'tkazib yuborildi.")
+    except Exception:
+        logger.exception("Partner Bot background task ishga tushmadi — asosiy web server davom etadi.")
+
     # To'lovlarni avtomatik aniqlovchi userbot — ALOHIDA Render xizmati
     # sifatida EMAS, balki shu jarayon ichida fon vazifasi (background task)
     # sifatida ishga tushiriladi. Sabab: u ham xuddi shu (jonli) data.db
@@ -396,6 +410,10 @@ async def internal_payment_notification(request: web.Request) -> web.Response:
     return web.json_response(result)
 
 
+async def health(request: web.Request) -> web.Response:
+    return web.json_response({"ok": True})
+
+
 def create_app() -> web.Application:
     global _SECURE_WEBHOOK_HANDLER
 
@@ -418,6 +436,7 @@ def create_app() -> web.Application:
 
     register_miniapp(app)
     register_founder_miniapp(app)
+    app.router.add_get("/health", health)
     app.router.add_post("/internal/payment-notification", internal_payment_notification)
     setup_application(app, dp)
 

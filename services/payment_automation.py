@@ -488,9 +488,14 @@ async def handle_payment_notification(
                 f"{pdb.format_uzs(partner_sale['commission_amount'])}"
             )
             if partner_sale.get("promo_code"):
+                discount_label = (
+                    f"{pdb.format_uzs(partner_sale.get('discount_value') or partner_sale.get('discount_amount') or 0)}"
+                    if partner_sale.get("discount_type") == "amount"
+                    else f"{partner_sale.get('discount_percent', 0)}%"
+                )
                 partner_note += (
                     f"\nPromo: {partner_sale['promo_code']} "
-                    f"(-{partner_sale['discount_percent']}%)"
+                    f"(-{discount_label})"
                 )
         except Exception:
             partner_note = "\n\n🤝 Partner komissiyasi yozildi."

@@ -1,0 +1,1 @@
+Partner Mini App rebuilt from scratch on 2026-09-07. UI: Apple-like compact Telegram WebApp. Routes: /partner and /api/partner-miniapp/*.

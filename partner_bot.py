@@ -163,7 +163,6 @@ def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             # 1) Overview: the partner's personal workspace and key numbers.
-            [partner_panel_button()],
             [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
             # 2) Acquisition tools: bring a client and configure the offer.
             [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],

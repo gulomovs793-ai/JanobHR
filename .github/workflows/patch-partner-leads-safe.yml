@@ -1,0 +1,74 @@
+name: Patch partner leads privacy view
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/patch-partner-leads-safe.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+      - name: Patch partner leads backend and UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('services/partner_database.py')
+          s = p.read_text(encoding='utf-8')
+          old = '''            "SELECT bl.company_name, bl.contact_name, bl.status, bl.tenant_id, "
+            "bl.created_at, bl.updated_at, "
+            "COALESCE(bl.partner_id, pta.partner_id) AS attributed_partner_id "
+            "FROM business_leads bl "
+            "LEFT JOIN partner_tenant_attributions pta ON pta.tenant_id=bl.tenant_id "
+            "WHERE bl.partner_id=? OR pta.partner_id=? "
+            "ORDER BY bl.updated_at DESC, bl.id DESC LIMIT ?",'''
+          new = '''            "SELECT bl.company_name, bl.status, bl.tenant_id, "
+            "bl.created_at, bl.updated_at, "
+            "COALESCE(bl.partner_id, pta.partner_id) AS attributed_partner_id, "
+            "COALESCE(pta.source, 'referral_link') AS source, "
+            "(SELECT ppa.plan_code FROM partner_payment_attributions ppa "
+            " WHERE ppa.tenant_id=bl.tenant_id AND ppa.partner_id=? "
+            " ORDER BY ppa.id DESC LIMIT 1) AS plan_code, "
+            "(SELECT ppa.commission_amount FROM partner_payment_attributions ppa "
+            " WHERE ppa.tenant_id=bl.tenant_id AND ppa.partner_id=? AND ppa.status='approved' "
+            " ORDER BY ppa.id DESC LIMIT 1) AS commission_amount "
+            "FROM business_leads bl "
+            "LEFT JOIN partner_tenant_attributions pta ON pta.tenant_id=bl.tenant_id "
+            "WHERE bl.partner_id=? OR pta.partner_id=? "
+            "ORDER BY bl.updated_at DESC, bl.id DESC LIMIT ?",'''
+          if old not in s:
+              raise SystemExit('backend query target not found')
+          s = s.replace(old, new, 1)
+          s = s.replace('(partner_id, partner_id, limit),', '(partner_id, partner_id, partner_id, partner_id, limit),', 1)
+          s = s.replace('''            "contact_name": row["contact_name"] or "",
+            "status": row["status"] or "new",''', '''            "status": row["status"] or "new",
+            "source": row["source"] or "referral_link",
+            "plan_code": row["plan_code"] or "",
+            "commission_amount": int(row["commission_amount"] or 0),''', 1)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('partner_miniapp/app.js')
+          s = p.read_text(encoding='utf-8')
+          old = '''      const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('uz-UZ', {day:'2-digit', month:'short'}) : '';
+      return `<div class="lead-row"><div><b>${item.company_name || 'Noma’lum kompaniya'}</b><small>${item.contact_name || 'Biznes egasi'}${date ? ` · ${date}` : ''}</small></div><span class="lead-status">${item.status_label || '🆕 Yangi'}</span></div>`;'''
+          new = '''      const date = item.created_at ? new Date(item.created_at).toLocaleDateString('uz-UZ', {day:'2-digit', month:'short'}) : '';
+      const source = item.source === 'promo_code' ? 'Promo orqali' : 'Referral orqali';
+      const plan = item.plan_code ? item.plan_code.toUpperCase() : '';
+      const commission = Number(item.commission_amount || 0);
+      const earning = plan && commission > 0 ? `<small><b>${plan}</b> → sizga <b>${commission.toLocaleString('uz-UZ')} UZS</b></small>` : '';
+      return `<div class="lead-row"><div><b>${item.company_name || 'Noma’lum kompaniya'}</b><small>${source}${date ? ` · ${date}` : ''}</small>${earning}</div><span class="lead-status">${item.status_label || '🆕 Yangi'}</span></div>`;'''
+          if old not in s:
+              raise SystemExit('frontend lead renderer target not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Commit and push multi-tenant
+        run: |
+          git config user.name "chatgpt-automation"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/partner_database.py partner_miniapp/app.js
+          git commit -m "feat: show privacy-safe partner lead details [skip ci]"
+          git push origin HEAD:multi-tenant

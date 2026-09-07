@@ -646,3 +646,25 @@ async def get_partner_stats(partner_id: int) -> dict:
             "promo_orders": int(promo["promo_orders"] or 0),
             "promo_sales": int(promo["promo_sales"] or 0),
         }
+
+
+async def get_partner_activity(partner_id: int, limit: int = 20) -> list[dict]:
+    """Return the partner's recent events without exposing private IDs."""
+    await init_partner_db()
+    limit = max(1, min(int(limit or 20), 50))
+    labels = {"click": "Yangi referral", "trial": "Sinov boshlandi", "sale": "Sotuv tasdiqlandi"}
+    icons = {"click": "🆕", "trial": "💬", "sale": "✅"}
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT event_type, plan_code, amount, commission_amount, created_at "
+            "FROM partner_referral_events WHERE partner_id=? "
+            "ORDER BY created_at DESC, id DESC LIMIT ?", (partner_id, limit)
+        )
+        rows = await cur.fetchall()
+    return [{
+        "type": row["event_type"], "label": labels.get(row["event_type"], "Faoliyat"),
+        "icon": icons.get(row["event_type"], "•"), "plan_code": row["plan_code"] or "",
+        "amount": int(row["amount"] or 0), "commission": int(row["commission_amount"] or 0),
+        "created_at": row["created_at"],
+    } for row in rows]

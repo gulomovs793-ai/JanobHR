@@ -11,9 +11,14 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
-from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
+from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, PARTNER_BOT_TOKEN
 from services import partner_database as pdb
 from services import partner_payouts
 
@@ -123,7 +128,7 @@ def _founder_payout_message(request: dict, *, title: str = "💸 Hamkor pul yech
     receipt_username = escape(str(receipt_username))
     if receipt_username and not receipt_username.startswith("@"):
         receipt_username = "@" + receipt_username
-    username = escape(request.get("partner_username") or "")
+    username = escape(str(request.get("partner_username") or "").lstrip("@"))
     phone = escape(request.get("partner_phone") or "")
 
     return (
@@ -149,16 +154,19 @@ def _founder_payout_message(request: dict, *, title: str = "💸 Hamkor pul yech
     )
 
 
-async def _notify_founders_about_payout(_source_bot: Bot | None, request: dict, *, title: str) -> None:
+async def _notify_founders_about_payout(
+    _source_bot: Bot | None, request: dict, *, title: str
+) -> bool:
     """Send payout notifications from Founder Bot, never Partner Bot."""
-    if not FOUNDER_BOT_TOKEN:
+    if not FOUNDER_BOT_TOKEN or not FOUNDER_USER_IDS:
         logger.error("Payout notification yuborilmadi: FOUNDER_BOT_TOKEN sozlanmagan.")
-        return
+        return False
     founder_bot = Bot(
         token=FOUNDER_BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     text = _founder_payout_message(request, title=title)
+    sent_any = False
     try:
         for founder_id in FOUNDER_USER_IDS:
             try:
@@ -167,10 +175,65 @@ async def _notify_founders_about_payout(_source_bot: Bot | None, request: dict, 
                     text,
                     reply_markup=_payout_action_keyboard(int(request["id"])),
                 )
+                sent_any = True
             except Exception:
                 logger.exception("Founder Botga payout xabari yuborilmadi: %s", founder_id)
     finally:
         await founder_bot.session.close()
+    return sent_any
+
+
+async def notify_founders_about_payout(
+    request: dict, *, title: str = "💸 Hamkor pul yechish arizasi"
+) -> bool:
+    """Expose the Founder Bot notification for the Mini App API as well."""
+    return await _notify_founders_about_payout(None, request, title=title)
+
+
+def _partner_paid_message(request: dict) -> str:
+    card = str(request.get("payout_card_number") or "")
+    masked_card = f"**** {card[-4:]}" if len(card) >= 4 else "—"
+    return (
+        "✅ Pul yechish arizangiz muvaffaqiyatli o'tkazildi.\n\n"
+        f"Ariza: <b>#{request['id']}</b>\n"
+        f"Qabul qiluvchi: <b>{escape(request.get('payout_full_name') or request.get('partner_name') or '—')}</b>\n"
+        f"Karta: <code>{masked_card}</code>\n"
+        f"O'tkazilgan summa: <b>{pdb.format_uzs(request['total_amount'])}</b>\n\n"
+        "🧾 To'lov tasdig'i chek sifatida yuborildi.\n"
+        "Hamkorligingiz uchun rahmat! Shu tartibda ishlashda davom eting."
+    )
+
+
+async def _notify_partner_about_payout(request: dict, text: str) -> bool:
+    """Notify the partner through Partner Bot, even when Founder Bot handled the click."""
+    if not PARTNER_BOT_TOKEN or not request.get("partner_telegram_user_id"):
+        logger.error("Partner payout xabari yuborilmadi: Partner Bot sozlanmagan.")
+        return False
+    partner_bot = Bot(
+        token=PARTNER_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    try:
+        await partner_bot.send_message(int(request["partner_telegram_user_id"]), text)
+        return True
+    except Exception:
+        logger.exception("Partnerga payout xabari yuborilmadi: %s", request.get("id"))
+        return False
+    finally:
+        await partner_bot.session.close()
+
+
+def _callback_request_id(data: str | None, prefix: str) -> int | None:
+    if not isinstance(data, str) or not data.startswith(prefix):
+        return None
+    raw_id = data[len(prefix) :]
+    if not raw_id.isdecimal():
+        return None
+    try:
+        request_id = int(raw_id)
+    except (TypeError, ValueError):
+        return None
+    return request_id if request_id > 0 else None
 
 
 @payout_router.message(F.text == "💸 Pul yechish")
@@ -274,6 +337,16 @@ async def payout_receipt_username(message: Message, state: FSMContext) -> None:
         len(result.get("items") or []),
     )
 
+    founder_notified = await _notify_founders_about_payout(
+        message.bot, result, title="💸 Hamkor pul yechish arizasi"
+    )
+    if founder_notified:
+        await partner_payouts.mark_payout_notified(int(result["id"]), first=True)
+    notification_text = (
+        "Founder Botga tafsilotlar bilan yuborildi."
+        if founder_notified
+        else "⚠️ Founder Botga avtomatik notification yuborilmadi; admin sozlamani tekshiradi."
+    )
     await message.answer(
         f"✅ Pul yechish arizangiz yuborildi.\n\n"
         f"Ariza: <b>#{result['id']}</b>\n"
@@ -281,10 +354,8 @@ async def payout_receipt_username(message: Message, state: FSMContext) -> None:
         f"Kechikish bonusi hozircha: <b>{pdb.format_uzs(result['bonus_amount'])}</b>\n"
         f"Aniq o'tkazma: <b>{pdb.format_uzs(result['total_amount'])}</b>\n"
         f"To'lov kuni: <b>{result['payout_due_date']}</b>\n\n"
-        "Founder Botga tafsilotlar bilan yuborildi. Sana o'tsa, kechikish bonusi real vaqtda qayta hisoblanadi."
+        f"{notification_text} Sana o'tsa, kechikish bonusi real vaqtda qayta hisoblanadi."
     )
-    await _notify_founders_about_payout(message.bot, result, title="💸 Hamkor pul yechish arizasi")
-    await partner_payouts.mark_payout_notified(int(result["id"]), first=True)
 
 
 @payout_router.callback_query(F.data.startswith("payout_paid:"))
@@ -293,7 +364,10 @@ async def payout_paid(callback: CallbackQuery) -> None:
     if callback.from_user.id not in FOUNDER_USER_IDS:
         await callback.answer("Ruxsat yo'q", show_alert=True)
         return
-    request_id = int(callback.data.split(":", 1)[1])
+    request_id = _callback_request_id(callback.data, "payout_paid:")
+    if request_id is None:
+        await callback.answer("Ariza identifikatori noto'g'ri.", show_alert=True)
+        return
     request = await partner_payouts.set_payout_request_status(
         request_id, "paid", decided_by=callback.from_user.id
     )
@@ -313,22 +387,24 @@ async def payout_paid(callback: CallbackQuery) -> None:
         f"✅ Payout #{request_id} to'landi deb belgilandi.\n"
         f"Jami: <b>{pdb.format_uzs(request['total_amount'])}</b>"
     )
-    try:
-        card = str(request.get("payout_card_number") or "")
-        masked_card = f"**** {card[-4:]}" if len(card) >= 4 else "—"
-        await callback.bot.send_message(
-            int(request["partner_telegram_user_id"]),
-            f"✅ Pul yechish arizangiz muvaffaqiyatli o'tkazildi.\n\n"
-            f"Ariza: <b>#{request_id}</b>\n"
-            f"Qabul qiluvchi: <b>{escape(request.get('payout_full_name') or request.get('partner_name') or '—')}</b>\n"
-            f"Karta: <code>{masked_card}</code>\n"
-            f"O'tkazilgan summa: <b>{pdb.format_uzs(request['total_amount'])}</b>\n\n"
-            "🧾 To'lov tasdig'i chek sifatida yuborildi.\n"
-            "Hamkorligingiz uchun rahmat! Shu tartibda ishlashda davom eting.",
+    claimed = await partner_payouts.claim_paid_payout_notification(
+        request_id, retry_after_seconds=0
+    )
+    partner_notified = False
+    if claimed:
+        partner_notified = await _notify_partner_about_payout(
+            claimed, _partner_paid_message(claimed)
         )
-    except Exception:
-        logger.exception("Partnerga payout paid xabari yuborilmadi: %s", request_id)
-    await callback.answer("To'landi")
+        await partner_payouts.mark_partner_payout_notified(
+            request_id,
+            error=None if partner_notified else "Partner Bot orqali xabar yuborilmadi",
+        )
+    await callback.answer(
+        "To'landi va partnerga xabar yuborildi."
+        if partner_notified
+        else "To'landi. Partner xabari recovery orqali qayta yuboriladi.",
+        show_alert=not partner_notified,
+    )
 
 
 @payout_router.callback_query(F.data.startswith("payout_reject:"))
@@ -337,7 +413,10 @@ async def payout_reject(callback: CallbackQuery) -> None:
     if callback.from_user.id not in FOUNDER_USER_IDS:
         await callback.answer("Ruxsat yo'q", show_alert=True)
         return
-    request_id = int(callback.data.split(":", 1)[1])
+    request_id = _callback_request_id(callback.data, "payout_reject:")
+    if request_id is None:
+        await callback.answer("Ariza identifikatori noto'g'ri.", show_alert=True)
+        return
     request = await partner_payouts.set_payout_request_status(
         request_id, "rejected", decided_by=callback.from_user.id
     )
@@ -353,17 +432,24 @@ async def payout_reject(callback: CallbackQuery) -> None:
     )
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(f"❌ Payout #{request_id} rad etildi.")
-    try:
-        await callback.bot.send_message(
-            int(request["partner_telegram_user_id"]),
-            f"❌ Pul yechish arizangiz rad etildi.\n\nAriza: <b>#{request_id}</b>\nSavol bo'lsa shu chatga yozing.",
-        )
-    except Exception:
-        logger.exception("Partnerga payout reject xabari yuborilmadi: %s", request_id)
-    await callback.answer("Rad etildi")
+    partner_notified = await _notify_partner_about_payout(
+        request,
+        f"❌ Pul yechish arizangiz rad etildi.\n\nAriza: <b>#{request_id}</b>\nSavol bo'lsa shu chatga yozing.",
+    )
+    await callback.answer(
+        "Rad etildi" if partner_notified else "Rad etildi, partnerga xabar yuborilmadi.",
+        show_alert=not partner_notified,
+    )
 
 
-async def run_payout_reminders(bot: Bot, interval_seconds: int = 3600) -> None:
+async def run_payout_reminders(
+    _source_bot: Bot | None = None, interval_seconds: int = 3600
+) -> None:
+    """Remind founders from the shared webhook service.
+
+    ``_source_bot`` remains an optional compatibility argument for the old
+    polling entry point; notifications are always sent through Founder Bot.
+    """
     await asyncio.sleep(20)
     while True:
         try:
@@ -377,8 +463,24 @@ async def run_payout_reminders(bot: Bot, interval_seconds: int = 3600) -> None:
                     request["delay_days"],
                     request["payout_due_date"],
                 )
-                await _notify_founders_about_payout(bot, request, title="⏰ Hamkor payout eslatmasi")
-                await partner_payouts.mark_payout_notified(int(request["id"]))
+                notified = await _notify_founders_about_payout(
+                    _source_bot, request, title="⏰ Hamkor payout eslatmasi"
+                )
+                if notified:
+                    await partner_payouts.mark_payout_notified(int(request["id"]))
+            for request in await partner_payouts.list_paid_payouts_needing_partner_notification():
+                claimed = await partner_payouts.claim_paid_payout_notification(
+                    int(request["id"])
+                )
+                if not claimed:
+                    continue
+                notified = await _notify_partner_about_payout(
+                    claimed, _partner_paid_message(claimed)
+                )
+                await partner_payouts.mark_partner_payout_notified(
+                    int(claimed["id"]),
+                    error=None if notified else "Partner Bot orqali xabar yuborilmadi",
+                )
         except asyncio.CancelledError:
             raise
         except Exception:

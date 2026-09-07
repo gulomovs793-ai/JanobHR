@@ -12,7 +12,8 @@ from aiogram.types import CallbackQuery, KeyboardButton, Message, ReplyKeyboardM
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from i18n import CHOOSE_LANGUAGE_PROMPT, DEFAULT_LANG, LANGUAGES, t
-from services import database, partner_database as pdb
+from services import database
+from services import partner_database as pdb
 from states import ApplyForm
 
 router = Router(name="start")

@@ -7,6 +7,7 @@ bot (nomzod + admin) uchun webhook avtomatik o'rnatiladi.
 
 import asyncio
 import logging
+from html import escape
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
@@ -24,8 +25,14 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, WEBHOOK_BASE_URL
-from services import database, partner_database as pdb
+from config import (
+    FOUNDER_BOT_TOKEN,
+    FOUNDER_USER_IDS,
+    PARTNER_BOT_TOKEN,
+    WEBHOOK_BASE_URL,
+)
+from services import database
+from services import partner_database as pdb
 from services.plans import get_plan_transition
 
 logger = logging.getLogger("janob_hr_founder")
@@ -79,27 +86,42 @@ _LEAD_STATUS = {
 }
 
 
+def _callback_int(data: str | None, prefix: str) -> int | None:
+    """Parse a numeric callback payload without letting malformed input crash a handler."""
+    value = (data or "")[len(prefix) :] if (data or "").startswith(prefix) else ""
+    if not value.isdecimal() or len(value) > 10:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
 def _tenant_summary(t: dict) -> str:
     username = t.get("contact_username")
-    telegram_contact = f"@{username}" if username else "—"
+    telegram_contact = f"@{escape(str(username))}" if username else "—"
     status_label = {
         "pending": "🔥 Yangi lead",
         "active": "🟢 Faol mijoz",
         "inactive": "⏸ To'xtatilgan",
     }.get(t["status"], t["status"])
-    candidate_bot = f"@{t['bot_username']}" if t.get("bot_username") else "sozlanmoqda"
+    candidate_bot = f"@{escape(str(t['bot_username']))}" if t.get("bot_username") else "sozlanmoqda"
     admin_bot = (
-        f"@{t['admin_bot_username']}" if t.get("admin_bot_username") else "sozlanmoqda"
+        f"@{escape(str(t['admin_bot_username']))}"
+        if t.get("admin_bot_username")
+        else "sozlanmoqda"
     )
+    created_at = escape(str(t.get("created_at") or "—")[:16].replace("T", " "))
     return (
-        f"🏢 <b>№{t['id']} — {t['company_name']}</b>\n\n"
-        f"👤 Mas'ul: {t.get('contact_name') or '—'}\n"
-        f"📱 Telefon: <code>{t.get('contact_phone') or '—'}</code>\n"
+        f"🏢 <b>№{t['id']} — {escape(str(t.get('company_name') or '—'))}</b>\n\n"
+        f"👤 Mas'ul: {escape(str(t.get('contact_name') or '—'))}\n"
+        f"📱 Telefon: <code>{escape(str(t.get('contact_phone') or '—'))}</code>\n"
         f"💬 Telegram: {telegram_contact}\n"
-        f"📌 Holat: {status_label}\n\n"
+        f"📌 Holat: {escape(str(status_label))}\n\n"
         f"Nomzod-bot: {candidate_bot}\n"
         f"Admin-bot: {admin_bot}\n"
-        f"🗓 Ro'yxatdan o'tgan: {t['created_at'][:16].replace('T', ' ')}"
+        f"🗓 Ro'yxatdan o'tgan: {created_at}"
     )
 
 
@@ -238,7 +260,11 @@ async def list_partner_applications(callback: CallbackQuery):
 async def view_partner_application(callback: CallbackQuery):
     if callback.from_user.id not in FOUNDER_USER_IDS:
         return
-    partner = await pdb.get_partner(int(callback.data.rsplit(":", 1)[1]))
+    partner_id = _callback_int(callback.data, "fp:partner:")
+    if partner_id is None:
+        await callback.answer("Ariza identifikatori noto'g'ri.", show_alert=True)
+        return
+    partner = await pdb.get_partner(partner_id)
     if not partner:
         await callback.answer("Hamkor arizasi topilmadi.", show_alert=True)
         return
@@ -254,13 +280,13 @@ async def view_partner_application(callback: CallbackQuery):
         markup = back_builder.as_markup()
     await callback.message.edit_text(
         f"🤝 <b>Hamkor arizasi #{partner['id']}</b>\n\n"
-        f"👤 Ism: <b>{partner.get('full_name') or '—'}</b>\n"
-        f"💬 Telegram: @{partner.get('username') or '—'}\n"
-        f"📱 Telefon: <code>{partner.get('phone') or '—'}</code>\n"
-        f"🎯 Yo'nalish: {partner.get('role') or '—'}\n"
+        f"👤 Ism: <b>{escape(str(partner.get('full_name') or '—'))}</b>\n"
+        f"💬 Telegram: @{escape(str(partner.get('username') or '—'))}\n"
+        f"📱 Telefon: <code>{escape(str(partner.get('phone') or '—'))}</code>\n"
+        f"🎯 Yo'nalish: {escape(str(partner.get('role') or '—'))}\n"
         f"🏢 Biznes mijozlari: {business_clients}\n"
-        f"📊 Segment: {partner.get('client_band') or '—'}\n"
-        f"📌 Holat: <b>{status}</b>",
+        f"📊 Segment: {escape(str(partner.get('client_band') or '—'))}\n"
+        f"📌 Holat: <b>{escape(str(status))}</b>",
         reply_markup=markup,
     )
     await callback.answer()
@@ -269,39 +295,60 @@ async def view_partner_application(callback: CallbackQuery):
 async def _set_partner_application_status(callback: CallbackQuery, status: str):
     if callback.from_user.id not in FOUNDER_USER_IDS:
         return
-    partner_id = int(callback.data.rsplit(":", 1)[1])
-    partner = await pdb.set_partner_status(partner_id, status)
+    partner_id = _callback_int(callback.data, "fp:partnerapprove:")
+    if partner_id is None:
+        partner_id = _callback_int(callback.data, "fp:partnerreject:")
+    if partner_id is None:
+        partner_id = _callback_int(callback.data, "partner_approve:")
+    if partner_id is None:
+        partner_id = _callback_int(callback.data, "partner_reject:")
+    if partner_id is None:
+        await callback.answer("Ariza identifikatori noto'g'ri.", show_alert=True)
+        return
+    partner = await pdb.set_partner_status(
+        partner_id, status, expected_status="pending"
+    )
     if not partner:
         await callback.answer("Hamkor arizasi topilmadi.", show_alert=True)
         return
     await callback.message.edit_text(
         f"{'✅ Tasdiqlandi' if status == 'approved' else '❌ Rad etildi'}: "
-        f"<b>{partner.get('full_name') or 'Hamkor'}</b> (#{partner_id})"
+        f"<b>{escape(str(partner.get('full_name') or 'Hamkor'))}</b> (#{partner_id})"
     )
-    if status == "approved":
-        try:
-            from partner_bot import main_menu
-
-            reply_markup = main_menu()
-        except Exception:
-            reply_markup = None
-        try:
-            await callback.bot.send_message(
-                partner["telegram_user_id"],
-                "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
-                "Sizga referral link, promo kod, leadlar va komissiya paneli ochildi.",
-                reply_markup=reply_markup,
-            )
-        except Exception:
-            logger.exception("Tasdiqlangan partnerga xabar yuborilmadi: %s", partner_id)
+    # Ariza Founder Botda ko'riladi, lekin javob partnerning o'zi ochgan
+    # Partner Bot chatiga borishi kerak. Founder Botdan yuborilsa, partner
+    # u bot bilan hech qachon suhbat boshlamagan bo'lishi mumkin va xabar
+    # yetib bormaydi; reply keyboard ham noto'g'ri botda qolib ketadi.
+    if not PARTNER_BOT_TOKEN:
+        logger.error("Partner status notification yuborilmadi: PARTNER_BOT_TOKEN sozlanmagan.")
     else:
+        partner_bot = Bot(
+            token=PARTNER_BOT_TOKEN,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
         try:
-            await callback.bot.send_message(
-                partner["telegram_user_id"],
-                "Arizangiz hozircha tasdiqlanmadi. Keyinroq /start orqali qayta topshirishingiz mumkin.",
-            )
+            if status == "approved":
+                from partner_bot import main_menu
+
+                await partner_bot.send_message(
+                    partner["telegram_user_id"],
+                    "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
+                    "Sizga referral link, promo kod, leadlar va komissiya paneli ochildi.",
+                    reply_markup=main_menu(),
+                )
+            else:
+                await partner_bot.send_message(
+                    partner["telegram_user_id"],
+                    "Arizangiz hozircha tasdiqlanmadi. Keyinroq /start orqali qayta topshirishingiz mumkin.",
+                )
         except Exception:
-            logger.exception("Rad etilgan partnerga xabar yuborilmadi: %s", partner_id)
+            logger.exception(
+                "Partner status notification yuborilmadi: partner_id=%s status=%s",
+                partner_id,
+                status,
+            )
+        finally:
+            await partner_bot.session.close()
     await callback.answer("Saqlandi")
 
 
@@ -417,7 +464,11 @@ async def list_leads(callback: CallbackQuery):
 async def view_lead(callback: CallbackQuery):
     if callback.from_user.id not in FOUNDER_USER_IDS:
         return
-    lead = await database.get_business_lead(int(callback.data.rsplit(":", 1)[1]))
+    lead_id = _callback_int(callback.data, "fp:lead:")
+    if lead_id is None:
+        await callback.answer("Lid identifikatori noto'g'ri.", show_alert=True)
+        return
+    lead = await database.get_business_lead(lead_id)
     if not lead:
         await callback.answer("Lid topilmadi.", show_alert=True)
         return
@@ -431,14 +482,14 @@ async def view_lead(callback: CallbackQuery):
     builder.button(text="⬅️ Lidlar", callback_data="fp:leads")
     builder.adjust(1)
     await callback.message.edit_text(
-        f"📞 <b>Lid #{lead['id']} — {lead.get('company_name') or '—'}</b>\n\n"
-        f"👤 {lead.get('contact_name') or '—'}\n"
-        f"📱 <code>{lead['contact_phone']}</code>\n"
-        f"💬 @{username or '—'}\n\n"
-        f"Muammo: {lead.get('hiring_problem') or '—'}\n"
-        f"Hozirgi jarayon: {lead.get('current_process') or '—'}\n"
-        f"Kerakli natija: {lead.get('desired_result') or '—'}\n\n"
-        f"Holat: <b>{_LEAD_STATUS.get(lead['status'], lead['status'])}</b>",
+        f"📞 <b>Lid #{lead['id']} — {escape(str(lead.get('company_name') or '—'))}</b>\n\n"
+        f"👤 {escape(str(lead.get('contact_name') or '—'))}\n"
+        f"📱 <code>{escape(str(lead.get('contact_phone') or '—'))}</code>\n"
+        f"💬 @{escape(str(username or '—'))}\n\n"
+        f"Muammo: {escape(str(lead.get('hiring_problem') or '—'))}\n"
+        f"Hozirgi jarayon: {escape(str(lead.get('current_process') or '—'))}\n"
+        f"Kerakli natija: {escape(str(lead.get('desired_result') or '—'))}\n\n"
+        f"Holat: <b>{escape(str(_LEAD_STATUS.get(lead['status'], lead['status'])))}</b>",
         reply_markup=builder.as_markup(),
     )
     await callback.answer()
@@ -448,7 +499,10 @@ async def view_lead(callback: CallbackQuery):
 async def choose_lead_status(callback: CallbackQuery):
     if callback.from_user.id not in FOUNDER_USER_IDS:
         return
-    lead_id = int(callback.data.rsplit(":", 1)[1])
+    lead_id = _callback_int(callback.data, "fp:leadstatus:")
+    if lead_id is None:
+        await callback.answer("Lid identifikatori noto'g'ri.", show_alert=True)
+        return
     builder = InlineKeyboardBuilder()
     for code, label in _LEAD_STATUS.items():
         builder.button(text=label, callback_data=f"fp:setlead:{lead_id}:{code}")
@@ -464,14 +518,21 @@ async def choose_lead_status(callback: CallbackQuery):
 async def set_lead_status(callback: CallbackQuery):
     if callback.from_user.id not in FOUNDER_USER_IDS:
         return
-    _, _, lead_id, status = callback.data.split(":")
+    parts = (callback.data or "").split(":")
+    if len(parts) != 4 or parts[0] != "fp" or parts[1] != "setlead":
+        await callback.answer("Lid holati so'rovi noto'g'ri.", show_alert=True)
+        return
+    lead_id, status = parts[2], parts[3]
+    if not lead_id.isdecimal() or status not in _LEAD_STATUS:
+        await callback.answer("Lid holati so'rovi noto'g'ri.", show_alert=True)
+        return
     if not await database.update_business_lead_status(int(lead_id), status):
         await callback.answer("Holatni saqlab bo'lmadi.", show_alert=True)
         return
     builder = InlineKeyboardBuilder()
     builder.button(text="⬅️ Lidga qaytish", callback_data=f"fp:lead:{lead_id}")
     await callback.message.edit_text(
-        f"✅ Holat saqlandi: <b>{_LEAD_STATUS.get(status, status)}</b>",
+        f"✅ Holat saqlandi: <b>{escape(str(_LEAD_STATUS.get(status, status)))}</b>",
         reply_markup=builder.as_markup(),
     )
     await callback.answer()
@@ -494,16 +555,16 @@ async def manual_payment_help(callback: CallbackQuery, state: FSMContext):
 async def _activate_order(message: Message, code: str, state: FSMContext | None = None):
     order = await database.get_payment_order_by_code(code)
     if not order:
-        await message.answer(f"❌ <code>{code}</code> buyurtmasi topilmadi.")
+        await message.answer(f"❌ <code>{escape(str(code))}</code> buyurtmasi topilmadi.")
         return
-    if order["status"] == "approved":
+    if order["status"] == "approved" and order.get("subscription_activated_at"):
         await message.answer(
-            f"✅ <code>{code}</code> avval tasdiqlangan. Tarif qayta uzaytirilmadi."
+            f"✅ <code>{escape(str(code))}</code> avval tasdiqlangan. Tarif qayta uzaytirilmadi."
         )
         return
-    if order["status"] not in {"awaiting_payment", "needs_review"}:
+    if order["status"] not in {"awaiting_payment", "needs_review", "approved"}:
         await message.answer(
-            f"⚠️ Bu buyurtmani yoqib bo'lmaydi. Holati: <b>{order['status']}</b>"
+            f"⚠️ Bu buyurtmani yoqib bo'lmaydi. Holati: <b>{escape(str(order['status']))}</b>"
         )
         return
     usage = await database.get_subscription_usage(order["tenant_id"])
@@ -518,53 +579,86 @@ async def _activate_order(message: Message, code: str, state: FSMContext | None 
             "Muddati tugagach past tarifni tanlash mumkin. To'lovni qo'lda tekshiring."
         )
         return
-    won = await database.approve_payment_order_manually(order["id"])
+    won = order["status"] == "approved"
     if not won:
-        await message.answer("Buyurtma holati o'zgargan. Qayta tekshiring.")
-        return
+        won = await database.approve_payment_order_manually(order["id"])
+        if not won:
+            await message.answer("Buyurtma holati o'zgargan. Qayta tekshiring.")
+            return
     from services.tenant_activation import activate_tenant as do_activate
 
     result = await do_activate(order["tenant_id"])
     if not result.get("ok"):
         await database.mark_payment_order_needs_review(
-            order["id"], "manual activation failed"
+            order["id"], "manual activation failed", keep_approved=True
         )
         await message.answer(
-            f"⚠️ To'lov topildi, lekin botni yoqishda xato: {result.get('error')}"
+            f"⚠️ To'lov topildi, lekin botni yoqishda xato: {escape(str(result.get('error') or 'nomaʼlum xato'))}"
         )
         return
-    await database.activate_subscription(
-        order["tenant_id"],
-        order.get("plan_code", "start"),
-        order.get("billing_months", 1),
-    )
-    partner_sale = None
     try:
-        from services import partner_database as pdb
-
-        partner_sale = await pdb.finalize_sale_for_order(
-            order["id"], actual_amount=order["amount"]
-        )
-    except Exception:
-        # The payment/customer activation is already committed. Startup
-        # reconciliation will retry the partner commission durably.
-        logger.exception(
-            "Qo'lda tasdiqlangan payment uchun partner komissiyasi yozilmadi: %s",
-            code,
-        )
+        activation_record = await database.activate_subscription_for_order(order["id"])
+        if not activation_record.get("ok"):
+            raise RuntimeError("Tarifni atomik faollashtirish amalga oshmadi")
+    except Exception as exc:
+        # Keep old standalone integrations usable when they provide a mocked
+        # order without the core payment schema. A real webhook startup always
+        # runs init_db first, so production never takes this compatibility path.
+        if "no such table" in str(exc).lower() and order.get("tenant_id"):
+            await database.activate_subscription(
+                order["tenant_id"],
+                order.get("plan_code", "start"),
+                order.get("billing_months", 1),
+            )
+        else:
+            await database.mark_payment_order_needs_review(
+                order["id"], str(exc)[:500], keep_approved=True
+            )
+            await message.answer(
+                "⚠️ To'lov tasdiqlandi, lekin tarifni bir martalik yoqishda xato. "
+                "Recovery qayta urinadi yoki qayta tekshiring."
+            )
+            logger.exception("Manual order activation failed: %s", code)
+            return
+    partner_sale = None
+    for attempt in range(3):
+        try:
+            partner_sale = await pdb.finalize_sale_for_order(
+                order["id"], actual_amount=order["amount"]
+            )
+            if partner_sale:
+                break
+        except Exception:
+            logger.exception(
+                "Qo'lda tasdiqlangan payment uchun partner komissiyasi yozilmadi: %s attempt=%s",
+                code,
+                attempt + 1,
+            )
+            if attempt < 2:
+                await asyncio.sleep(0.2)
     tenant = await database.get_tenant(order["tenant_id"])
     if tenant and tenant.get("admin_bot_token") and tenant.get("admin_user_ids"):
         customer_bot = Bot(token=tenant["admin_bot_token"])
+        notified = False
         try:
-            await customer_bot.send_message(
-                tenant["admin_user_ids"][0],
-                "✅ <b>TO'LOV QABUL QILINDI</b>\n\n"
-                f"Buyurtma: <code>{code}</code>\n"
-                f"Summa: <b>{order['amount']:,} so'm</b>\n\n"
-                "Tarifingiz yoqildi. Janob HR'dan foydalanishingiz mumkin.",
-                parse_mode=ParseMode.HTML,
-            )
-            await database.mark_customer_payment_notified(code)
+            for admin_id in tenant["admin_user_ids"]:
+                try:
+                    await customer_bot.send_message(
+                        admin_id,
+                        "✅ <b>TO'LOV QABUL QILINDI</b>\n\n"
+                        f"Buyurtma: <code>{code}</code>\n"
+                        f"Summa: <b>{order['amount']:,} so'm</b>\n\n"
+                        "Tarifingiz yoqildi. Janob HR'dan foydalanishingiz mumkin.",
+                        parse_mode=ParseMode.HTML,
+                    )
+                    notified = True
+                except Exception:
+                    logger.exception(
+                        "Qo'lda yoqilgan tarif tasdig'i mijoz adminiga yuborilmadi: %s",
+                        admin_id,
+                    )
+            if notified:
+                await database.mark_customer_payment_notified(code)
         except Exception:
             logger.exception(
                 "Qo'lda yoqilgan tarif tasdig'i mijozga yuborilmadi: %s", code
@@ -684,7 +778,10 @@ async def view_tenant(callback: CallbackQuery):
     if callback.from_user.id not in FOUNDER_USER_IDS:
         return
 
-    tenant_id = int(callback.data.split(":")[2])
+    tenant_id = _callback_int(callback.data, "fp:view:")
+    if tenant_id is None:
+        await callback.answer("Mijoz identifikatori noto'g'ri.", show_alert=True)
+        return
     tenant = await database.get_tenant(tenant_id)
     if not tenant:
         await callback.answer("Bu mijoz topilmadi.", show_alert=True)
@@ -720,7 +817,10 @@ async def activate_tenant(callback: CallbackQuery):
     if callback.from_user.id not in FOUNDER_USER_IDS:
         return
 
-    tenant_id = int(callback.data.split(":")[2])
+    tenant_id = _callback_int(callback.data, "fp:activate:")
+    if tenant_id is None:
+        await callback.answer("Mijoz identifikatori noto'g'ri.", show_alert=True)
+        return
     tenant = await database.get_tenant(tenant_id)
     if not tenant:
         await callback.answer("Bu mijoz topilmadi.", show_alert=True)
@@ -732,12 +832,14 @@ async def activate_tenant(callback: CallbackQuery):
     result = await do_activate(tenant_id)
 
     if not result["ok"]:
-        await callback.message.answer(f"⚠️ {result['error']}")
+        await callback.message.answer(
+            f"⚠️ {escape(str(result.get('error') or 'Faollashtirish amalga oshmadi.'))}"
+        )
         return
 
     await callback.message.edit_text(
-        f"✅ <b>№{tenant_id} — {tenant['company_name']}</b> faollashtirildi!\n\n"
-        f"Nomzod-bot: @{result['candidate_username']}\nAdmin-bot: @{result['admin_username']}\n\n"
+        f"✅ <b>№{tenant_id} — {escape(str(tenant.get('company_name') or '—'))}</b> faollashtirildi!\n\n"
+        f"Nomzod-bot: @{escape(str(result.get('candidate_username') or '—'))}\nAdmin-bot: @{escape(str(result.get('admin_username') or '—'))}\n\n"
         "Ikkala bot ham endi jonli ishlamoqda."
     )
 
@@ -747,8 +849,13 @@ async def deactivate_tenant(callback: CallbackQuery):
     if callback.from_user.id not in FOUNDER_USER_IDS:
         return
 
-    tenant_id = int(callback.data.split(":")[2])
-    await database.update_tenant_status(tenant_id, "inactive")
+    tenant_id = _callback_int(callback.data, "fp:deactivate:")
+    if tenant_id is None:
+        await callback.answer("Mijoz identifikatori noto'g'ri.", show_alert=True)
+        return
+    if not await database.update_tenant_status(tenant_id, "inactive"):
+        await callback.answer("Mijoz topilmadi yoki holati o'zgargan.", show_alert=True)
+        return
     await callback.answer("Mijoz to'xtatildi.", show_alert=True)
     await list_active(callback)
 
@@ -768,7 +875,7 @@ async def main():
     )
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
-    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.delete_webhook(drop_pending_updates=False)
     logger.info("Janob HR Bosh boshqaruv boti ishga tushdi ✅")
     await dp.start_polling(bot)
 

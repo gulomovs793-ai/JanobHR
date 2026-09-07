@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote
 
+import aiosqlite
 from aiogram import Bot
 from aiohttp import web
 from openpyxl import Workbook
@@ -27,6 +28,7 @@ from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER, WEBHOOK_BASE_URL
 from handlers.sell import send_slot_offer
 from i18n import DEFAULT_LANG, t
 from services import database
+from services import partner_database as pdb
 from services.ai_scoring import aggregate_scores, generate_questions
 from services.candidate_followup import notify_candidate_outcome
 from services.hiring_intelligence import (
@@ -368,7 +370,9 @@ async def update_interview_settings(request: web.Request):
     tenant, _ = await _authorize(request)
     try:
         body = await request.json()
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
+        raise web.HTTPBadRequest(text="Sozlamalar noto'g'ri.")
+    if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="Sozlamalar noto'g'ri.")
     limits = {
         "location_text": 240,
@@ -454,6 +458,8 @@ async def candidate_decision(request: web.Request):
         body = await request.json()
     except (ValueError, json.JSONDecodeError):
         raise web.HTTPBadRequest(text="Noto'g'ri so'rov.")
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest(text="Noto'g'ri so'rov.")
     action = body.get("action")
     if action not in {"accept", "save", "reject"}:
         raise web.HTTPBadRequest(text="Noto'g'ri qaror.")
@@ -515,6 +521,8 @@ async def candidate_outcome(request: web.Request):
         app_id = int(request.match_info["app_id"])
         body = await request.json()
     except (ValueError, json.JSONDecodeError):
+        raise web.HTTPBadRequest(text="Noto'g'ri so'rov.")
+    if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="Noto'g'ri so'rov.")
     outcome = body.get("outcome")
     if outcome not in {"hired", "not_hired", "no_show"}:
@@ -603,6 +611,8 @@ async def quick_setup(request: web.Request):
         body = await request.json()
     except (json.JSONDecodeError, TypeError):
         raise web.HTTPBadRequest(text="Onboarding ma'lumoti noto'g'ri.")
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest(text="Onboarding ma'lumoti noto'g'ri.")
     industry = str(body.get("industry") or "").strip()
     role = str(body.get("role_title") or "").strip()
     ideal = str(body.get("ideal_candidate") or "").strip()
@@ -627,15 +637,26 @@ async def quick_setup(request: web.Request):
     clean_slots = []
     for raw in raw_slots:
         if not isinstance(raw, dict):
-            continue
+            raise web.HTTPBadRequest(text="Suhbat vaqtlari noto'g'ri.")
         label = str(raw.get("label") or "").strip()[:80]
-        starts_at = _normalise_starts_at(raw.get("starts_at"))
+        starts_value = str(raw.get("starts_at") or "").strip()
+        # Empty rows are allowed in the optional slot editor, but a partially
+        # filled row must never disappear silently and leave a misleading
+        # onboarding result.
+        if not label and not starts_value:
+            continue
+        if not 3 <= len(label) <= 80 or not starts_value:
+            raise web.HTTPBadRequest(text="Suhbat vaqti nomi va vaqtini to'liq kiriting.")
+        starts_at = _normalise_starts_at(starts_value)
         try:
-            capacity = max(1, min(20, int(raw.get("capacity", 1))))
+            capacity = int(raw.get("capacity", 1))
         except (TypeError, ValueError):
-            capacity = 1
-        if label and starts_at:
-            clean_slots.append({"label": label, "starts_at": starts_at, "capacity": capacity})
+            raise web.HTTPBadRequest(text="Suhbat sig'imi noto'g'ri.")
+        if not 1 <= capacity <= 20:
+            raise web.HTTPBadRequest(text="Suhbat sig'imi 1–20 oralig'ida bo'lishi kerak.")
+        clean_slots.append({"label": label, "starts_at": starts_at, "capacity": capacity})
+
+    location = str(body.get("location_text") or "").strip()[:240] or None
 
     description = (
         f"Biznes sohasi: {industry}. Ideal xodim: {ideal}. "
@@ -649,10 +670,8 @@ async def quick_setup(request: web.Request):
         )
 
     stats = await database.get_overall_stats(tenant["id"])
-    if stats["total"] == 0:
-        await database.deactivate_empty_vacancies(tenant["id"])
-        await database.clear_unbooked_interview_slots(tenant["id"])
-    else:
+    is_empty_workspace = stats["total"] == 0
+    if not is_empty_workspace:
         usage = await database.get_subscription_usage(tenant["id"])
         if not usage["vacancies_available"]:
             raise web.HTTPPaymentRequired(text="Tarifdagi vakansiya limiti tugagan.")
@@ -681,19 +700,20 @@ async def quick_setup(request: web.Request):
             questions=questions,
             resume_required=False,
             profile=profile,
+            replace_empty_workspace=is_empty_workspace,
+            interview_slots=clean_slots,
+            interview_location=location,
+            onboarding_industry=industry,
+            onboarding_profile={**profile, "primary_vacancy_key": key},
         )
     except database.VacancyLimitReached as exc:
         raise web.HTTPPaymentRequired(text="Tarifdagi vakansiya limiti tugagan.") from exc
-    for slot in clean_slots:
-        await database.add_interview_slot(
-            tenant["id"], slot["label"], slot["capacity"], starts_at=slot["starts_at"]
-        )
-    location = str(body.get("location_text") or "").strip()[:240]
-    if location:
-        await database.update_interview_settings(tenant["id"], location_text=location)
-    await database.update_tenant_onboarding(
-        tenant["id"], industry=industry, profile={**profile, "primary_vacancy_key": key}
-    )
+    except database.InterviewSlotConflict as exc:
+        raise web.HTTPConflict(text="Suhbat vaqti takrorlangan yoki allaqachon mavjud.") from exc
+    except aiosqlite.IntegrityError as exc:
+        raise web.HTTPConflict(
+            text="Onboarding allaqachon ishga tushgan. Panelni yangilang."
+        ) from exc
     return web.json_response({"ok": True, "vacancy_key": key, "questions": len(questions)})
 
 
@@ -762,7 +782,9 @@ async def create_vacancy(request: web.Request):
     tenant, _ = await _authorize(request)
     try:
         body = await request.json()
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
+        raise web.HTTPBadRequest(text="Vakansiya ma'lumoti noto'g'ri.")
+    if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="Vakansiya ma'lumoti noto'g'ri.")
     title = str(body.get("title") or "").strip()
     reject_message = str(body.get("reject_message") or "").strip()
@@ -791,6 +813,8 @@ async def create_vacancy(request: web.Request):
         )
     except database.VacancyLimitReached as exc:
         raise web.HTTPPaymentRequired(text="Tarifdagi vakansiya limiti tugagan.") from exc
+    except aiosqlite.IntegrityError as exc:
+        raise web.HTTPConflict(text="Vakansiya allaqachon yaratildi. Panelni yangilang.") from exc
     return web.json_response({"ok": True, "key": key}, status=201)
 
 
@@ -801,7 +825,9 @@ async def edit_vacancy(request: web.Request):
         raise web.HTTPNotFound(text="Vakansiya topilmadi.")
     try:
         body = await request.json()
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
+        raise web.HTTPBadRequest(text="Vakansiya ma'lumoti noto'g'ri.")
+    if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="Vakansiya ma'lumoti noto'g'ri.")
     title = str(body.get("title") or "").strip()
     reject_message = str(body.get("reject_message") or "").strip()
@@ -904,6 +930,8 @@ async def create_billing_order(request: web.Request):
         body = await request.json()
     except (json.JSONDecodeError, TypeError):
         raise web.HTTPBadRequest(text="Tarif ma'lumoti noto'g'ri.")
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest(text="Tarif ma'lumoti noto'g'ri.")
     plan_code = str(body.get("plan_code") or "").strip().lower()
     if plan_code not in PUBLIC_PLAN_CODES:
         raise web.HTTPBadRequest(text="Tarif topilmadi.")
@@ -922,9 +950,39 @@ async def create_billing_order(request: web.Request):
                 "Past tarifni joriy muddat tugagach tanlashingiz mumkin."
             )
         )
+    try:
+        billing_months = int(body.get("billing_months", 1))
+    except (TypeError, ValueError) as exc:
+        raise web.HTTPBadRequest(text="Billing muddati noto'g'ri.") from exc
+    if billing_months != 1:
+        raise web.HTTPBadRequest(
+            text="Hozircha faqat 1 oylik to'lovni tanlash mumkin."
+        )
+
+    promo_code = str(body.get("promo_code") or "").strip()
+    # Unit tests can replace only the core DB path. In production both modules
+    # point at the same SQLite file, which lets referral attribution from the
+    # main bot flow into Mini App checkout as well.
+    if pdb.SQLITE_PATH == database.SQLITE_PATH:
+        attribution = await pdb.prepare_payment_attribution(
+            tenant["id"], plan_code, promo_code=promo_code or None
+        )
+    else:
+        attribution = {"ok": True, "has_partner": False}
+    if not attribution.get("ok"):
+        raise web.HTTPBadRequest(text=attribution.get("error") or "Promo kod ishlamadi.")
+
     plan = get_plan(plan_code)
+    order_kwargs = {}
+    if "billing_months" in body or billing_months != 1:
+        order_kwargs["billing_months"] = billing_months
+    if attribution.get("has_partner"):
+        order_kwargs["attribution"] = attribution
     order = await create_payment_order_for_plan(
-        tenant["id"], plan.price, plan_code=plan_code
+        tenant["id"],
+        attribution.get("discounted_base_amount") or plan.price,
+        plan_code=plan_code,
+        **order_kwargs,
     )
     return web.json_response(
         {
@@ -934,6 +992,17 @@ async def create_billing_order(request: web.Request):
             "expires_at": order["expires_at"],
             "status": "awaiting_payment",
             "plan": {"code": plan.code, "name": plan.name},
+            "pricing": {
+                "original_amount": attribution.get("original_amount", plan.price),
+                "discount_amount": attribution.get("discount_amount", 0),
+                "discounted_base_amount": attribution.get(
+                    "discounted_base_amount", plan.price
+                ),
+                "discount_type": attribution.get("discount_type", "percent"),
+                "discount_value": attribution.get("discount_value", 0),
+                "commission_amount": attribution.get("commission_amount", 0),
+                "promo_code": attribution.get("promo_code", ""),
+            },
             "card_number": PAYMENT_CARD_NUMBER,
             "card_holder": PAYMENT_CARD_HOLDER,
         },

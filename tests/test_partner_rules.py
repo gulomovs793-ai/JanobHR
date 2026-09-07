@@ -1,15 +1,18 @@
 import os
 import tempfile
 import unittest
-import aiosqlite
 from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import aiosqlite
+from aiogram.types import ReplyKeyboardRemove
+
 from partner_bot import main_menu
+from services import database, partner_payouts
 from services import partner_database as pdb
-from services import partner_payouts
 from services.partner_links import build_referral_link
+from services.payment_automation import create_payment_order
 
 
 class PartnerRulesTests(unittest.TestCase):
@@ -27,6 +30,15 @@ class PartnerRulesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pdb.calculate_partner_payout(
                 "start", discount_type="amount", discount_value=99_001
+            )
+
+    def test_zero_percent_promo_is_allowed_but_zero_amount_is_not(self):
+        percent = pdb.calculate_partner_payout("start", 0)
+        self.assertEqual(percent["discount_amount"], 0)
+        self.assertEqual(percent["commission_amount"], 99_000)
+        with self.assertRaises(ValueError):
+            pdb.calculate_partner_payout(
+                "start", discount_type="amount", discount_value=0
             )
 
     def test_referral_link_is_main_bot_link(self):
@@ -58,7 +70,10 @@ class PartnerRulesTests(unittest.TestCase):
         source = Path("partner_bot.py").read_text(encoding="utf-8")
         self.assertIn("FOUNDER_BOT_TOKEN", source)
         self.assertIn('callback_data=f"fp:partnerapprove:{partner_id}"', source)
-        self.assertIn('"partners": "🤝 Hamkorlar uchun arizalar"', Path("founder_panel.py").read_text(encoding="utf-8"))
+        founder_source = Path("founder_panel.py").read_text(encoding="utf-8")
+        self.assertIn('"partners": "🤝 Hamkorlar uchun arizalar"', founder_source)
+        self.assertIn("PARTNER_BOT_TOKEN", founder_source)
+        self.assertIn("token=PARTNER_BOT_TOKEN", founder_source)
 
     def test_business_leads_are_routed_to_founder_bot(self):
         source = Path("handlers/create_bot.py").read_text(encoding="utf-8")
@@ -72,21 +87,11 @@ class PartnerRulesTests(unittest.TestCase):
         self.assertIn("To'lov tasdig'i chek sifatida yuborildi", source)
 
     def test_partner_menu_has_clear_operational_order(self):
-        rows = [[button.text for button in row] for row in main_menu().keyboard]
-        self.assertEqual(
-            rows,
-            [
-                ["📊 Statistika", "💰 Komissiya"],
-                ["🔗 Referral link", "🎟 Promo kod"],
-                ["💸 Pul yechish"],
-                ["📦 Reklama materiallari"],
-                ["❓ Tez-tez so'raladigan savollar", "🆘 Yordam"],
-            ],
-        )
-        self.assertNotIn(
-            "partner_panel_button",
-            Path("partner_bot.py").read_text(encoding="utf-8"),
-        )
+        self.assertIsInstance(main_menu(), ReplyKeyboardRemove)
+        self.assertTrue(main_menu().remove_keyboard)
+        source = Path("partner_bot.py").read_text(encoding="utf-8")
+        self.assertNotIn('KeyboardButton(text="📊 Statistika")', source)
+        self.assertIn("MenuButtonWebApp", source)
 
 
 class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):
@@ -146,6 +151,51 @@ class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(attribution["discounted_base_amount"], 269_100)
         self.assertEqual(attribution["commission_amount"], 69_100)
 
+    async def test_promo_caps_follow_selected_tariff(self):
+        partner = await pdb.upsert_application(
+            user_id=557,
+            full_name="Cap Partner",
+            username="cap_partner",
+            phone="+998901234569",
+            role="blogger",
+            has_business_clients=True,
+            client_band="1-3",
+        )
+        partner = await pdb.set_partner_status(partner["id"], "approved")
+        growth_promo = await pdb.create_or_update_promo_code(
+            partner["id"],
+            33,
+            discount_type="percent",
+            duration_days=30,
+            plan_code="growth",
+        )
+        self.assertEqual(growth_promo["plan_code"], "growth")
+        with self.assertRaises(ValueError):
+            await pdb.create_or_update_promo_code(
+                partner["id"],
+                34,
+                discount_type="percent",
+                duration_days=30,
+                plan_code="growth",
+            )
+
+        business_promo = await pdb.create_or_update_promo_code(
+            partner["id"],
+            299_000,
+            discount_type="amount",
+            duration_days=30,
+            plan_code="business",
+        )
+        self.assertEqual(business_promo["discount_value"], 299_000)
+        with self.assertRaises(ValueError):
+            await pdb.create_or_update_promo_code(
+                partner["id"],
+                299_001,
+                discount_type="amount",
+                duration_days=30,
+                plan_code="business",
+            )
+
     async def test_payout_request_stores_explicit_payment_identity(self):
         partner = await pdb.upsert_application(
             user_id=555,
@@ -204,6 +254,89 @@ class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(result["ok"])
         self.assertIn("ism va familiya", result["error"].lower())
+
+
+class PaymentAttributionIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.temp_dir.name, "shared.db")
+        self.database_patch = patch.object(database, "SQLITE_PATH", self.db_path)
+        self.partner_patch = patch.object(pdb, "SQLITE_PATH", self.db_path)
+        self.database_patch.start()
+        self.partner_patch.start()
+        await database.init_db()
+        await pdb.init_partner_db()
+
+        self.tenant_id = await database.create_tenant(
+            "Integration Tenant", "candidate-token", "admin-token", [777]
+        )
+        partner = await pdb.upsert_application(
+            user_id=991,
+            full_name="Integration Partner",
+            username="integration_partner",
+            phone="+998901234599",
+            role="blogger",
+            has_business_clients=True,
+            client_band="1-3",
+        )
+        partner = await pdb.set_partner_status(partner["id"], "approved")
+        self.promo = await pdb.create_or_update_promo_code(
+            partner["id"],
+            10,
+            discount_type="percent",
+            duration_days=30,
+            plan_code="start",
+        )
+
+    async def asyncTearDown(self):
+        self.partner_patch.stop()
+        self.database_patch.stop()
+        self.temp_dir.cleanup()
+
+    async def test_order_and_partner_attribution_commit_together(self):
+        attribution = await pdb.prepare_payment_attribution(
+            self.tenant_id,
+            "start",
+            promo_code=self.promo["code"],
+        )
+        self.assertTrue(attribution["ok"])
+
+        order = await create_payment_order(
+            self.tenant_id,
+            attribution["discounted_base_amount"],
+            plan_code="start",
+            attribution=attribution,
+        )
+
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM partner_payment_attributions WHERE payment_order_id=?",
+                (order["id"],),
+            )
+            row = await cursor.fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["tenant_id"], self.tenant_id)
+        self.assertEqual(row["promo_code"], self.promo["code"])
+        self.assertEqual(row["order_amount"], order["amount"])
+        self.assertEqual(row["status"], "awaiting_payment")
+
+    async def test_invalid_legacy_promo_does_not_claim_tenant(self):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE partner_promo_codes SET discount_type='amount', "
+                "discount_value=99001, discount_percent=0 WHERE code=?",
+                (self.promo["code"],),
+            )
+            await db.commit()
+
+        attribution = await pdb.prepare_payment_attribution(
+            self.tenant_id,
+            "start",
+            promo_code=self.promo["code"],
+        )
+        self.assertFalse(attribution["ok"])
+        self.assertIsNone(await pdb.get_tenant_attribution(self.tenant_id))
 
 
 if __name__ == "__main__":

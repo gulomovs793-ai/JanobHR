@@ -1,10 +1,11 @@
 """Admin bot — vakansiyalar ro'yxati, tafsilotlari, ulashish va boshqarish."""
 
 import asyncio
-from io import BytesIO
 from html import escape
+from io import BytesIO
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
@@ -34,7 +35,7 @@ async def _candidate_bot_username(tenant: dict) -> str | None:
     try:
         me = await bot.get_me()
         username = (me.username or "").strip().lstrip("@")
-    except Exception:
+    except (TelegramAPIError, OSError, ValueError):
         return None
     finally:
         await bot.session.close()
@@ -188,7 +189,7 @@ async def share_vacancy(callback: CallbackQuery, tenant_id: int):
     )
     try:
         qr_bytes = await asyncio.to_thread(_vacancy_qr_png, link)
-    except Exception:
+    except Exception:  # noqa: BLE001 - QR dependency errors must not hide the link
         await callback.message.answer(
             "⚠️ Link tayyor. QR-kodni yaratib bo'lmadi; server dependency'sini tekshirish kerak."
         )

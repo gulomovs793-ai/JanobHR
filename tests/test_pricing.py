@@ -46,6 +46,25 @@ class PricingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(orders[0]["id"], order_id)
         self.assertEqual(orders[0]["plan_code"], "growth")
 
+    async def test_new_payment_cannot_buy_unpriced_multiple_months(self):
+        with self.assertRaisesRegex(ValueError, "faqat 1 oylik"):
+            await create_payment_order(
+                self.tenant_id,
+                299_000,
+                plan_code="start",
+                billing_months=2,
+            )
+        with self.assertRaisesRegex(ValueError, "faqat 1 oylik"):
+            await database.create_payment_order(
+                self.tenant_id,
+                "JH-MULTI-MONTH",
+                299_000,
+                299_107,
+                "2099-01-01T00:00:00+00:00",
+                plan_code="start",
+                billing_months=2,
+            )
+
     async def test_payment_activates_selected_subscription(self):
         await database.create_payment_order(
             self.tenant_id,
@@ -69,6 +88,30 @@ class PricingTests(unittest.IsolatedAsyncioTestCase):
         tenant = await database.get_tenant(self.tenant_id)
         self.assertEqual(tenant["plan_code"], "start")
         self.assertIsNotNone(tenant["subscription_expires_at"])
+
+    async def test_same_approved_order_activates_subscription_only_once(self):
+        order_id = await database.create_payment_order(
+            self.tenant_id,
+            "JH-IDEMPOTENT",
+            299_000,
+            299_117,
+            "2099-01-01T00:00:00+00:00",
+            plan_code="start",
+        )
+        self.assertTrue(await database.approve_payment_order_manually(order_id))
+        first = await database.activate_subscription_for_order(order_id)
+        tenant_after_first = await database.get_tenant(self.tenant_id)
+        second = await database.activate_subscription_for_order(order_id)
+        tenant_after_second = await database.get_tenant(self.tenant_id)
+
+        self.assertTrue(first["ok"])
+        self.assertFalse(first["already_activated"])
+        self.assertTrue(second["ok"])
+        self.assertTrue(second["already_activated"])
+        self.assertEqual(
+            tenant_after_first["subscription_expires_at"],
+            tenant_after_second["subscription_expires_at"],
+        )
 
     async def test_discounted_order_uses_exact_unique_amount_and_auto_activates(self):
         order = await create_payment_order(

@@ -26,6 +26,7 @@ from aiohttp import web
 from config import (
     BOT_TOKEN,
     FOUNDER_BOT_TOKEN,
+    FOUNDER_USER_IDS,
     MINI_APP_BASE_URL,
     PARTNER_BOT_TOKEN,
     PAYMENT_LISTENER_ENABLED,
@@ -125,6 +126,8 @@ async def on_shutdown(app: web.Application) -> None:
             task.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
+    if _SECURE_WEBHOOK_HANDLER is not None:
+        await _SECURE_WEBHOOK_HANDLER.close()
 
 
 def _build_dispatcher() -> Dispatcher:
@@ -137,7 +140,7 @@ def _build_dispatcher() -> Dispatcher:
     """
 
     import founder_panel
-    from partner_payout_bot import founder_payout_router
+    import partner_bot
     from admin_bot import (
         handlers_billing,
         handlers_candidates,
@@ -158,14 +161,13 @@ def _build_dispatcher() -> Dispatcher:
         start,
         vacancy,
     )
+    from partner_payout_bot import founder_payout_router, payout_router
     from services.tenant_middleware import (
         IsAdminBot,
         IsCandidateBot,
         IsFounderBot,
         IsPartnerBot,
     )
-    import partner_bot
-    from partner_payout_bot import payout_router
 
     fsm_storage = SQLiteStorage(db_path=database.SQLITE_PATH)
     dp = Dispatcher(storage=fsm_storage)
@@ -297,12 +299,39 @@ async def on_startup(app: web.Application):
             logger.info("Partner commission reconcile: %s", reconciliation)
     except Exception:
         logger.exception("Partner commission startup reconcile ishlamadi.")
+    import partner_bot
     from services.backup import run_backups_forever
+    from services.payment_automation import (
+        reconcile_approved_orders,
+        run_approved_order_recovery_forever,
+    )
     from services.reminders import run_reminders_forever
     from services.tenant_activation import activate_tenant
+    from userbot import _notify_founders
 
     _spawn_background_task(app, run_reminders_forever())
     _spawn_background_task(app, run_backups_forever())
+
+    try:
+        recovery = await reconcile_approved_orders(
+            activate_tenant,
+            notify_founders=_notify_founders,
+        )
+        if recovery["found"]:
+            logger.info("Approved payment startup recovery: %s", recovery)
+    except Exception:
+        logger.exception("Approved payment startup recovery ishlamadi.")
+    _spawn_background_task(
+        app,
+        run_approved_order_recovery_forever(
+            activate_tenant,
+            notify_founders=_notify_founders,
+        ),
+    )
+    if FOUNDER_BOT_TOKEN and FOUNDER_USER_IDS:
+        from partner_payout_bot import run_payout_reminders
+
+        _spawn_background_task(app, run_payout_reminders())
 
     pending_trials = await database.list_tenants(status="pending")
     for pending in pending_trials:
@@ -359,12 +388,9 @@ async def on_startup(app: web.Application):
         except Exception:
             logger.exception("Partner Bot webhooki yoki Mini App menyusi o'rnatilmadi.")
 
-    # Partner bot founder_miniapp_api startup hook orqali shu service ichida
-    # bitta background task sifatida start bo'ladi.
-    # Bu yerda qayta start qilish aiogram routerlarini ikkinchi marta ulab,
-    # "Router is already attached" xatosini chiqaradi. Shuning uchun webhook
-    # startup ichida partner pollingni takroran ishga tushirmaymiz.
-    logger.info("Partner Bot webhook startup ichida qayta start qilinmadi.")
+    # Partner Bot shared webhook orqali ishlaydi. U alohida polling task sifatida
+    # qayta ishga tushirilmaydi — aks holda bitta update ikki marta ishlanadi.
+    logger.info("Partner Bot shared webhook orqali ishlayapti; polling yo'q.")
 
     try:
         from userbot import is_userbot_configured, start_userbot
@@ -400,8 +426,10 @@ async def internal_payment_notification(request: web.Request) -> web.Response:
 
     try:
         payload = await request.json()
-    except Exception as exc:
+    except (TypeError, ValueError) as exc:
         raise web.HTTPBadRequest(text="invalid json") from exc
+    if not isinstance(payload, dict):
+        raise web.HTTPBadRequest(text="invalid notification")
     raw_text = str(payload.get("raw_text") or "").strip()
     if not raw_text or len(raw_text) > 5000:
         raise web.HTTPBadRequest(text="invalid notification")
@@ -426,7 +454,12 @@ async def internal_payment_notification(request: web.Request) -> web.Response:
 
 
 async def health(request: web.Request) -> web.Response:
-    return web.json_response({"ok": True})
+    db_ok = await database.healthcheck()
+    ok = bool(WEBHOOK_BASE_URL) and db_ok
+    return web.json_response(
+        {"ok": ok, "database": db_ok, "webhook_base_url": bool(WEBHOOK_BASE_URL)},
+        status=200 if ok else 503,
+    )
 
 
 def create_app() -> web.Application:

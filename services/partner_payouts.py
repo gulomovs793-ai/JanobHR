@@ -111,7 +111,13 @@ def payout_delay_info(payout_due_date: str | date | None, now_dt: datetime | Non
     if isinstance(payout_due_date, date):
         due = payout_due_date
     elif payout_due_date:
-        due = date.fromisoformat(str(payout_due_date)[:10])
+        try:
+            due = date.fromisoformat(str(payout_due_date)[:10])
+        except (TypeError, ValueError):
+            # A malformed legacy row must not stop the reminder worker or
+            # prevent a partner from seeing their balance. Re-anchor it to the
+            # next valid payout date and let the founder review the row.
+            due = next_payout_date(now_dt)
     else:
         due = next_payout_date(now_dt)
     delay_days = count_delay_days(due, now_dt)
@@ -149,6 +155,10 @@ async def init_partner_payout_db() -> None:
                 payout_full_name TEXT,
                 payout_card_number TEXT,
                 receipt_telegram_username TEXT,
+                partner_notified_at TEXT,
+                partner_notification_last_attempt_at TEXT,
+                partner_notification_attempts INTEGER NOT NULL DEFAULT 0,
+                partner_notification_last_error TEXT,
                 FOREIGN KEY(partner_id) REFERENCES partners(id)
             );
 
@@ -178,14 +188,18 @@ async def init_partner_payout_db() -> None:
         )
         # Existing Render disks already contain this table. Keep the migration
         # additive so old payout requests remain readable and payable.
-        for column in (
-            "payout_full_name",
-            "payout_card_number",
-            "receipt_telegram_username",
+        for column, definition in (
+            ("payout_full_name", "TEXT"),
+            ("payout_card_number", "TEXT"),
+            ("receipt_telegram_username", "TEXT"),
+            ("partner_notified_at", "TEXT"),
+            ("partner_notification_last_attempt_at", "TEXT"),
+            ("partner_notification_attempts", "INTEGER NOT NULL DEFAULT 0"),
+            ("partner_notification_last_error", "TEXT"),
         ):
             try:
                 await db.execute(
-                    f"ALTER TABLE partner_payout_requests ADD COLUMN {column} TEXT"
+                    f"ALTER TABLE partner_payout_requests ADD COLUMN {column} {definition}"
                 )
             except aiosqlite.OperationalError as exc:
                 if "duplicate column name" not in str(exc).lower():
@@ -515,6 +529,92 @@ async def mark_payout_notified(request_id: int, *, first: bool = False) -> None:
         await db.commit()
 
 
+async def claim_paid_payout_notification(
+    request_id: int, *, retry_after_seconds: int = 300
+) -> dict | None:
+    """Claim one paid-request notification so concurrent workers cannot duplicate it."""
+    await init_partner_payout_db()
+    now = datetime.now(timezone.utc)
+    retry_after = max(0, int(retry_after_seconds))
+    cutoff = (now - timedelta(seconds=retry_after)).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        cursor = await db.execute(
+            """
+            UPDATE partner_payout_requests
+            SET partner_notification_last_attempt_at=?,
+                partner_notification_attempts=COALESCE(partner_notification_attempts, 0)+1
+            WHERE id=? AND status='paid' AND partner_notified_at IS NULL
+              AND (partner_notification_last_attempt_at IS NULL
+                   OR partner_notification_last_attempt_at <= ?)
+            """,
+            (now.isoformat(), request_id, cutoff),
+        )
+        if cursor.rowcount != 1:
+            await db.rollback()
+            return None
+        await db.commit()
+    return await get_payout_request(request_id, include_items=True)
+
+
+async def mark_partner_payout_notified(
+    request_id: int, *, error: str | None = None
+) -> None:
+    """Persist the result of the partner's paid/rejected payout notification."""
+    await init_partner_payout_db()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        if error:
+            await db.execute(
+                """
+                UPDATE partner_payout_requests
+                SET partner_notification_last_error=?
+                WHERE id=? AND status='paid'
+                """,
+                (str(error)[:500], request_id),
+            )
+        else:
+            await db.execute(
+                """
+                UPDATE partner_payout_requests
+                SET partner_notified_at=?, partner_notification_last_error=NULL
+                WHERE id=? AND status='paid'
+                """,
+                (_now(), request_id),
+            )
+        await db.commit()
+
+
+async def list_paid_payouts_needing_partner_notification(
+    limit: int = 20, *, retry_after_seconds: int = 300
+) -> list[dict]:
+    """Return paid requests eligible for a safe partner-notification retry."""
+    await init_partner_payout_db()
+    limit = max(1, min(int(limit or 20), 100))
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(seconds=max(0, int(retry_after_seconds)))
+    ).isoformat()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """
+            SELECT id FROM partner_payout_requests
+            WHERE status='paid' AND partner_notified_at IS NULL
+              AND (partner_notification_last_attempt_at IS NULL
+                   OR partner_notification_last_attempt_at <= ?)
+            ORDER BY id ASC LIMIT ?
+            """,
+            (cutoff, limit),
+        )
+        request_ids = [int(row["id"]) for row in await cursor.fetchall()]
+    result: list[dict] = []
+    for request_id in request_ids:
+        request = await get_payout_request(request_id, include_items=True)
+        if request:
+            result.append(request)
+    return result
+
+
 async def list_payout_requests_needing_reminder(limit: int = 20) -> list[dict]:
     await init_partner_payout_db()
     today = datetime.now(timezone.utc).astimezone(UZ_TZ).date()
@@ -537,7 +637,8 @@ async def list_payout_requests_needing_reminder(limit: int = 20) -> list[dict]:
         rows = [dict(row) for row in await cur.fetchall()]
 
     for row in rows:
-        due = date.fromisoformat(row["payout_due_date"][:10])
+        due = payout_delay_info(row.get("payout_due_date"))["due_date"]
+        due = date.fromisoformat(due)
         if due > today:
             continue
         last = _local_date(row.get("last_reminded_at"))

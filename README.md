@@ -220,6 +220,11 @@ karta va summa mos kelsa, buyurtma atomik tasdiqlanadi, tarif avtomatik yoqiladi
 va partner komissiyasi bir marta yoziladi. 10% START misolida baza 269 100 UZS,
 komissiya esa 99 000 - 29 900 = 69 100 UZS bo'ladi.
 
+Hozirgi checkout faqat **1 oylik** buyurtma yaratadi: ko'p oylik alohida narx va
+komissiya hisob-kitobi mavjud bo'lmagani uchun `billing_months>1` server tomonidan
+rad etiladi. Tarixiy bazadagi ko'p oylik buyurtmalar esa o'zining saqlangan muddati
+bo'yicha xavfsiz tiklanadi.
+
 Avtomatik yoqilish uchun Render'da `PAYMENT_LISTENER_ENABLED=1`,
 `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_USERBOT_SESSION`,
 `CARD_BOT_USERNAME`, `PAYMENT_CARD_NUMBER` va `PAYMENT_CARD_HOLDER` to'g'ri

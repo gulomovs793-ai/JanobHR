@@ -1,6 +1,5 @@
 """Janob HR founder-only Telegram Mini App API."""
 
-import asyncio
 import logging
 from pathlib import Path
 
@@ -25,20 +24,6 @@ def _authorize_founder(request: web.Request) -> dict:
     return auth
 
 
-async def _startup_partner_bot(app: web.Application) -> None:
-    """Partner botni shu Render web-service ichida alohida background task sifatida yuritadi."""
-    import partner_bot
-
-    if not partner_bot.PARTNER_BOT_TOKEN:
-        logger.info("PARTNER_BOT_TOKEN sozlanmagan — Partner Bot ishga tushirilmadi.")
-        return
-
-    task = asyncio.create_task(partner_bot.main(), name="janob-hr-partner-bot")
-    app["background_tasks"].add(task)
-    task.add_done_callback(app["background_tasks"].discard)
-    logger.info("Janob HR Partner Bot background task ishga tushirildi.")
-
-
 async def founder_index(request: web.Request) -> web.Response:
     return web.Response(
         text=(STATIC_DIR / "index.html").read_text(encoding="utf-8"),
@@ -52,7 +37,6 @@ async def founder_dashboard(request: web.Request) -> web.Response:
 
 
 def register_founder_miniapp(app: web.Application) -> None:
-    app.on_startup.append(_startup_partner_bot)
     app.router.add_get("/founder", founder_index)
     app.router.add_static(
         "/founder-assets", STATIC_DIR, show_index=False, append_version=True

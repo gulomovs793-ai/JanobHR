@@ -35,28 +35,17 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from config import (
-    BOT_TOKEN,
-    FOUNDER_BOT_TOKEN,
-    FOUNDER_USER_IDS,
-    SETUP_BOT_TOKEN,
-    WEBHOOK_BASE_URL,
-)
+from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, WEBHOOK_BASE_URL
 from partner_payout_bot import payout_router, run_payout_reminders
 from services import partner_database as pdb
 from services.partner_ai import generate_partner_advice
-from services.partner_links import build_referral_link
+from services.partner_links import build_referral_link, resolve_main_bot_username
 
 logger = logging.getLogger("janob_hr_partner")
 router = Router(name="partner")
 
 PARTNER_BOT_TOKEN = os.getenv("PARTNER_BOT_TOKEN", "").strip()
 WEBHOOK_BASE_URL = WEBHOOK_BASE_URL.rstrip("/")
-JANOBHR_MAIN_BOT_USERNAME = os.getenv("JANOBHR_MAIN_BOT_USERNAME", "").strip().lstrip("@")
-LEGACY_REFERRAL_TARGET_USERNAME = os.getenv(
-    "PARTNER_REFERRAL_TARGET_USERNAME", ""
-).strip().lstrip("@")
-SETUP_BOT_USERNAME = os.getenv("SETUP_BOT_USERNAME", "").strip().lstrip("@")
 _REFERRAL_TARGET_CACHE = ""
 
 ROLE_LABELS = {
@@ -94,7 +83,7 @@ FAQ_TEXT = (
     "<b>5. Referral link nima?</b>\n"
     "Bu sizga biriktirilgan maxsus link. Mijoz shu link orqali kirsa, tizim uni siz olib kelgan mijoz sifatida eslab qoladi va tizimga kiritadi.\n\n"
     "<b>6. Promo kod nima?</b>\n"
-    "Promo kod mijozga chegirma beradi. Tasdiqlangan partner Boshqaruv panelida foiz yoki aniq summa, shuningdek qaysi tarifga tegishli ekanini va necha kun amal qilishini belgilaydi. Bitta kod barcha tariflarda ishlasa, xavfsiz maksimal chegirma 25% yoki 99 000 UZS bo'ladi. Har bir partnerda bitta faol promo kod bo'ladi.\n\n"
+    "Promo kod mijozga chegirma beradi. Tasdiqlangan partner Boshqaruv panelida foiz yoki aniq summa, qaysi tarifga tegishli ekanini va necha kun amal qilishini belgilaydi. 0%, 5%, 10%, 15% yoki 20% kabi qiymatlar tanlanadi; tizim tanlangan tarif komissiyasidan oshadigan chegirmani qabul qilmaydi. Bitta kod barcha tariflarda ishlasa, maksimal xavfsiz chegirma 25% yoki 99 000 UZS bo'ladi. Har bir partnerda bitta faol promo kod bo'ladi.\n\n"
     "<b>7. Promo chegirma kim hisobidan beriladi?</b>\n"
     "Chegirma Janob HR hisobidan emas, sizning komissiyangizdan ayriladi. Masalan, 30 000 UZS chegirma berilsa, START komissiyasi 99 000 - 30 000 = 69 000 UZS bo'ladi. Komissiya manfiy bo'lib qolmaydi.\n\n"
     "<b>8. Menga to'lanadigan komissiya qancha?</b>\n"
@@ -108,7 +97,7 @@ FAQ_TEXT = (
     "<b>12. Mijoz link orqali kirib, keyin promo kod ishlatsa nima bo'ladi?</b>\n"
     "Referral link mijozni sizga bog'laydi. Keyin o'zingiz yaratgan promo kod ishlatilsa, mijoz sizniki bo'lib qoladi va chegirma shu kod qoidasi bo'yicha hisoblanadi.\n\n"
     "<b>13. Mijoz boshqa partner promo kodini ishlatsa-chi?</b>\n"
-    "Agar mijoz avval boshqa partner referral linki orqali bog'langan bo'lsa, boshqa partner promo kodi qabul qilinmaydi. Agar hali hech bir partnerga bog'lanmagan bo'lsa, ishlatilgan promo kod egasi partner sifatida qayd qilinadi. Komissiya ikki partnerga bo'linmaydi.\n\n"
+    "Bunday holat alohida tekshiriladi. Mijoz avval qaysi hamkorga biriktirilgan bo'lsa, boshqa partner kodi avtomatik qabul qilinmaydi; komissiya ikki partnerga bo'linmaydi. Zarur bo'lsa Founder jamoasi to'lovni qo'lda ko'rib chiqadi.\n\n"
     "<b>14. Komissiyani qanday qabul qilaman?</b>\n"
     "To'lov yechish vaqtida sizdan karta yoki kerakli to'lov ma'lumoti so'raladi. Ma'lumotlar to'g'ri bo'lishi kerak. To'lov qilingandan keyin siz taqdim qilgan Telegram username'ga chek yuboriladi, agar spam yoki aloqa bo'yicha muammo bo'lmasa.\n\n"
     "<b>15. Hamkor bo'lsam daromad kafolatlanadimi?</b>\n"
@@ -152,25 +141,9 @@ def partner_miniapp_url() -> str:
     return f"{WEBHOOK_BASE_URL}/partner" if WEBHOOK_BASE_URL else ""
 
 
-def main_menu() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            # The personal dashboard is opened from Telegram's blue chat-menu
-            # WebApp button configured in configure_partner_miniapp_menu().
-            # Keep the reply keyboard focused on chat-native actions.
-            [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
-            # Acquisition tools: bring a client and configure the offer.
-            [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
-            # 3) Payouts, then supporting resources.
-            [KeyboardButton(text="💸 Pul yechish")],
-            [KeyboardButton(text="📦 Reklama materiallari")],
-            [
-                KeyboardButton(text="❓ Tez-tez so'raladigan savollar"),
-                KeyboardButton(text="🆘 Yordam"),
-            ],
-        ],
-        resize_keyboard=True,
-    )
+def main_menu() -> ReplyKeyboardRemove:
+    """Remove legacy reply buttons; all partner actions live in the Mini App."""
+    return ReplyKeyboardRemove(remove_keyboard=True)
 
 
 def founder_review_keyboard(partner_id: int) -> InlineKeyboardMarkup:
@@ -211,24 +184,6 @@ async def _safe_bot_username(bot: Bot | None) -> str:
         return ""
 
 
-async def _username_from_token(token: str, current_partner_username: str) -> str:
-    token = (token or "").strip()
-    if not token or token == PARTNER_BOT_TOKEN:
-        return ""
-    bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    try:
-        me = await bot.get_me()
-        username = (me.username or "").strip().lstrip("@")
-    except Exception:
-        logger.exception("Referral target bot token orqali aniqlanmadi")
-        return ""
-    finally:
-        await bot.session.close()
-    if username and username.lower() != current_partner_username.lower():
-        return username
-    return ""
-
-
 async def referral_target_username(current_bot: Bot | None = None) -> str | None:
     """Mijoz kiradigan ASOSIY bot username'ini qaytaradi.
 
@@ -240,32 +195,12 @@ async def referral_target_username(current_bot: Bot | None = None) -> str | None
         return _REFERRAL_TARGET_CACHE
 
     partner_username = await _safe_bot_username(current_bot)
-    configured = (
-        JANOBHR_MAIN_BOT_USERNAME,
-        LEGACY_REFERRAL_TARGET_USERNAME,
-        SETUP_BOT_USERNAME,
+    username = await resolve_main_bot_username(
+        current_partner_username=partner_username
     )
-    for username in configured:
-        username = (username or "").strip().lstrip("@")
-        if not username:
-            continue
-        if partner_username and username.lower() == partner_username.lower():
-            logger.error(
-                "Referral target noto'g'ri: @%s partner botning o'zi. E'tiborsiz qoldirildi.",
-                username,
-            )
-            continue
+    if username:
         _REFERRAL_TARGET_CACHE = username
-        return username
-
-    # Env noto'g'ri bo'lsa ham asosiy bot tokenidan username'ni o'zimiz topamiz.
-    for token in (BOT_TOKEN, SETUP_BOT_TOKEN):
-        username = await _username_from_token(token, partner_username)
-        if username:
-            _REFERRAL_TARGET_CACHE = username
-            return username
-
-    return None
+    return username
 
 
 def question_1(role: str) -> tuple[str, list[tuple[str, str]]]:
@@ -426,12 +361,8 @@ async def send_phone_step(message: Message, state: FSMContext) -> None:
 async def send_partner_home(message: Message, partner: dict) -> None:
     await message.answer(
         "🤝 <b>Janob HR Hamkor</b>\n\n"
-        "Profilingiz faol. Endi sizda 3 ta asosiy bo'lim bor:\n\n"
-        "🔗 <b>Referral link</b> — mijozni asosiy Janob HR botga olib kiradi.\n"
-        "🎟 <b>Promo kod</b> — mijozga chegirma beradi, chegirma sizning komissiyangizdan ayriladi.\n"
-        "💸 <b>Pul yechish</b> — tasdiqlangan komissiya bo'yicha ariza yuboradi.\n\n"
-        "Mijoz tarif sotib olsa — sizga komissiya hisoblanadi.\n\n"
-        "Savollar bo'lsa, <b>❓ Tez-tez so'raladigan savollar</b> bo'limini oching.",
+        "Profilingiz faol. Ko'k <b>«Boshqaruv paneli»</b> tugmasini bosing — referral, leadlar, promo, komissiya va pul yechish bitta Mini App ichida.\n\n"
+        "Mijoz referral link yoki promo orqali tarif sotib olib, to'lovi tasdiqlanganda komissiya balansingizga yoziladi.",
         reply_markup=main_menu(),
     )
 
@@ -467,9 +398,12 @@ async def handle_referral_entry(message: Message, code: str) -> bool:
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext, bot: Bot) -> None:
     args = (message.text or "").split(maxsplit=1)
-    if len(args) == 2 and args[1].startswith("r_"):
-        if await handle_referral_entry(message, args[1][2:]):
-            return
+    if (
+        len(args) == 2
+        and args[1].startswith("r_")
+        and await handle_referral_entry(message, args[1][2:])
+    ):
+        return
 
     await state.clear()
     partner = await pdb.get_partner_by_user_id(message.from_user.id)
@@ -623,7 +557,14 @@ async def approve_partner(callback: CallbackQuery) -> None:
     if callback.from_user.id not in FOUNDER_USER_IDS:
         await callback.answer("Ruxsat yo'q", show_alert=True)
         return
-    partner_id = int(callback.data.split(":", 1)[1])
+    parts = (callback.data or "").split(":")
+    if len(parts) != 2 or parts[0] != "partner_approve" or not parts[1].isdecimal():
+        await callback.answer("Noto'g'ri partner so'rovi.", show_alert=True)
+        return
+    partner_id = int(parts[1])
+    if partner_id <= 0:
+        await callback.answer("Noto'g'ri partner so'rovi.", show_alert=True)
+        return
     partner = await pdb.set_partner_status(partner_id, "approved")
     if not partner:
         await callback.answer("Partner topilmadi", show_alert=True)
@@ -634,12 +575,8 @@ async def approve_partner(callback: CallbackQuery) -> None:
         await callback.bot.send_message(
             partner["telegram_user_id"],
             "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
-            "Endi sizda 3 ta asosiy yo'l bor:\n\n"
-            "📱 Hamkor paneli — statistika, referral, komissiya va FAQ bir joyda.\n"
-            "🔗 Referral link — mijozni asosiy Janob HR botga olib kiradi.\n"
-            "🎟 Promo kod — mijozga chegirma beradi. Chegirma sizning komissiyangizdan ayriladi.\n"
-            "💸 Pul yechish — tasdiqlangan komissiya bo'yicha ariza yuboradi.\n\n"
-            "Quyidagi menyudan Hamkor panelini oching.",
+            "Ko'k <b>«Boshqaruv paneli»</b> tugmasi yoqildi. Unda referral link, leadlar, promo kod, komissiya, pul yechish va FAQ bir joyda ishlaydi.\n\n"
+            "Mijoz tarif sotib olib, to'lovi tasdiqlanganda komissiya balansingizga yoziladi.",
             reply_markup=main_menu(),
         )
     except Exception:
@@ -652,7 +589,14 @@ async def reject_partner(callback: CallbackQuery) -> None:
     if callback.from_user.id not in FOUNDER_USER_IDS:
         await callback.answer("Ruxsat yo'q", show_alert=True)
         return
-    partner_id = int(callback.data.split(":", 1)[1])
+    parts = (callback.data or "").split(":")
+    if len(parts) != 2 or parts[0] != "partner_reject" or not parts[1].isdecimal():
+        await callback.answer("Noto'g'ri partner so'rovi.", show_alert=True)
+        return
+    partner_id = int(parts[1])
+    if partner_id <= 0:
+        await callback.answer("Noto'g'ri partner so'rovi.", show_alert=True)
+        return
     partner = await pdb.set_partner_status(partner_id, "rejected")
     if not partner:
         await callback.answer("Partner topilmadi", show_alert=True)

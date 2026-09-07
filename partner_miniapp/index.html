@@ -34,7 +34,7 @@
 
       <article class="balance">
         <div><small>YECHISH MUMKIN</small><h2 id="earned">—</h2><p id="balanceNote">Tasdiqlangan sotuvlardan.</p></div>
-        <button data-go="earnings" type="button">Ko‘rish</button>
+        <button data-go="earnings" type="button">Daromad</button>
       </article>
       <div class="balance-details"><article><small>JAMI HISOBLANGAN</small><b id="totalEarned">—</b></article><article><small>TO‘LANGAN</small><b id="paidAmount">—</b></article><article><small>KEYINGI TO‘LOV</small><b id="nextPayout">—</b></article></div>
 
@@ -76,7 +76,7 @@
         <label>Chegirma turi</label>
         <div class="promo-types"><button class="type-btn selected" data-promo-type="percent" type="button">Foizda</button><button class="type-btn" data-promo-type="amount" type="button">Summada</button></div>
         <label for="promoPlan">Qaysi tarif uchun?</label><select id="promoPlan"><option value="all">Barcha tariflar</option><option value="start">Faqat START</option><option value="growth">Faqat GROWTH</option><option value="business">Faqat BUSINESS</option></select>
-        <label for="discountValue">Chegirma miqdori</label><div class="input-wrap"><input id="discountValue" type="number" min="1" max="25" placeholder="Masalan, 10"><span id="discountSuffix">%</span></div><p class="form-hint">Maksimum: 25% yoki 99 000 UZS. Chegirma standart komissiyadan oshmaydi.</p>
+        <label for="discountValue">Chegirma miqdori</label><div class="input-wrap"><input id="discountValue" type="number" min="1" max="25" placeholder="Masalan, 10"><span id="discountSuffix">%</span></div><p id="promoLimit" class="form-hint">Maksimum: 25% — barcha tariflar.</p>
         <label for="durationDays">Necha kun amal qiladi?</label><div class="input-wrap"><input id="durationDays" type="number" min="1" max="365" value="30"><span>kun</span></div>
         <button id="createPromo" class="dark-btn" type="button">Promo kod yaratish</button>
         <p class="form-hint">Har bir partnerda bitta faol promo kod bo‘ladi. Yangi kod yaratilsa, avvalgisi avtomatik yopiladi.</p>
@@ -92,7 +92,23 @@
       <div class="balance-details"><article><small>JAMI HISOBLANGAN</small><b id="totalEarnedLarge">—</b></article><article><small>REZERVDA</small><b id="reservedAmount">—</b></article><article><small>TO‘LANGAN</small><b id="paidAmountLarge">—</b></article></div>
       <div class="section-title"><small>HAR BIR SOTUVDAN</small><h2>Komissiya</h2></div>
       <div class="plans"><article><small>START</small><strong>99 000</strong><span>UZS</span></article><article><small>GROWTH</small><strong>199 000</strong><span>UZS</span></article><article><small>BUSINESS</small><strong>299 000</strong><span>UZS</span></article></div>
-      <article class="card"><small>PUL YECHISH</small><h2>1 / 11 / 21-sana</h2><p>Tasdiqlangan komissiyalar oyiga uch marta to‘lanadi.</p><button id="closeToPayout" class="dark-btn" type="button">Botga qaytib pul yechish</button></article>
+      <article class="card"><small>PUL YECHISH</small><h2>1 / 11 / 21-sana</h2><p>Tasdiqlangan komissiyalar oyiga uch marta to‘lanadi. Yakshanba va rasmiy bayramlar keyingi ish kuniga suriladi.</p><button id="openPayout" class="dark-btn" data-go="payout" type="button">Pul yechish arizasini yuborish</button></article>
+    </section>
+
+    <section id="payout" class="view">
+      <div class="page-head"><small>PUL YECHISH</small><h1>To‘lov ma’lumotlari</h1><p>Ism-familiya, karta raqami va chek yuboriladigan Telegram username'ni kiriting.</p></div>
+      <article id="payoutStatus" class="card payout-status hidden"><small>FAOL ARIZA</small><h2 id="payoutStatusTitle">—</h2><p id="payoutStatusText"></p></article>
+      <article id="payoutForm" class="card promo-form">
+        <label for="payoutFullName">Ism-familiya</label>
+        <input id="payoutFullName" class="text-input" type="text" autocomplete="name" maxlength="120" placeholder="Masalan, Jasur Karimov">
+        <label for="payoutCard">Karta raqami</label>
+        <input id="payoutCard" class="text-input" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="8600 1234 5678 9012">
+        <label for="payoutUsername">Chek yuboriladigan Telegram username</label>
+        <input id="payoutUsername" class="text-input" type="text" autocomplete="username" maxlength="33" placeholder="@janobhr">
+        <p class="form-hint">Karta raqami saqlanadi va Founder Botdagi faqat to‘lov mas’uliga ko‘rsatiladi. Mini Appga to‘liq karta raqami qaytarilmaydi.</p>
+        <button id="submitPayout" class="dark-btn" type="button">Pul yechish uchun ariza yuborish</button>
+        <p id="payoutMessage" class="form-hint"></p>
+      </article>
     </section>
 
     <section id="more" class="view">
@@ -103,7 +119,7 @@
         <details><summary>Referral link qayerga olib kiradi?</summary><p>Hamkor botiga emas, asosiy Janob HR botiga.</p></details>
         <details><summary>Promo kodni qanday sozlayman?</summary><p>Promo bo‘limida foiz yoki aniq summa, qaysi tarif uchun ishlashi va amal qilish kunini belgilang. Yangi kod yaratilsa, avvalgi faol kod yopiladi.</p></details>
         <details><summary>Promo chegirma kim hisobidan?</summary><p>Chegirma sizning komissiyangizdan ayriladi. Boshqa partnerga bog‘langan mijozning kodi qabul qilinmaydi.</p></details>
-        <details><summary>Pul qachon yechiladi?</summary><p>1, 11 va 21-sanada tasdiqlangan komissiyalar bo‘yicha.</p></details>
+        <details><summary>Pul qachon yechiladi?</summary><p>1, 11 va 21-sanada tasdiqlangan komissiyalar bo‘yicha. Sana o‘tib ketsa, yakshanba va rasmiy bayramlardan tashqari har bir kechikkan kun uchun 3 000 UZS, ko‘pi bilan 7 kungacha qo‘shiladi.</p></details>
       </div>
     </section>
 
@@ -118,6 +134,6 @@
   <button data-go="leads" type="button"><span>◉</span>Leadlar</button>
   </nav>
 </div>
-<script src="/partner-miniapp-assets/app.js?v=20260907-2"></script>
+<script src="/partner-miniapp-assets/app.js?v=20260907-3"></script>
 </body>
 </html>

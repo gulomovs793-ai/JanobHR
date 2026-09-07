@@ -27,7 +27,8 @@ from aiogram.types import (
 )
 
 from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
-from services import bot_registry, database, partner_database as pdb
+from services import bot_registry, database
+from services import partner_database as pdb
 from services.tenant_activation import activate_tenant
 
 logger = logging.getLogger("janob_hr_bot")

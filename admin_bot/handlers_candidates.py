@@ -25,6 +25,37 @@ _STATUS = {
     "no_show": "🚫 Suhbatga kelmadi",
 }
 
+_VALID_FILTERS = set(_STATUS) | {"all"}
+
+
+def _parse_list_callback(data: str | None) -> tuple[str, int] | None:
+    parts = (data or "").split(":")
+    if len(parts) != 4 or parts[:2] != ["apps", "list"]:
+        return None
+    status = parts[2]
+    if status not in _VALID_FILTERS or not parts[3].isdecimal():
+        return None
+    page = int(parts[3])
+    return (status, page) if page <= 100_000 else None
+
+
+def _parse_detail_callback(
+    data: str | None, action: str
+) -> tuple[int, str, int] | None:
+    parts = (data or "").split(":")
+    if len(parts) != 5 or parts[:2] != ["apps", action]:
+        return None
+    app_id, status, page = parts[2:]
+    if (
+        not app_id.isdecimal()
+        or int(app_id) <= 0
+        or status not in _VALID_FILTERS
+        or not page.isdecimal()
+    ):
+        return None
+    page_number = int(page)
+    return (int(app_id), status, page_number) if page_number <= 100_000 else None
+
 
 async def _show_list(callback: CallbackQuery, tenant_id: int, status: str, page: int):
     db_status = None if status == "all" else status
@@ -77,14 +108,22 @@ async def show_list_message(message: Message, tenant_id: int, status: str, page:
 
 @router.callback_query(F.data.startswith("apps:list:"))
 async def list_candidates(callback: CallbackQuery, tenant_id: int):
-    _, _, status, page = callback.data.split(":")
-    await _show_list(callback, tenant_id, status, int(page))
+    parsed = _parse_list_callback(callback.data)
+    if parsed is None:
+        await callback.answer("Noto'g'ri nomzod so'rovi.", show_alert=True)
+        return
+    status, page = parsed
+    await _show_list(callback, tenant_id, status, page)
 
 
 @router.callback_query(F.data.startswith("apps:view:"))
 async def view_candidate(callback: CallbackQuery, tenant_id: int):
-    _, _, app_id, status, page = callback.data.split(":")
-    app = await database.get_application(tenant_id, int(app_id))
+    parsed = _parse_detail_callback(callback.data, "view")
+    if parsed is None:
+        await callback.answer("Noto'g'ri nomzod so'rovi.", show_alert=True)
+        return
+    app_id, status, page = parsed
+    app = await database.get_application(tenant_id, app_id)
     if not app:
         await callback.answer("Nomzod topilmadi.", show_alert=True)
         return
@@ -112,8 +151,12 @@ async def view_candidate(callback: CallbackQuery, tenant_id: int):
 
 @router.callback_query(F.data.startswith("apps:full:"))
 async def view_full_answers(callback: CallbackQuery, tenant_id: int):
-    _, _, app_id, status, page = callback.data.split(":")
-    app = await database.get_application(tenant_id, int(app_id))
+    parsed = _parse_detail_callback(callback.data, "full")
+    if parsed is None:
+        await callback.answer("Noto'g'ri nomzod so'rovi.", show_alert=True)
+        return
+    app_id, status, page = parsed
+    app = await database.get_application(tenant_id, app_id)
     if not app:
         await callback.answer("Nomzod topilmadi.", show_alert=True)
         return

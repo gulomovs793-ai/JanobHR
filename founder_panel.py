@@ -25,7 +25,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, WEBHOOK_BASE_URL
-from services import database
+from services import database, partner_database as pdb
 from services.plans import get_plan_transition
 
 logger = logging.getLogger("janob_hr_founder")
@@ -36,6 +36,7 @@ FOUNDER_MENU = {
     "panel": "👑 Founder panel",
     "customers": "🏢 Mijozlar",
     "leads": "📞 Lidlar",
+    "partners": "🤝 Hamkorlar uchun arizalar",
     "payments": "💳 To'lovlar",
     "renewals": "⏰ Uzaytirishlar",
     "stats": "📊 Statistika",
@@ -53,6 +54,7 @@ def _founder_services_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [panel],
             [KeyboardButton(text=FOUNDER_MENU["customers"]), KeyboardButton(text=FOUNDER_MENU["leads"])],
+            [KeyboardButton(text=FOUNDER_MENU["partners"])],
             [KeyboardButton(text=FOUNDER_MENU["payments"]), KeyboardButton(text=FOUNDER_MENU["renewals"])],
             [KeyboardButton(text=FOUNDER_MENU["stats"]), KeyboardButton(text=FOUNDER_MENU["activate"])],
         ],
@@ -174,6 +176,145 @@ async def service_founder_leads(message: Message):
         )
     builder.adjust(1)
     await message.answer(f"📞 <b>Lidlar</b>\n\nJami: <b>{len(leads)}</b>", reply_markup=builder.as_markup())
+
+
+def _partner_review_keyboard(partner_id: int):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Tasdiqlash", callback_data=f"fp:partnerapprove:{partner_id}")
+    builder.button(text="❌ Rad etish", callback_data=f"fp:partnerreject:{partner_id}")
+    builder.button(text="⬅️ Arizalar", callback_data="fp:partners")
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+async def _send_partner_applications(message: Message):
+    partners = await pdb.list_partners(status="pending", limit=100)
+    builder = InlineKeyboardBuilder()
+    for partner in partners:
+        role = partner.get("role") or "boshqa"
+        builder.button(
+            text=f"#{partner['id']} · {partner.get('full_name') or 'Hamkor'} · {role}",
+            callback_data=f"fp:partner:{partner['id']}",
+        )
+    builder.button(text="⬅️ Bosh menyu", callback_data="fp:main")
+    builder.adjust(1)
+    text = (
+        f"🤝 <b>Hamkorlik uchun arizalar</b>\n\nKutilmoqda: <b>{len(partners)}</b>"
+        if partners
+        else "🤝 <b>Hamkorlik uchun arizalar</b>\n\nHozircha yangi ariza yo'q."
+    )
+    await message.answer(text, reply_markup=builder.as_markup())
+
+
+@router.message(F.text == FOUNDER_MENU["partners"])
+async def service_founder_partners(message: Message):
+    if message.from_user.id in FOUNDER_USER_IDS:
+        await _send_partner_applications(message)
+
+
+@router.callback_query(F.data == "fp:partners")
+async def list_partner_applications(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    partners = await pdb.list_partners(status="pending", limit=100)
+    builder = InlineKeyboardBuilder()
+    for partner in partners:
+        builder.button(
+            text=f"#{partner['id']} · {partner.get('full_name') or 'Hamkor'}",
+            callback_data=f"fp:partner:{partner['id']}",
+        )
+    builder.button(text="⬅️ Bosh menyu", callback_data="fp:main")
+    builder.adjust(1)
+    text = (
+        f"🤝 <b>Hamkorlik uchun arizalar</b>\n\nKutilmoqda: <b>{len(partners)}</b>"
+        if partners
+        else "🤝 <b>Hamkorlik uchun arizalar</b>\n\nHozircha yangi ariza yo'q."
+    )
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fp:partner:"))
+async def view_partner_application(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    partner = await pdb.get_partner(int(callback.data.rsplit(":", 1)[1]))
+    if not partner:
+        await callback.answer("Hamkor arizasi topilmadi.", show_alert=True)
+        return
+    business_clients = "Ha" if partner.get("has_business_clients") else "Yo'q"
+    status = {"pending": "⏳ Kutilmoqda", "approved": "✅ Tasdiqlangan", "rejected": "❌ Rad etilgan"}.get(
+        partner.get("status"), partner.get("status") or "—"
+    )
+    back_builder = InlineKeyboardBuilder()
+    if partner.get("status") == "pending":
+        markup = _partner_review_keyboard(partner["id"])
+    else:
+        back_builder.button(text="⬅️ Arizalar", callback_data="fp:partners")
+        markup = back_builder.as_markup()
+    await callback.message.edit_text(
+        f"🤝 <b>Hamkor arizasi #{partner['id']}</b>\n\n"
+        f"👤 Ism: <b>{partner.get('full_name') or '—'}</b>\n"
+        f"💬 Telegram: @{partner.get('username') or '—'}\n"
+        f"📱 Telefon: <code>{partner.get('phone') or '—'}</code>\n"
+        f"🎯 Yo'nalish: {partner.get('role') or '—'}\n"
+        f"🏢 Biznes mijozlari: {business_clients}\n"
+        f"📊 Segment: {partner.get('client_band') or '—'}\n"
+        f"📌 Holat: <b>{status}</b>",
+        reply_markup=markup,
+    )
+    await callback.answer()
+
+
+async def _set_partner_application_status(callback: CallbackQuery, status: str):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    partner_id = int(callback.data.rsplit(":", 1)[1])
+    partner = await pdb.set_partner_status(partner_id, status)
+    if not partner:
+        await callback.answer("Hamkor arizasi topilmadi.", show_alert=True)
+        return
+    await callback.message.edit_text(
+        f"{'✅ Tasdiqlandi' if status == 'approved' else '❌ Rad etildi'}: "
+        f"<b>{partner.get('full_name') or 'Hamkor'}</b> (#{partner_id})"
+    )
+    if status == "approved":
+        try:
+            from partner_bot import main_menu
+
+            reply_markup = main_menu()
+        except Exception:
+            reply_markup = None
+        try:
+            await callback.bot.send_message(
+                partner["telegram_user_id"],
+                "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
+                "Sizga referral link, promo kod, leadlar va komissiya paneli ochildi.",
+                reply_markup=reply_markup,
+            )
+        except Exception:
+            logger.exception("Tasdiqlangan partnerga xabar yuborilmadi: %s", partner_id)
+    else:
+        try:
+            await callback.bot.send_message(
+                partner["telegram_user_id"],
+                "Arizangiz hozircha tasdiqlanmadi. Keyinroq /start orqali qayta topshirishingiz mumkin.",
+            )
+        except Exception:
+            logger.exception("Rad etilgan partnerga xabar yuborilmadi: %s", partner_id)
+    await callback.answer("Saqlandi")
+
+
+@router.callback_query(F.data.startswith("fp:partnerapprove:"))
+@router.callback_query(F.data.startswith("partner_approve:"))
+async def approve_partner_application(callback: CallbackQuery):
+    await _set_partner_application_status(callback, "approved")
+
+
+@router.callback_query(F.data.startswith("fp:partnerreject:"))
+@router.callback_query(F.data.startswith("partner_reject:"))
+async def reject_partner_application(callback: CallbackQuery):
+    await _set_partner_application_status(callback, "rejected")
 
 
 @router.message(F.text.in_({FOUNDER_MENU["payments"], FOUNDER_MENU["renewals"]}))

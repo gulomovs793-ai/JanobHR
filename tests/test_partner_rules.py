@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from datetime import date, datetime, timezone
+from pathlib import Path
 from unittest.mock import patch
 
 from services import partner_database as pdb
@@ -50,6 +51,17 @@ class PartnerRulesTests(unittest.TestCase):
         info = partner_payouts.payout_delay_info(due, now)
         self.assertEqual(info["delay_days"], 2)
         self.assertEqual(info["bonus_amount"], 6_000)
+
+    def test_partner_application_review_is_founder_bot_owned(self):
+        source = Path("partner_bot.py").read_text(encoding="utf-8")
+        self.assertIn("FOUNDER_BOT_TOKEN", source)
+        self.assertIn('callback_data=f"fp:partnerapprove:{partner_id}"', source)
+        self.assertIn('"partners": "🤝 Hamkorlar uchun arizalar"', Path("founder_panel.py").read_text(encoding="utf-8"))
+
+    def test_business_leads_are_routed_to_founder_bot(self):
+        source = Path("handlers/create_bot.py").read_text(encoding="utf-8")
+        self.assertIn("async def _send_to_founder_bot", source)
+        self.assertIn("FOUNDER_BOT_TOKEN", source)
 
 
 class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):

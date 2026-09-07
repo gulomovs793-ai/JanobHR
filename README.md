@@ -210,6 +210,13 @@ tarifga bog'lash, amal qilish muddati va komissiya balansi ko'rsatiladi.
 Promo chegirma komissiyadan ayriladi: masalan START 10% promo uchun
 `99 000 - (299 000 × 10%) = 69 100 UZS`.
 
+Partnerga ariza topshirish va biznes leadlar **Founder Bot**ga yuboriladi.
+Founder Bot menyusidagi **🤝 Hamkorlar uchun arizalar** bo'limidan founder arizani
+ko'radi, tafsilotlarini ochadi va tasdiqlaydi yoki rad etadi. Tasdiqlangandan keyin
+hamkorga Partner Bot orqali panel, referral link va promo funksiyalari ochilgani
+haqida xabar boradi. Ushbu oqim uchun `FOUNDER_BOT_TOKEN` va `FOUNDER_USER_ID`
+(bir yoki bir nechta Telegram ID, vergul bilan ajratilgan) sozlangan bo'lishi kerak.
+
 ## Admin bot — arizalarni ko'rib chiqish, vakansiyalarni boshqarish, statistika
 
 **Muhim: bu bot endi ixtiyoriy emas.** Nomzod arizalari (✅/❌ tugmalari bilan)

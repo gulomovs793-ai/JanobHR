@@ -26,7 +26,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, FOUNDER_USER_IDS
+from config import ADMIN_BOT_TOKEN, ADMIN_USER_IDS, FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
 from services import bot_registry, database, partner_database as pdb
 from services.tenant_activation import activate_tenant
 
@@ -35,34 +35,55 @@ logger = logging.getLogger("janob_hr_bot")
 router = Router(name="create_bot")
 
 
-async def _send_to_janob_hr_admin(text: str) -> None:
-    """Biznes leadlarni faqat Janob HR Admin bot orqali yuboradi."""
-    recipient_ids = ADMIN_USER_IDS or FOUNDER_USER_IDS
-    if not recipient_ids:
-        logger.error("Biznes lead uchun ADMIN_USER_IDS sozlanmagan.")
+async def _send_to_founder_bot(text: str) -> None:
+    """Send every business lead to the Founder Bot only."""
+    if not FOUNDER_USER_IDS:
+        logger.error("Biznes lead uchun FOUNDER_USER_ID sozlanmagan.")
+        return
+    if not FOUNDER_BOT_TOKEN:
+        logger.error("Biznes lead uchun FOUNDER_BOT_TOKEN sozlanmagan.")
         return
 
+    founder_bot = Bot(
+        token=FOUNDER_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+
+    try:
+        for founder_id in FOUNDER_USER_IDS:
+            try:
+                await founder_bot.send_message(chat_id=founder_id, text=text)
+            except Exception:
+                logger.exception(
+                    "Biznes leadni Founder Bot orqali yuborib bo'lmadi: %s",
+                    founder_id,
+                )
+    finally:
+        await founder_bot.session.close()
+
+
+async def _send_to_janob_hr_admin(text: str) -> None:
+    """Backward-compatible helper kept for older integrations/tests.
+
+    New business-lead callers use ``_send_to_founder_bot`` above; this legacy
+    helper is intentionally not used by the onboarding flow anymore.
+    """
+    recipient_ids = ADMIN_USER_IDS or FOUNDER_USER_IDS
+    if not recipient_ids:
+        return
     admin_bot = bot_registry.admin_bot
     temporary_bot = None
     if admin_bot is None:
         if not ADMIN_BOT_TOKEN:
-            logger.error("Biznes lead uchun ADMIN_BOT_TOKEN sozlanmagan.")
             return
         temporary_bot = Bot(
             token=ADMIN_BOT_TOKEN,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
         admin_bot = temporary_bot
-
     try:
         for admin_id in recipient_ids:
-            try:
-                await admin_bot.send_message(chat_id=admin_id, text=text)
-            except Exception:
-                logger.exception(
-                    "Biznes leadni Janob HR Admin orqali yuborib bo'lmadi: %s",
-                    admin_id,
-                )
+            await admin_bot.send_message(chat_id=admin_id, text=text)
     finally:
         if temporary_bot is not None:
             await temporary_bot.session.close()
@@ -271,7 +292,7 @@ async def receive_contact(message: Message, state: FSMContext):
         f"Telegram: @{escape(message.from_user.username or '—')}"
         f"{partner_line}"
     )
-    await _send_to_janob_hr_admin(notice)
+    await _send_to_founder_bot(notice)
 
 
 @router.message(CreateBotForm.waiting_contact)
@@ -399,7 +420,7 @@ async def receive_admin_token(message: Message, state: FSMContext):
             f"Buyurtma raqami: <code>{tenant_id}</code>\n"
             "Iltimos, birozdan so'ng qayta urinib ko'ring yoki @F45746 ga shu raqamni yuboring."
         )
-        await _send_to_janob_hr_admin(
+        await _send_to_founder_bot(
             "⚠️ <b>Trial botlarni faollashtirishda xato</b>\n\n"
             f"Mijoz №{tenant_id} — {escape(data['company_name'])}\n"
             f"Xato: {escape(str(activation.get('error') or 'noma’lum'))}"
@@ -443,7 +464,7 @@ async def receive_admin_token(message: Message, state: FSMContext):
         f"Kim orqali: <code>{admin_id}</code>"
         f"{partner_line}"
     )
-    await _send_to_janob_hr_admin(notice)
+    await _send_to_founder_bot(notice)
 
 
 @router.message(CreateBotForm.waiting_candidate_token)

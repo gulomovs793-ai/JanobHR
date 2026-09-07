@@ -35,7 +35,13 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from config import BOT_TOKEN, FOUNDER_USER_IDS, SETUP_BOT_TOKEN, WEBHOOK_BASE_URL
+from config import (
+    BOT_TOKEN,
+    FOUNDER_BOT_TOKEN,
+    FOUNDER_USER_IDS,
+    SETUP_BOT_TOKEN,
+    WEBHOOK_BASE_URL,
+)
 from partner_payout_bot import payout_router, run_payout_reminders
 from services import partner_database as pdb
 from services.partner_ai import generate_partner_advice
@@ -173,10 +179,10 @@ def founder_review_keyboard(partner_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✅ Tasdiqlash", callback_data=f"partner_approve:{partner_id}"
+                    text="✅ Tasdiqlash", callback_data=f"fp:partnerapprove:{partner_id}"
                 ),
                 InlineKeyboardButton(
-                    text="❌ Rad etish", callback_data=f"partner_reject:{partner_id}"
+                    text="❌ Rad etish", callback_data=f"fp:partnerreject:{partner_id}"
                 ),
             ]
         ]
@@ -585,13 +591,27 @@ async def receive_phone(message: Message, state: FSMContext) -> None:
         f"Telefon: <code>{partner['phone']}</code>\n"
         f"Telegram: @{partner['username'] or '—'}"
     )
-    for founder_id in FOUNDER_USER_IDS:
-        try:
-            await message.bot.send_message(
-                founder_id, notice, reply_markup=founder_review_keyboard(partner["id"])
-            )
-        except Exception:
-            logger.exception("Founderga partner arizasini yuborib bo'lmadi: %s", founder_id)
+    if not FOUNDER_BOT_TOKEN:
+        logger.error("Partner arizasi yuborilmadi: FOUNDER_BOT_TOKEN sozlanmagan.")
+        return
+    founder_bot = Bot(
+        token=FOUNDER_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    try:
+        for founder_id in FOUNDER_USER_IDS:
+            try:
+                await founder_bot.send_message(
+                    founder_id,
+                    notice,
+                    reply_markup=founder_review_keyboard(partner["id"]),
+                )
+            except Exception:
+                logger.exception(
+                    "Founder Botga partner arizasini yuborib bo'lmadi: %s", founder_id
+                )
+    finally:
+        await founder_bot.session.close()
 
 
 @router.message(PartnerForm.phone)

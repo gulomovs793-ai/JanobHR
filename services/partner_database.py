@@ -209,11 +209,38 @@ async def init_partner_db() -> None:
 
 
 async def get_partner_by_user_id(user_id: int) -> dict | None:
+    await init_partner_db()
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
             "SELECT * FROM partners WHERE telegram_user_id=? LIMIT 1", (user_id,)
         )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def list_partners(status: str | None = None, limit: int = 100) -> list[dict]:
+    """Return partner applications for the founder-only review flow."""
+    await init_partner_db()
+    limit = max(1, min(int(limit or 100), 500))
+    query = "SELECT * FROM partners"
+    params: list[object] = []
+    if status:
+        query += " WHERE status=?"
+        params.append(status)
+    query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+    params.append(limit)
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(query, params)
+        return [dict(row) for row in await cur.fetchall()]
+
+
+async def get_partner(partner_id: int) -> dict | None:
+    await init_partner_db()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM partners WHERE id=? LIMIT 1", (partner_id,))
         row = await cur.fetchone()
         return dict(row) if row else None
 

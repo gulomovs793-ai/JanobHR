@@ -138,8 +138,9 @@ async def _show_vacancy_menu(
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
     args = (message.text or "").split(maxsplit=1)
-    if len(args) == 2 and args[1].startswith("ref_"):
-        code = args[1][4:].strip().upper()
+    payload = args[1].strip() if len(args) == 2 else ""
+    if payload.startswith("ref_"):
+        code = payload[4:].strip().upper()
         partner = await pdb.get_partner_by_code(code)
         if partner:
             await pdb.record_referral_click(partner["id"], message.from_user.id)
@@ -157,6 +158,27 @@ async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
                 partner_name=partner.get("full_name") or partner.get("username") or "Hamkor",
             )
             return
+
+    if payload.startswith("vac_"):
+        vacancy_key = payload[4:].strip().lower()
+        vacancy = await database.get_vacancy(tenant_id, vacancy_key)
+        if vacancy and vacancy["active"]:
+            await state.clear()
+            await state.update_data(pending_vacancy_key=vacancy_key)
+            builder = InlineKeyboardBuilder()
+            for code, label in LANGUAGES.items():
+                builder.button(text=label, callback_data=f"lang:{code}")
+            builder.adjust(1)
+            await message.answer(
+                "👔 <b>Janob HR</b>\n\n" + CHOOSE_LANGUAGE_PROMPT,
+                reply_markup=builder.as_markup(),
+            )
+            await state.set_state(ApplyForm.choosing_language)
+            return
+        await message.answer(
+            "Bu vakansiya endi mavjud emas yoki vaqtincha yopilgan. Iltimos, asosiy menyudan ochiq vakansiyalarni tanlang."
+        )
+        return
 
     await state.clear()
 
@@ -180,6 +202,16 @@ async def choose_language(callback: CallbackQuery, state: FSMContext, tenant_id:
 
     await state.set_state(None)
     await state.update_data(lang=lang)
+    data = await state.get_data()
+    pending_vacancy_key = data.get("pending_vacancy_key")
+    if pending_vacancy_key:
+        from handlers.vacancy import begin_vacancy_application
+
+        await begin_vacancy_application(
+            callback.message, state, tenant_id, pending_vacancy_key, lang
+        )
+        await callback.answer()
+        return
     await _show_home(callback.message, lang, edit=True)
     await callback.answer()
 

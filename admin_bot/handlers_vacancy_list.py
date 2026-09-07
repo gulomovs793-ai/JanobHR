@@ -1,7 +1,17 @@
-"""Admin bot — vakansiyalar ro'yxati, tafsilotlari, faollashtirish/o'chirish."""
+"""Admin bot — vakansiyalar ro'yxati, tafsilotlari, ulashish va boshqarish."""
 
-from aiogram import F, Router
-from aiogram.types import CallbackQuery, Message
+import asyncio
+from io import BytesIO
+from html import escape
+
+from aiogram import Bot, F, Router
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from admin_bot.parsing import format_questions_preview
@@ -9,6 +19,48 @@ from services import database
 from services.ai_scoring import aggregate_scores
 
 router = Router(name="admin_vacancy_list")
+
+
+async def _candidate_bot_username(tenant: dict) -> str | None:
+    """Return and persist the customer's candidate-bot username."""
+    username = (tenant.get("bot_username") or "").strip().lstrip("@")
+    if username:
+        return username
+
+    token = (tenant.get("bot_token") or "").strip()
+    if not token:
+        return None
+    bot = Bot(token=token)
+    try:
+        me = await bot.get_me()
+        username = (me.username or "").strip().lstrip("@")
+    except Exception:
+        return None
+    finally:
+        await bot.session.close()
+    if username:
+        await database.update_tenant_status(
+            tenant["id"], tenant["status"], bot_username=username
+        )
+    return username or None
+
+
+def _vacancy_link(username: str, vacancy_key: str) -> str:
+    return f"https://t.me/{username}?start=vac_{vacancy_key}"
+
+
+def _vacancy_qr_png(link: str) -> bytes:
+    # Keep QR generation server-side so the generated image always contains
+    # the same exact deep-link shown to the customer.
+    import qrcode
+
+    qr = qrcode.QRCode(version=None, box_size=12, border=4)
+    qr.add_data(link)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="black", back_color="white")
+    stream = BytesIO()
+    image.save(stream, format="PNG")
+    return stream.getvalue()
 
 
 async def list_vacancies_message(message: Message, tenant_id: int):
@@ -21,7 +73,11 @@ async def list_vacancies_message(message: Message, tenant_id: int):
         )
     builder.button(text="➕ Yangi vakansiya", callback_data="menu:new")
     builder.adjust(1)
-    text = "📋 <b>Vakansiyalar</b>\n\nBiror birini tanlang:" if vacancies else "Hozircha vakansiya yo'q."
+    text = (
+        "📋 <b>Vakansiyalar</b>\n\nBiror birini tanlang:"
+        if vacancies
+        else "Hozircha vakansiya yo'q."
+    )
     await message.answer(text, reply_markup=builder.as_markup())
 
 
@@ -89,12 +145,62 @@ async def _show_vacancy_detail(callback: CallbackQuery, tenant_id: int, key: str
     builder.button(
         text="✍️ Savollarni to'liq qayta yozish", callback_data=f"vacmanual:{key}"
     )
+    builder.button(text="🔗 Link va QR-kod", callback_data=f"vacshare:{key}")
     builder.button(text="🗑 O'chirish", callback_data=f"vacdel:{key}")
     builder.button(text="⬅️ Ro'yxatga qaytish", callback_data="menu:vacancies")
     builder.adjust(1)
 
     await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("vacshare:"))
+async def share_vacancy(callback: CallbackQuery, tenant_id: int):
+    key = callback.data.split(":", 1)[1]
+    vacancy = await database.get_vacancy(tenant_id, key)
+    if not vacancy:
+        await callback.answer("Bu vakansiya topilmadi.", show_alert=True)
+        return
+    if not vacancy["active"]:
+        await callback.answer("Avval vakansiyani faollashtiring.", show_alert=True)
+        return
+
+    tenant = await database.get_tenant(tenant_id)
+    username = await _candidate_bot_username(tenant or {}) if tenant else None
+    if not username:
+        await callback.answer(
+            "Nomzod bot username'i topilmadi. Vakansiya botini qayta faollashtiring.",
+            show_alert=True,
+        )
+        return
+
+    link = _vacancy_link(username, vacancy["key"])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Vakansiyani ochish", url=link)],
+        ]
+    )
+    await callback.message.answer(
+        f"🔗 <b>{escape(vacancy['title'])}</b> uchun vakansiya linki\n\n"
+        f"<code>{link}</code>\n\n"
+        "Bu linkni Telegram kanal, guruh yoki shaxsiy xabarga yuboring. Nomzod linkni ochganda avval tilini tanlaydi, keyin aynan shu vakansiya savollariga o'tadi.",
+        reply_markup=keyboard,
+    )
+    try:
+        qr_bytes = await asyncio.to_thread(_vacancy_qr_png, link)
+    except Exception:
+        await callback.message.answer(
+            "⚠️ Link tayyor. QR-kodni yaratib bo'lmadi; server dependency'sini tekshirish kerak."
+        )
+    else:
+        await callback.message.answer_photo(
+            BufferedInputFile(qr_bytes, filename=f"{vacancy['key']}-qr.png"),
+            caption=(
+                f"📲 <b>{escape(vacancy['title'])}</b>\n"
+                "Shu QR-kodni skaner qilgan nomzod to'g'ri mijoz botidagi to'g'ri vakansiyaga kiradi."
+            ),
+        )
+    await callback.answer("Link va QR-kod tayyor")
 
 
 @router.callback_query(F.data.startswith("vac:"))

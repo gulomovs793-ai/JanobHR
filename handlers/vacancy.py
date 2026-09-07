@@ -14,12 +14,9 @@ from vacancies import build_questions
 router = Router(name="vacancy")
 
 
-@router.callback_query(ApplyForm.choosing_vacancy, F.data.startswith("vacancy:"))
-async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: int):
-    key = callback.data.split(":", 1)[1]
-    data = await state.get_data()
-    lang = data.get("lang", DEFAULT_LANG)
-
+async def begin_vacancy_application(
+    message, state: FSMContext, tenant_id: int, key: str, lang: str
+):
     usage = await database.get_subscription_usage(tenant_id)
     if not usage["applications_available"]:
         text = (
@@ -27,17 +24,17 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: 
             if lang == "ru"
             else "Kompaniya yangi arizalarni qabul qilishni vaqtincha to'xtatgan. Keyinroq urinib ko'ring."
         )
-        await callback.message.edit_text(text)
+        await message.edit_text(text)
         await state.clear()
-        await callback.answer()
         return
 
     # Rus tili tanlangan bo'lsa, savollar birinchi marta AI orqali tarjima
     # qilinadi va keyingi safarlar uchun bazada saqlanadi.
     vacancy = await database.get_vacancy_localized(tenant_id, key, lang)
     if not vacancy or not vacancy["active"]:
-        await callback.answer(t("vacancy_gone", lang), show_alert=True)
-        return
+        await message.edit_text(t("vacancy_gone", lang))
+        await state.clear()
+        return False
 
     # Vakansiyaning to'liq "suratini" (savollar, rad etish xabari va h.k.) shu
     # yerda FSM holatiga saqlab qo'yamiz — shunda keyingi har bir savolda
@@ -64,11 +61,20 @@ async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: 
         followup_asked_indices=[],
         awaiting_followup_for=None,
     )
-    await callback.message.edit_text(
+    await message.edit_text(
         t("vacancy_selected", lang, title=vacancy["title"])
     )
 
     from handlers.resume_upfront import ask_resume_upfront
 
-    await ask_resume_upfront(callback.message, state)
+    await ask_resume_upfront(message, state)
+    return True
+
+
+@router.callback_query(ApplyForm.choosing_vacancy, F.data.startswith("vacancy:"))
+async def choose_vacancy(callback: CallbackQuery, state: FSMContext, tenant_id: int):
+    key = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    lang = data.get("lang", DEFAULT_LANG)
+    await begin_vacancy_application(callback.message, state, tenant_id, key, lang)
     await callback.answer()

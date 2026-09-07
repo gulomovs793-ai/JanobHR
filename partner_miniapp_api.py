@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl
 
 from aiohttp import web
 from services import partner_database as pdb
+from services import partner_payouts
 
 BASE_DIR = Path(__file__).resolve().parent
 PARTNER_MINIAPP_DIR = BASE_DIR / "partner_miniapp"
@@ -69,6 +70,12 @@ async def partner_stats(request: web.Request) -> web.Response:
     if error:
         return error
     stats = await pdb.get_partner_stats(partner["id"])
+    balance = await partner_payouts.get_partner_balance(partner["id"])
+    balance["next_payout_date"] = (
+        (balance.get("active_request") or {}).get("payout_due_date")
+        if balance.get("active_request")
+        else partner_payouts.next_payout_date().isoformat()
+    )
     referral_link = f"https://t.me/{JANOBHR_MAIN_BOT_USERNAME}?start=ref_{partner['referral_code']}" if partner.get("referral_code") else ""
 
     promo = None
@@ -89,6 +96,13 @@ async def partner_stats(request: web.Request) -> web.Response:
         "referral_link": referral_link,
         "promo": promo,
         "stats": {**stats, "earned_label": pdb.format_uzs(stats.get("earned", 0))},
+        "balance": {
+            **balance,
+            "earned_label": pdb.format_uzs(balance.get("earned", 0)),
+            "available_label": pdb.format_uzs(balance.get("available", 0)),
+            "reserved_label": pdb.format_uzs(balance.get("reserved", 0)),
+            "paid_label": pdb.format_uzs(balance.get("paid", 0)),
+        },
         "activity": await pdb.get_partner_activity(partner["id"]),
     })
 

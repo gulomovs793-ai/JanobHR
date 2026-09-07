@@ -63,14 +63,15 @@
     </section>
 
     <section id="promo" class="view">
-      <div class="page-head"><small>PROMO KOD</small><h1>Chegirmani tanlang</h1><p>Chegirma mijozga beriladi va aynan shu summa sizning komissiyangizdan ayriladi.</p></div>
-      <div class="promo-grid">
-        <button data-discount="0" type="button">0%<small>To‘liq komissiya</small></button>
-        <button data-discount="5" type="button">5%<small>Kichik chegirma</small></button>
-        <button data-discount="10" type="button">10%<small>Ommabop</small></button>
-        <button data-discount="15" type="button">15%<small>Kuchli taklif</small></button>
-        <button data-discount="20" type="button">20%<small>Maksimum</small></button>
-      </div>
+      <div class="page-head"><small>PROMO KOD</small><h1>O‘z taklifingizni yarating</h1><p>Foiz yoki aniq summa tanlang, amal qilish muddatini belgilang. Chegirma sizning komissiyangizdan ayriladi.</p></div>
+      <article class="card promo-form">
+        <label>Chegirma turi</label>
+        <div class="promo-types"><button class="type-btn selected" data-promo-type="percent" type="button">Foizda</button><button class="type-btn" data-promo-type="amount" type="button">Summada</button></div>
+        <label for="discountValue">Chegirma miqdori</label><div class="input-wrap"><input id="discountValue" type="number" min="1" max="100" placeholder="Masalan, 10"><span id="discountSuffix">%</span></div>
+        <label for="durationDays">Necha kun amal qiladi?</label><div class="input-wrap"><input id="durationDays" type="number" min="1" max="365" value="30"><span>kun</span></div>
+        <button id="createPromo" class="dark-btn" type="button">Promo kod yaratish</button>
+        <p class="form-hint">Har bir partnerda bitta faol promo kod bo‘ladi. Yangi kod yaratilsa, avvalgisi avtomatik yopiladi.</p>
+      </article>
       <article id="promoResult" class="card hidden">
         <small>FAOL PROMO KOD</small><h2 id="promoCode">—</h2><p id="promoText"></p><button id="copyPromo" class="dark-btn" type="button">Promo kodni nusxalash</button>
       </article>

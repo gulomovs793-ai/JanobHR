@@ -222,7 +222,11 @@ async def back_to_review_from_picker(callback: CallbackQuery, state: FSMContext)
     AdminForm.reviewing_ai_questions, F.data.startswith("aiq:editq:")
 )
 async def start_edit_pending_question(callback: CallbackQuery, state: FSMContext):
-    idx = int(callback.data.split(":")[2])
+    parts = (callback.data or "").split(":")
+    if len(parts) != 3 or parts[:2] != ["aiq", "editq"] or not parts[2].isdecimal():
+        await callback.answer("Noto'g'ri savol so'rovi.", show_alert=True)
+        return
+    idx = int(parts[2])
     data = await state.get_data()
     questions = data.get("pending_questions", [])
     if idx >= len(questions):
@@ -394,7 +398,11 @@ async def show_question_picker(callback: CallbackQuery, tenant_id: int):
 async def start_edit_single_question(
     callback: CallbackQuery, state: FSMContext, tenant_id: int
 ):
-    _, key, idx_str = callback.data.split(":")
+    parts = (callback.data or "").split(":")
+    if len(parts) != 3 or parts[0] != "vaceditq" or not parts[2].isdecimal():
+        await callback.answer("Noto'g'ri savol so'rovi.", show_alert=True)
+        return
+    key, idx_str = parts[1:]
     idx = int(idx_str)
     vacancy = await database.get_vacancy(tenant_id, key)
     if not vacancy or idx >= len(vacancy["questions"]):

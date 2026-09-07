@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 import unittest
@@ -97,6 +98,43 @@ class LogicReleaseTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(database.InterviewSlotBooked):
             await database.delete_interview_slot(self.tenant_id, slot_id)
+
+    async def test_parallel_slot_booking_never_overbooks_and_duplicate_is_idempotent(self):
+        slot_id = await database.add_interview_slot(
+            self.tenant_id, "2026-09-05 11:00", capacity=1
+        )
+        first_app = await self._save_app("parallel-slot-1")
+        second_app = await self._save_app("parallel-slot-2")
+
+        results = await asyncio.gather(
+            database.book_interview_slot(self.tenant_id, first_app, slot_id),
+            database.book_interview_slot(self.tenant_id, second_app, slot_id),
+        )
+        self.assertCountEqual(results, ["booked", "full"])
+        self.assertEqual(
+            await database.count_slot_bookings(self.tenant_id, "2026-09-05 11:00"),
+            1,
+        )
+
+        booked_app = first_app if results[0] == "booked" else second_app
+        self.assertEqual(
+            await database.book_interview_slot(self.tenant_id, booked_app, slot_id),
+            "already_booked",
+        )
+
+    async def test_slot_booking_rechecks_active_slot_inside_transaction(self):
+        slot_id = await database.add_interview_slot(
+            self.tenant_id, "2026-09-05 12:00", capacity=1
+        )
+        app_id = await self._save_app("deleted-slot")
+        self.assertTrue(await database.delete_interview_slot(self.tenant_id, slot_id))
+
+        self.assertEqual(
+            await database.book_interview_slot(self.tenant_id, app_id, slot_id),
+            "unavailable",
+        )
+        app = await database.get_application(self.tenant_id, app_id)
+        self.assertIsNone(app["selected_slot"])
 
     async def test_expired_payment_order_is_expired_on_read_and_not_reminded(self):
         now = datetime.now(timezone.utc)

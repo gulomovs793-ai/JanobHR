@@ -10,6 +10,7 @@ ta'minlanadi. Yangi funksiya qo'shganda ham shu qoidaga rioya qilish SHART.
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 import aiosqlite
@@ -17,6 +18,62 @@ import aiosqlite
 from config import SQLITE_PATH
 
 logger = logging.getLogger("janob_hr_bot")
+
+
+def _json_value(raw, default):
+    """Return decoded JSON without letting one corrupt legacy row crash a bot."""
+    if raw in (None, ""):
+        return default
+    try:
+        value = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return default
+    return value
+
+
+def _json_dict(raw) -> dict:
+    value = _json_value(raw, {})
+    return value if isinstance(value, dict) else {}
+
+
+def _json_list(raw) -> list:
+    value = _json_value(raw, [])
+    return value if isinstance(value, list) else []
+
+
+def _as_utc_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return (
+        parsed.replace(tzinfo=timezone.utc)
+        if parsed.tzinfo is None
+        else parsed.astimezone(timezone.utc)
+    )
+
+
+def _normalise_slot_start(value: str | None) -> str | None:
+    """Normalize a stored interview time, rejecting malformed legacy input."""
+    if value in (None, ""):
+        return None
+    parsed = _as_utc_datetime(value)
+    if parsed is None:
+        raise ValueError("Suhbat vaqti noto'g'ri formatda")
+    return parsed.isoformat()
+
+
+def _tenant_from_row(row) -> dict:
+    tenant = dict(row)
+    tenant["admin_user_ids"] = [
+        int(value)
+        for value in _json_list(tenant.get("admin_user_ids"))
+        if str(value).strip().lstrip("-").isdigit()
+    ]
+    tenant["onboarding_profile"] = _json_dict(tenant.get("onboarding_profile"))
+    return tenant
 
 
 class ApplicationLimitReached(RuntimeError):
@@ -145,7 +202,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     decided_at TEXT,
-    customer_notified_at TEXT
+    customer_notified_at TEXT,
+    subscription_activated_at TEXT
 );
 """
 
@@ -469,6 +527,19 @@ async def init_db():
             await db.execute(
                 "ALTER TABLE payment_orders ADD COLUMN customer_notified_at TEXT"
             )
+        marker_was_missing = "subscription_activated_at" not in payment_columns
+        if marker_was_missing:
+            await db.execute(
+                "ALTER TABLE payment_orders ADD COLUMN subscription_activated_at TEXT"
+            )
+            # Historical approved orders were already activated before this
+            # marker existed. Mark them as reconciled so a fresh deploy cannot
+            # extend every old subscription a second time.
+            await db.execute(
+                "UPDATE payment_orders SET subscription_activated_at="
+                "COALESCE(decided_at, created_at) "
+                "WHERE status='approved' AND subscription_activated_at IS NULL"
+            )
 
         # Defense-in-depth for payment routing: even if application-level locking
         # regresses later, SQLite itself must never allow two LIVE orders to own
@@ -608,13 +679,7 @@ async def get_tenant(tenant_id: int) -> dict | None:
         row = await cursor.fetchone()
     if not row:
         return None
-    t = dict(row)
-    t["admin_user_ids"] = json.loads(t["admin_user_ids"])
-    try:
-        t["onboarding_profile"] = json.loads(t.get("onboarding_profile") or "{}")
-    except (TypeError, json.JSONDecodeError):
-        t["onboarding_profile"] = {}
-    return t
+    return _tenant_from_row(row)
 
 
 async def get_tenant_by_role_token(token: str) -> tuple[dict, str] | None:
@@ -626,18 +691,14 @@ async def get_tenant_by_role_token(token: str) -> tuple[dict, str] | None:
         cursor = await db.execute("SELECT * FROM tenants WHERE bot_token = ?", (token,))
         row = await cursor.fetchone()
         if row:
-            t = dict(row)
-            t["admin_user_ids"] = json.loads(t["admin_user_ids"])
-            return t, "candidate"
+            return _tenant_from_row(row), "candidate"
 
         cursor = await db.execute(
             "SELECT * FROM tenants WHERE admin_bot_token = ?", (token,)
         )
         row = await cursor.fetchone()
         if row:
-            t = dict(row)
-            t["admin_user_ids"] = json.loads(t["admin_user_ids"])
-            return t, "admin"
+            return _tenant_from_row(row), "admin"
 
     return None
 
@@ -664,13 +725,7 @@ async def list_tenants(status: str | None = None) -> list[dict]:
         rows = await cursor.fetchall()
     result = []
     for row in rows:
-        t = dict(row)
-        t["admin_user_ids"] = json.loads(t["admin_user_ids"])
-        try:
-            t["onboarding_profile"] = json.loads(t.get("onboarding_profile") or "{}")
-        except (TypeError, json.JSONDecodeError):
-            t["onboarding_profile"] = {}
-        result.append(t)
+        result.append(_tenant_from_row(row))
     return result
 
 
@@ -820,15 +875,17 @@ async def get_founder_dashboard_data() -> dict:
         )
         payments = [dict(row) for row in await cursor.fetchall()]
 
-    renewals = [
-        item for item in customers
-        if item["status"] == "active"
-        and item.get("subscription_expires_at")
-        and item["subscription_expires_at"] <= renewal_cutoff
-    ]
+    renewal_cutoff_dt = _as_utc_datetime(renewal_cutoff) or now
+    renewals = []
+    for item in customers:
+        expires = _as_utc_datetime(item.get("subscription_expires_at"))
+        if item["status"] == "active" and expires and expires <= renewal_cutoff_dt:
+            renewals.append(item)
     for item in renewals:
-        expires = datetime.fromisoformat(item["subscription_expires_at"])
-        item["days_left"] = max(-999, (expires.date() - now.date()).days)
+        expires = _as_utc_datetime(item["subscription_expires_at"])
+        item["days_left"] = (
+            max(-999, (expires.date() - now.date()).days) if expires else -999
+        )
     renewals.sort(key=lambda item: item.get("subscription_expires_at") or "")
 
     return {
@@ -1050,9 +1107,7 @@ async def list_expiring_subscriptions(days: int) -> list[dict]:
         rows = await cursor.fetchall()
     result = []
     for row in rows:
-        item = dict(row)
-        item["admin_user_ids"] = json.loads(item["admin_user_ids"])
-        result.append(item)
+        result.append(_tenant_from_row(row))
     return result
 
 
@@ -1070,26 +1125,34 @@ async def list_subscription_reminder_candidates() -> list[dict]:
         rows = await cursor.fetchall()
     result = []
     for row in rows:
-        item = dict(row)
-        item["admin_user_ids"] = json.loads(item["admin_user_ids"])
-        result.append(item)
+        result.append(_tenant_from_row(row))
     return result
 
 
 async def update_tenant_status(
     tenant_id: int, status: str, bot_username: str | None = None
-) -> None:
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        if bot_username is not None:
-            await db.execute(
-                "UPDATE tenants SET status = ?, bot_username = ? WHERE id = ?",
-                (status, bot_username, tenant_id),
-            )
-        else:
-            await db.execute(
-                "UPDATE tenants SET status = ? WHERE id = ?", (status, tenant_id)
-            )
-        await db.commit()
+) -> bool:
+    """Update one tenant and report whether the target still existed."""
+    if status not in {"pending", "active", "inactive"}:
+        raise ValueError("Noto'g'ri mijoz holati")
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            if bot_username is not None:
+                cursor = await db.execute(
+                    "UPDATE tenants SET status = ?, bot_username = ? WHERE id = ?",
+                    (status, bot_username, tenant_id),
+                )
+            else:
+                cursor = await db.execute(
+                    "UPDATE tenants SET status = ? WHERE id = ?", (status, tenant_id)
+                )
+            await db.commit()
+            return cursor.rowcount == 1
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def set_admin_bot_username(tenant_id: int, username: str) -> None:
@@ -1122,9 +1185,10 @@ async def get_subscription_usage(tenant_id: int) -> dict:
         )
         vacancies_used = (await cursor.fetchone())[0]
     expires_at = tenant.get("subscription_expires_at")
+    expires_dt = _as_utc_datetime(expires_at)
     expired = bool(
         plan.code not in {"trial", "legacy"}
-        and (not expires_at or expires_at <= datetime.now(timezone.utc).isoformat())
+        and (not expires_dt or expires_dt <= datetime.now(timezone.utc))
     )
     return {
         "plan": plan,
@@ -1148,7 +1212,12 @@ async def activate_subscription(
 
     if plan_code not in PUBLIC_PLAN_CODES:
         raise ValueError("Noto'g'ri tarif")
+    months = int(months)
+    if not 1 <= months <= 12:
+        raise ValueError("Billing oylar soni 1–12 oralig'ida bo'lishi kerak")
     tenant = await get_tenant(tenant_id)
+    if not tenant:
+        raise ValueError("Mijoz topilmadi")
     usage = await get_subscription_usage(tenant_id)
     if get_plan_transition(
         usage["plan"].code,
@@ -1159,20 +1228,96 @@ async def activate_subscription(
             "Faol tarif muddati tugamaguncha past tarifga o'tib bo'lmaydi"
         )
     now = datetime.now(timezone.utc)
-    try:
-        current_expiry = datetime.fromisoformat(
-            tenant.get("subscription_expires_at") or ""
-        )
-    except (AttributeError, TypeError, ValueError):
-        current_expiry = now
+    current_expiry = _as_utc_datetime(tenant.get("subscription_expires_at")) or now
     expires = max(now, current_expiry) + timedelta(days=30 * max(1, months))
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute(
-            "UPDATE tenants SET plan_code = ?, subscription_started_at = ?, "
-            "subscription_expires_at = ? WHERE id = ?",
-            (plan_code, now.isoformat(), expires.isoformat(), tenant_id),
-        )
-        await db.commit()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "UPDATE tenants SET plan_code = ?, subscription_started_at = ?, "
+                "subscription_expires_at = ? WHERE id = ?",
+                (plan_code, now.isoformat(), expires.isoformat(), tenant_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Mijoz topilmadi")
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+
+async def activate_subscription_for_order(order_id: int) -> dict:
+    """Activate one approved payment exactly once.
+
+    Payment approval and tenant subscription activation are separate concerns,
+    so this marker makes automatic recovery and Founder manual retry safe. A
+    process restart after activation cannot extend the same order again.
+    """
+    from services.plans import PUBLIC_PLAN_CODES, get_plan, get_plan_transition
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=10) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA busy_timeout=10000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT p.*, t.plan_code AS current_plan, "
+                "t.subscription_started_at AS current_started_at, "
+                "t.subscription_expires_at AS current_expires_at "
+                "FROM payment_orders p JOIN tenants t ON t.id=p.tenant_id "
+                "WHERE p.id=? LIMIT 1",
+                (order_id,),
+            )
+            order = await cursor.fetchone()
+            if not order:
+                raise ValueError("To'lov buyurtmasi topilmadi")
+            if order["subscription_activated_at"]:
+                await db.commit()
+                return {"ok": True, "already_activated": True, "order": dict(order)}
+            if order["status"] != "approved":
+                raise ValueError("Faqat tasdiqlangan to'lov tarifni yoqa oladi")
+
+            plan_code = str(order["plan_code"] or "").lower()
+            months = int(order["billing_months"] or 0)
+            if plan_code not in PUBLIC_PLAN_CODES or not 1 <= months <= 12:
+                raise ValueError("To'lov buyurtmasining tarifi yoki muddati noto'g'ri")
+            current_plan = get_plan(order["current_plan"])
+            current_expiry = _as_utc_datetime(order["current_expires_at"])
+            expired = current_plan.code not in {"trial", "legacy"} and (
+                not current_expiry or current_expiry <= now
+            )
+            if get_plan_transition(
+                current_plan.code, plan_code, current_expired=expired
+            ) == "blocked":
+                raise ValueError("Faol yuqori tarif sabab past tarif yoqilmadi")
+            expires = max(now, current_expiry or now) + timedelta(days=30 * months)
+            tenant_update = await db.execute(
+                "UPDATE tenants SET plan_code=?, subscription_started_at=?, "
+                "subscription_expires_at=? WHERE id=?",
+                (plan_code, now_iso, expires.isoformat(), order["tenant_id"]),
+            )
+            if tenant_update.rowcount != 1:
+                raise ValueError("Mijoz topilmadi")
+            marker_update = await db.execute(
+                "UPDATE payment_orders SET subscription_activated_at=? WHERE id=? "
+                "AND subscription_activated_at IS NULL",
+                (now_iso, order_id),
+            )
+            if marker_update.rowcount != 1:
+                raise RuntimeError("To'lov aktivatsiyasi parallel o'zgardi")
+            await db.commit()
+            return {
+                "ok": True,
+                "already_activated": False,
+                "order": dict(order),
+                "expires_at": expires.isoformat(),
+            }
+        except Exception:
+            await db.rollback()
+            raise
 
 
 # ============================= ARIZALAR (applications) =============================
@@ -1180,11 +1325,11 @@ async def activate_subscription(
 
 def _parse_app_row(row) -> dict:
     app = dict(row)
-    app["answers"] = json.loads(app["answers"])
-    app["ai_scores"] = json.loads(app["ai_scores"])
-    app["admin_messages"] = json.loads(app.get("admin_messages") or "[]")
-    app["ai_suspect_flags"] = json.loads(app.get("ai_suspect_flags") or "[]")
-    app["voice_answers"] = json.loads(app.get("voice_answers") or "{}")
+    app["answers"] = _json_dict(app.get("answers"))
+    app["ai_scores"] = _json_dict(app.get("ai_scores"))
+    app["admin_messages"] = _json_list(app.get("admin_messages"))
+    app["ai_suspect_flags"] = _json_list(app.get("ai_suspect_flags"))
+    app["voice_answers"] = _json_dict(app.get("voice_answers"))
     return app
 
 
@@ -1401,31 +1546,132 @@ async def transition_application_status(
         return cursor.rowcount > 0
 
 
-async def try_book_slot(tenant_id: int, app_id: int, slot: str, capacity: int) -> bool:
+async def _book_slot_transaction(
+    tenant_id: int,
+    app_id: int,
+    slot: str | None = None,
+    capacity: int | None = None,
+    *,
+    slot_id: int | None = None,
+) -> str:
+    """Return the atomic booking result for one candidate.
+
+    ``slot_id`` is the production path: the active slot row and its capacity
+    are re-read after the write lock is acquired. The legacy label/capacity
+    path remains available for integrations and older callers that do not have
+    a slot row.
+    """
+    if slot_id is not None:
+        try:
+            slot_id = int(slot_id)
+        except (TypeError, ValueError):
+            return "unavailable"
+        if slot_id <= 0:
+            return "unavailable"
+    else:
+        slot = str(slot or "").strip()
+        try:
+            capacity = int(capacity)
+        except (TypeError, ValueError):
+            return "unavailable"
+        if not slot or len(slot) > 80 or not 1 <= capacity <= 100:
+            return "unavailable"
+
+    # The capacity check and the booking update must be in the same write
+    # transaction. A plain conditional UPDATE still allows two concurrent
+    # candidates to observe the same free seat before either commits.
+    async with aiosqlite.connect(SQLITE_PATH, timeout=10) as db:
+        await db.execute("PRAGMA busy_timeout=10000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            if slot_id is not None:
+                cursor = await db.execute(
+                    "SELECT label, capacity FROM interview_slots "
+                    "WHERE id=? AND tenant_id=? AND active=1 LIMIT 1",
+                    (slot_id, tenant_id),
+                )
+                slot_row = await cursor.fetchone()
+                if not slot_row:
+                    await db.commit()
+                    return "unavailable"
+                slot = str(slot_row[0] or "").strip()
+                capacity = int(slot_row[1])
+
+            cursor = await db.execute(
+                "SELECT selected_slot, status FROM applications "
+                "WHERE id=? AND tenant_id=? LIMIT 1",
+                (app_id, tenant_id),
+            )
+            application = await cursor.fetchone()
+            if not application:
+                await db.commit()
+                return "unavailable"
+
+            selected_slot, status = application
+            if selected_slot:
+                # Repeated Telegram callbacks are harmless, but a candidate
+                # cannot silently move an already booked interview elsewhere.
+                await db.commit()
+                return "already_booked" if selected_slot == slot else "different_slot"
+            if status not in {"pending", "saved", "accepted"}:
+                await db.commit()
+                return "unavailable"
+
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM applications "
+                "WHERE tenant_id=? AND selected_slot=?",
+                (tenant_id, slot),
+            )
+            booked = int((await cursor.fetchone())[0] or 0)
+            if booked >= capacity:
+                await db.commit()
+                return "full"
+
+            cursor = await db.execute(
+                "UPDATE applications SET selected_slot=?, status='accepted' "
+                "WHERE id=? AND tenant_id=? AND selected_slot IS NULL "
+                "AND status IN ('pending', 'saved', 'accepted')",
+                (slot, app_id, tenant_id),
+            )
+            await db.commit()
+            return "booked" if cursor.rowcount == 1 else "unavailable"
+        except Exception:
+            await db.rollback()
+            raise
+
+
+async def book_interview_slot(tenant_id: int, app_id: int, slot_id: int) -> str:
+    """Book an active interview slot by its database id.
+
+    The returned status lets Telegram handlers distinguish a successful first
+    click from a harmless duplicate callback, so confirmations and admin
+    notifications are emitted only once.
+    """
+    return await _book_slot_transaction(tenant_id, app_id, slot_id=slot_id)
+
+
+async def try_book_slot(
+    tenant_id: int,
+    app_id: int,
+    slot: str,
+    capacity: int,
+    *,
+    slot_id: int | None = None,
+) -> bool:
     """Suhbat slotini atomik band qiladi va pipeline holatini sinxronlaydi.
 
-    Yuqori ball sabab admin qaroridan oldin slot taklif qilingan nomzod slotni
-    tanlasa, u endi mantiqan `accepted` bo'ladi. Bir xil tugmani qayta bosish
-    esa idempotent: o'z sloti to'lib qolgan bo'lsa ham muvaffaqiyat qaytadi.
+    ``slot_id`` berilganda active slot row tranzaksiya ichida qayta tekshiriladi.
+    Eski label/capacity chaqiruvlari esa backward-compatible boolean API sifatida
+    ishlaydi; takroriy bir xil band qilish idempotent ravishda ``True`` qaytaradi.
     """
-    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
-        await db.execute("PRAGMA busy_timeout=5000")
-        cursor = await db.execute(
-            """
-            UPDATE applications
-            SET selected_slot = ?, status = 'accepted'
-            WHERE id = ? AND tenant_id = ?
-              AND status IN ('pending', 'saved', 'accepted')
-              AND (
-                    selected_slot = ?
-                    OR (SELECT COUNT(*) FROM applications
-                        WHERE selected_slot = ? AND tenant_id = ?) < ?
-                  )
-            """,
-            (slot, app_id, tenant_id, slot, slot, tenant_id, capacity),
-        )
-        await db.commit()
-        return cursor.rowcount > 0
+    result = await _book_slot_transaction(
+        tenant_id,
+        app_id,
+        slot,
+        capacity,
+        slot_id=slot_id,
+    )
+    return result in {"booked", "already_booked"}
 
 
 async def count_slot_bookings(tenant_id: int, slot: str) -> int:
@@ -1492,11 +1738,9 @@ async def list_applications(
 
 def _row_to_vacancy(row) -> dict:
     v = dict(row)
-    v["questions"] = json.loads(v["questions"])
-    try:
-        v["profile"] = json.loads(v.get("profile_json") or "{}")
-    except (TypeError, json.JSONDecodeError):
-        v["profile"] = {}
+    questions = _json_value(v.get("questions"), [])
+    v["questions"] = questions if isinstance(questions, list) else []
+    v["profile"] = _json_dict(v.get("profile_json"))
     v["resume_required"] = bool(v["resume_required"])
     v["active"] = bool(v["active"])
     return v
@@ -1591,7 +1835,10 @@ async def get_vacancy_localized(tenant_id: int, key: str, lang: str) -> dict | N
         row = await cursor.fetchone()
 
     if row and row["questions_ru"]:
-        vacancy["questions"] = json.loads(row["questions_ru"])
+        localized_questions = _json_value(row["questions_ru"], [])
+        vacancy["questions"] = (
+            localized_questions if isinstance(localized_questions, list) else []
+        )
         vacancy["reject_message"] = (
             row["reject_message_ru"] or vacancy["reject_message"]
         )
@@ -1644,9 +1891,79 @@ async def create_vacancy(
     questions: list,
     resume_required: bool,
     profile: dict | None = None,
+    replace_empty_workspace: bool = False,
+    interview_slots: list[dict] | None = None,
+    interview_location: str | None = None,
+    onboarding_industry: str | None = None,
+    onboarding_profile: dict | None = None,
 ) -> None:
-    """Faol vakansiyani tarif limitiga nisbatan atomik yaratadi."""
+    """Create a vacancy and optional onboarding records in one transaction.
+
+    Mini App quick-setup used to write the vacancy, slots, settings and
+    onboarding marker in four independent transactions. A timeout or duplicate
+    request in the middle left a half-configured tenant. Keeping the optional
+    records here makes the whole provisioning operation all-or-nothing.
+    """
     from services.plans import get_plan
+
+    key = str(key or "").strip().lower()
+    title = str(title or "").strip()
+    reject_message = str(reject_message or "").strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", key):
+        raise ValueError("Vakansiya kaliti noto'g'ri")
+    if not 2 <= len(title) <= 100:
+        raise ValueError("Vakansiya nomi 2–100 belgi bo'lishi kerak")
+    if not 5 <= len(reject_message) <= 500:
+        raise ValueError("Rad javobi 5–500 belgi bo'lishi kerak")
+    if not isinstance(questions, list) or not 1 <= len(questions) <= 50:
+        raise ValueError("Savollar soni 1–50 oralig'ida bo'lishi kerak")
+    for question in questions:
+        question_text = (
+            question.get("text") if isinstance(question, dict) else question
+        )
+        if not 1 <= len(str(question_text or "").strip()) <= 1000:
+            raise ValueError("Vakansiya savoli 1–1000 belgi bo'lishi kerak")
+    if profile is not None and not isinstance(profile, dict):
+        raise ValueError("Vakansiya profili noto'g'ri")
+    if onboarding_profile is not None and not isinstance(onboarding_profile, dict):
+        raise ValueError("Onboarding profili noto'g'ri")
+    if onboarding_industry is not None:
+        onboarding_industry = str(onboarding_industry).strip()
+        if not 2 <= len(onboarding_industry) <= 100:
+            raise ValueError("Biznes sohasi 2–100 belgi bo'lishi kerak")
+    if interview_location is not None:
+        interview_location = str(interview_location).strip() or None
+        if interview_location and len(interview_location) > 240:
+            raise ValueError("Suhbat manzili juda uzun")
+
+    clean_slots: list[dict] = []
+    seen_slot_labels: set[str] = set()
+    if interview_slots is not None:
+        if not isinstance(interview_slots, list) or len(interview_slots) > 20:
+            raise ValueError("Suhbat vaqtlari 0–20 ta bo'lishi kerak")
+        for raw_slot in interview_slots:
+            if not isinstance(raw_slot, dict):
+                raise TypeError("Suhbat vaqti noto'g'ri")
+            label = str(raw_slot.get("label") or "").strip()
+            if not 3 <= len(label) <= 80:
+                raise ValueError("Suhbat vaqti nomi 3–80 belgi bo'lishi kerak")
+            try:
+                capacity = int(raw_slot.get("capacity", 1))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Suhbat sig'imi noto'g'ri") from exc
+            if not 1 <= capacity <= 100:
+                raise ValueError("Suhbat sig'imi 1–100 oralig'ida bo'lishi kerak")
+            label_key = label.casefold()
+            if label_key in seen_slot_labels:
+                raise InterviewSlotConflict("Bu suhbat vaqti takrorlangan")
+            seen_slot_labels.add(label_key)
+            clean_slots.append(
+                {
+                    "label": label,
+                    "capacity": capacity,
+                    "starts_at": _normalise_slot_start(raw_slot.get("starts_at")),
+                }
+            )
 
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
@@ -1662,12 +1979,27 @@ async def create_vacancy(
                 raise ValueError("Mijoz topilmadi")
             plan = get_plan(tenant[0])
             expires_at = tenant[1]
-            expired = bool(
-                plan.code not in {"trial", "legacy"}
-                and (not expires_at or expires_at <= created_at)
+            expires_dt = _as_utc_datetime(expires_at)
+            expired = plan.code not in {"trial", "legacy"} and (
+                not expires_dt or expires_dt <= datetime.now(timezone.utc)
             )
             if expired:
                 raise VacancyLimitReached("Tarif muddati tugagan")
+
+            if replace_empty_workspace:
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM applications WHERE tenant_id=?",
+                    (tenant_id,),
+                )
+                if int((await cursor.fetchone())[0] or 0) == 0:
+                    await db.execute(
+                        "UPDATE vacancies SET active=0 WHERE tenant_id=?",
+                        (tenant_id,),
+                    )
+                    await db.execute(
+                        "DELETE FROM interview_slots WHERE tenant_id=?",
+                        (tenant_id,),
+                    )
             if plan.vacancy_limit is not None:
                 cursor = await db.execute(
                     "SELECT COUNT(*) FROM vacancies WHERE tenant_id=? AND active=1",
@@ -1691,6 +2023,50 @@ async def create_vacancy(
                     created_at,
                 ),
             )
+
+            for slot in clean_slots:
+                cursor = await db.execute(
+                    "SELECT 1 FROM interview_slots WHERE tenant_id=? AND active=1 "
+                    "AND LOWER(label)=LOWER(?) LIMIT 1",
+                    (tenant_id, slot["label"]),
+                )
+                if await cursor.fetchone():
+                    raise InterviewSlotConflict("Bu suhbat vaqti allaqachon mavjud")
+                await db.execute(
+                    "INSERT INTO interview_slots "
+                    "(tenant_id, label, capacity, starts_at, active, created_at) "
+                    "VALUES (?, ?, ?, ?, 1, ?)",
+                    (
+                        tenant_id,
+                        slot["label"],
+                        slot["capacity"],
+                        slot["starts_at"],
+                        created_at,
+                    ),
+                )
+
+            if interview_location is not None:
+                await db.execute(
+                    "INSERT INTO interview_settings "
+                    "(tenant_id, location_text) VALUES (?, ?) "
+                    "ON CONFLICT(tenant_id) DO UPDATE SET location_text=excluded.location_text",
+                    (tenant_id, interview_location),
+                )
+
+            if onboarding_industry is not None or onboarding_profile is not None:
+                await db.execute(
+                    "UPDATE tenants SET industry=COALESCE(?, industry), "
+                    "onboarding_profile=COALESCE(?, onboarding_profile), "
+                    "onboarding_completed_at=? WHERE id=?",
+                    (
+                        onboarding_industry,
+                        json.dumps(onboarding_profile, ensure_ascii=False)
+                        if onboarding_profile is not None
+                        else None,
+                        created_at,
+                        tenant_id,
+                    ),
+                )
             await db.commit()
         except Exception:
             await db.rollback()
@@ -1825,8 +2201,13 @@ async def add_interview_slot(
     label = str(label or "").strip()
     if not 3 <= len(label) <= 80:
         raise ValueError("Suhbat vaqti nomi 3–80 belgi bo'lishi kerak")
-    if not 1 <= int(capacity) <= 100:
+    try:
+        capacity = int(capacity)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Suhbat sig'imi noto'g'ri") from exc
+    if not 1 <= capacity <= 100:
         raise ValueError("Suhbat sig'imi 1–100 oralig'ida bo'lishi kerak")
+    starts_at = _normalise_slot_start(starts_at)
     created_at = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
         await db.execute("PRAGMA busy_timeout=5000")
@@ -1842,7 +2223,7 @@ async def add_interview_slot(
             cursor = await db.execute(
                 "INSERT INTO interview_slots (tenant_id, label, capacity, starts_at, active, created_at) "
                 "VALUES (?, ?, ?, ?, 1, ?)",
-                (tenant_id, label, int(capacity), starts_at, created_at),
+                (tenant_id, label, capacity, starts_at, created_at),
             )
             await db.commit()
             return cursor.lastrowid
@@ -1915,30 +2296,79 @@ async def get_interview_settings(tenant_id: int) -> dict:
 async def update_interview_settings(tenant_id: int, **fields):
     if not fields:
         return
+    allowed_fields = {
+        "location_text",
+        "location_lat",
+        "location_lng",
+        "interviewer_name",
+        "interviewer_phone",
+        "notes",
+    }
+    unknown = set(fields) - allowed_fields
+    if unknown:
+        raise ValueError("Noto'g'ri suhbat sozlamasi")
     current = await get_interview_settings(tenant_id)
     merged = {**current, **fields}
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        await db.execute(
-            """
-            INSERT INTO interview_settings
-                (tenant_id, location_text, location_lat, location_lng, interviewer_name, interviewer_phone, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(tenant_id) DO UPDATE SET
-                location_text = excluded.location_text, location_lat = excluded.location_lat,
-                location_lng = excluded.location_lng, interviewer_name = excluded.interviewer_name,
-                interviewer_phone = excluded.interviewer_phone, notes = excluded.notes
-            """,
-            (
-                tenant_id,
-                merged.get("location_text"),
-                merged.get("location_lat"),
-                merged.get("location_lng"),
-                merged.get("interviewer_name"),
-                merged.get("interviewer_phone"),
-                merged.get("notes"),
-            ),
-        )
-        await db.commit()
+    text_limits = {
+        "location_text": 240,
+        "interviewer_name": 80,
+        "interviewer_phone": 32,
+        "notes": 500,
+    }
+    for field, limit in text_limits.items():
+        value = merged.get(field)
+        value = str(value).strip() if value not in (None, "") else None
+        if value and len(value) > limit:
+            raise ValueError(f"{field} juda uzun")
+        merged[field] = value
+
+    for field in ("location_lat", "location_lng"):
+        value = merged.get(field)
+        if value in (None, ""):
+            merged[field] = None
+            continue
+        try:
+            merged[field] = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Lokatsiya koordinatasi noto'g'ri") from exc
+    lat, lng = merged.get("location_lat"), merged.get("location_lng")
+    if (lat is None) != (lng is None):
+        raise ValueError("Lokatsiya uchun latitude va longitude ikkalasi ham kerak")
+    if lat is not None and not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise ValueError("Lokatsiya koordinatasi chegaradan tashqarida")
+
+    phone = merged.get("interviewer_phone")
+    if phone and not re.fullmatch(r"[+()\-\s\d]{5,32}", phone):
+        raise ValueError("Intervyuchi telefoni noto'g'ri")
+
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            await db.execute(
+                """
+                INSERT INTO interview_settings
+                    (tenant_id, location_text, location_lat, location_lng, interviewer_name, interviewer_phone, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tenant_id) DO UPDATE SET
+                    location_text = excluded.location_text, location_lat = excluded.location_lat,
+                    location_lng = excluded.location_lng, interviewer_name = excluded.interviewer_name,
+                    interviewer_phone = excluded.interviewer_phone, notes = excluded.notes
+                """,
+                (
+                    tenant_id,
+                    merged.get("location_text"),
+                    merged.get("location_lat"),
+                    merged.get("location_lng"),
+                    merged.get("interviewer_name"),
+                    merged.get("interviewer_phone"),
+                    merged.get("notes"),
+                ),
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def update_tenant_onboarding(
@@ -2014,10 +2444,9 @@ async def list_interview_followup_candidates() -> list[dict]:
     result = []
     for row in rows:
         item = dict(row)
-        try:
-            item["admin_user_ids"] = json.loads(item.get("admin_user_ids") or "[]")
-        except (TypeError, json.JSONDecodeError):
-            item["admin_user_ids"] = []
+        item["admin_user_ids"] = _tenant_from_row(
+            {"admin_user_ids": item.get("admin_user_ids")}
+        )["admin_user_ids"]
         result.append(item)
     return result
 
@@ -2102,25 +2531,54 @@ async def create_payment_order(
     plan_code: str = "start",
     billing_months: int = 1,
 ) -> int:
+    from services.plans import PUBLIC_PLAN_CODES, get_plan
+
+    try:
+        base_amount = int(base_amount)
+        amount = int(amount)
+        billing_months = int(billing_months)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("To'lov summasi yoki muddati noto'g'ri") from exc
+    plan_code = str(plan_code or "").strip().lower()
+    if plan_code not in PUBLIC_PLAN_CODES:
+        raise ValueError("Noto'g'ri tarif")
+    plan = get_plan(plan_code)
+    if not 1 <= billing_months <= 12:
+        raise ValueError("Billing oylar soni 1–12 oralig'ida bo'lishi kerak")
+    if not 0 < base_amount <= plan.price or amount < base_amount:
+        raise ValueError("To'lov summasi tarifga mos emas")
+    if not _as_utc_datetime(expires_at):
+        raise ValueError("To'lov muddati noto'g'ri")
     created_at = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(SQLITE_PATH) as db:
-        cursor = await db.execute(
-            "INSERT INTO payment_orders (tenant_id, order_code, base_amount, amount, plan_code, "
-            "billing_months, status, created_at, expires_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?)",
-            (
-                tenant_id,
-                order_code,
-                base_amount,
-                amount,
-                plan_code,
-                billing_months,
-                created_at,
-                expires_at,
-            ),
-        )
-        await db.commit()
-        return cursor.lastrowid
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT 1 FROM tenants WHERE id=? LIMIT 1", (tenant_id,)
+            )
+            if not await cursor.fetchone():
+                raise ValueError("Mijoz topilmadi")
+            cursor = await db.execute(
+                "INSERT INTO payment_orders (tenant_id, order_code, base_amount, amount, plan_code, "
+                "billing_months, status, created_at, expires_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?)",
+                (
+                    tenant_id,
+                    order_code,
+                    base_amount,
+                    amount,
+                    plan_code,
+                    billing_months,
+                    created_at,
+                    expires_at,
+                ),
+            )
+            await db.commit()
+            return cursor.lastrowid
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def cancel_open_payment_orders_for_tenant(tenant_id: int) -> None:
@@ -2214,12 +2672,13 @@ async def approve_payment_order_manually(order_id: int) -> bool:
 
 
 async def mark_payment_order_needs_review(
-    order_id: int, notification_text: str
+    order_id: int, notification_text: str, *, keep_approved: bool = False
 ) -> None:
     async with aiosqlite.connect(SQLITE_PATH) as db:
         await db.execute(
-            "UPDATE payment_orders SET status = 'needs_review', notification_text = ? WHERE id = ?",
-            (notification_text, order_id),
+            "UPDATE payment_orders SET status = CASE WHEN status='approved' AND ? "
+            "THEN 'approved' ELSE 'needs_review' END, notification_text = ? WHERE id = ?",
+            (int(keep_approved), notification_text, order_id),
         )
         await db.commit()
 
@@ -2232,6 +2691,20 @@ async def list_unnotified_approved_orders(hours: int = 24) -> list[dict]:
             "SELECT * FROM payment_orders WHERE status = 'approved' "
             "AND customer_notified_at IS NULL AND decided_at >= ? ORDER BY decided_at",
             (cutoff,),
+        )
+        rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def list_approved_orders_without_subscription(limit: int = 100) -> list[dict]:
+    """Return approved orders whose one-time activation marker is missing."""
+    limit = max(1, min(int(limit or 100), 500))
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM payment_orders WHERE status='approved' "
+            "AND subscription_activated_at IS NULL ORDER BY decided_at, id LIMIT ?",
+            (limit,),
         )
         rows = await cursor.fetchall()
     return [dict(row) for row in rows]
@@ -2256,7 +2729,9 @@ async def was_notification_seen_recently(text_hash: str, minutes: int = 30) -> b
         row = await cursor.fetchone()
     if not row:
         return False
-    seen_at = datetime.fromisoformat(row["received_at"])
+    seen_at = _as_utc_datetime(row["received_at"])
+    if seen_at is None:
+        return False
     return (datetime.now(timezone.utc) - seen_at) < timedelta(minutes=minutes)
 
 

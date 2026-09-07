@@ -27,36 +27,23 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
     MenuButtonWebApp,
     Message,
-    ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     WebAppInfo,
 )
 
-from config import (
-    BOT_TOKEN,
-    FOUNDER_BOT_TOKEN,
-    FOUNDER_USER_IDS,
-    SETUP_BOT_TOKEN,
-    WEBHOOK_BASE_URL,
-)
+from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, WEBHOOK_BASE_URL
 from partner_payout_bot import payout_router, run_payout_reminders
 from services import partner_database as pdb
 from services.partner_ai import generate_partner_advice
-from services.partner_links import build_referral_link
+from services.partner_links import build_referral_link, resolve_main_bot_username
 
 logger = logging.getLogger("janob_hr_partner")
 router = Router(name="partner")
 
 PARTNER_BOT_TOKEN = os.getenv("PARTNER_BOT_TOKEN", "").strip()
 WEBHOOK_BASE_URL = WEBHOOK_BASE_URL.rstrip("/")
-JANOBHR_MAIN_BOT_USERNAME = os.getenv("JANOBHR_MAIN_BOT_USERNAME", "").strip().lstrip("@")
-LEGACY_REFERRAL_TARGET_USERNAME = os.getenv(
-    "PARTNER_REFERRAL_TARGET_USERNAME", ""
-).strip().lstrip("@")
-SETUP_BOT_USERNAME = os.getenv("SETUP_BOT_USERNAME", "").strip().lstrip("@")
 _REFERRAL_TARGET_CACHE = ""
 
 ROLE_LABELS = {
@@ -152,25 +139,9 @@ def partner_miniapp_url() -> str:
     return f"{WEBHOOK_BASE_URL}/partner" if WEBHOOK_BASE_URL else ""
 
 
-def main_menu() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            # The personal dashboard is opened from Telegram's blue chat-menu
-            # WebApp button configured in configure_partner_miniapp_menu().
-            # Keep the reply keyboard focused on chat-native actions.
-            [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
-            # Acquisition tools: bring a client and configure the offer.
-            [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
-            # 3) Payouts, then supporting resources.
-            [KeyboardButton(text="💸 Pul yechish")],
-            [KeyboardButton(text="📦 Reklama materiallari")],
-            [
-                KeyboardButton(text="❓ Tez-tez so'raladigan savollar"),
-                KeyboardButton(text="🆘 Yordam"),
-            ],
-        ],
-        resize_keyboard=True,
-    )
+def main_menu() -> ReplyKeyboardRemove:
+    """Remove legacy reply buttons; all partner actions live in the Mini App."""
+    return ReplyKeyboardRemove(remove_keyboard=True)
 
 
 def founder_review_keyboard(partner_id: int) -> InlineKeyboardMarkup:
@@ -211,24 +182,6 @@ async def _safe_bot_username(bot: Bot | None) -> str:
         return ""
 
 
-async def _username_from_token(token: str, current_partner_username: str) -> str:
-    token = (token or "").strip()
-    if not token or token == PARTNER_BOT_TOKEN:
-        return ""
-    bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    try:
-        me = await bot.get_me()
-        username = (me.username or "").strip().lstrip("@")
-    except Exception:
-        logger.exception("Referral target bot token orqali aniqlanmadi")
-        return ""
-    finally:
-        await bot.session.close()
-    if username and username.lower() != current_partner_username.lower():
-        return username
-    return ""
-
-
 async def referral_target_username(current_bot: Bot | None = None) -> str | None:
     """Mijoz kiradigan ASOSIY bot username'ini qaytaradi.
 
@@ -240,32 +193,12 @@ async def referral_target_username(current_bot: Bot | None = None) -> str | None
         return _REFERRAL_TARGET_CACHE
 
     partner_username = await _safe_bot_username(current_bot)
-    configured = (
-        JANOBHR_MAIN_BOT_USERNAME,
-        LEGACY_REFERRAL_TARGET_USERNAME,
-        SETUP_BOT_USERNAME,
+    username = await resolve_main_bot_username(
+        current_partner_username=partner_username
     )
-    for username in configured:
-        username = (username or "").strip().lstrip("@")
-        if not username:
-            continue
-        if partner_username and username.lower() == partner_username.lower():
-            logger.error(
-                "Referral target noto'g'ri: @%s partner botning o'zi. E'tiborsiz qoldirildi.",
-                username,
-            )
-            continue
+    if username:
         _REFERRAL_TARGET_CACHE = username
-        return username
-
-    # Env noto'g'ri bo'lsa ham asosiy bot tokenidan username'ni o'zimiz topamiz.
-    for token in (BOT_TOKEN, SETUP_BOT_TOKEN):
-        username = await _username_from_token(token, partner_username)
-        if username:
-            _REFERRAL_TARGET_CACHE = username
-            return username
-
-    return None
+    return username
 
 
 def question_1(role: str) -> tuple[str, list[tuple[str, str]]]:
@@ -467,9 +400,12 @@ async def handle_referral_entry(message: Message, code: str) -> bool:
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext, bot: Bot) -> None:
     args = (message.text or "").split(maxsplit=1)
-    if len(args) == 2 and args[1].startswith("r_"):
-        if await handle_referral_entry(message, args[1][2:]):
-            return
+    if (
+        len(args) == 2
+        and args[1].startswith("r_")
+        and await handle_referral_entry(message, args[1][2:])
+    ):
+        return
 
     await state.clear()
     partner = await pdb.get_partner_by_user_id(message.from_user.id)
@@ -623,7 +559,14 @@ async def approve_partner(callback: CallbackQuery) -> None:
     if callback.from_user.id not in FOUNDER_USER_IDS:
         await callback.answer("Ruxsat yo'q", show_alert=True)
         return
-    partner_id = int(callback.data.split(":", 1)[1])
+    parts = (callback.data or "").split(":")
+    if len(parts) != 2 or parts[0] != "partner_approve" or not parts[1].isdecimal():
+        await callback.answer("Noto'g'ri partner so'rovi.", show_alert=True)
+        return
+    partner_id = int(parts[1])
+    if partner_id <= 0:
+        await callback.answer("Noto'g'ri partner so'rovi.", show_alert=True)
+        return
     partner = await pdb.set_partner_status(partner_id, "approved")
     if not partner:
         await callback.answer("Partner topilmadi", show_alert=True)
@@ -652,7 +595,14 @@ async def reject_partner(callback: CallbackQuery) -> None:
     if callback.from_user.id not in FOUNDER_USER_IDS:
         await callback.answer("Ruxsat yo'q", show_alert=True)
         return
-    partner_id = int(callback.data.split(":", 1)[1])
+    parts = (callback.data or "").split(":")
+    if len(parts) != 2 or parts[0] != "partner_reject" or not parts[1].isdecimal():
+        await callback.answer("Noto'g'ri partner so'rovi.", show_alert=True)
+        return
+    partner_id = int(parts[1])
+    if partner_id <= 0:
+        await callback.answer("Noto'g'ri partner so'rovi.", show_alert=True)
+        return
     partner = await pdb.set_partner_status(partner_id, "rejected")
     if not partner:
         await callback.answer("Partner topilmadi", show_alert=True)

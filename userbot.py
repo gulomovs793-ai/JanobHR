@@ -189,14 +189,14 @@ async def _activate_tenant_wrapper(tenant_id: int):
     return result
 
 
-async def _notify_tenant_payment_approved(result: dict) -> None:
+async def _notify_tenant_payment_approved(result: dict) -> bool:
     """To'lov tasdiqlanganda mijozga aynan o'z Admin botidan chek yuboradi."""
     from aiogram import Bot
 
     tenant = await database.get_tenant(result["tenant_id"])
     if not tenant or not tenant.get("admin_bot_token"):
         logger.error("[to'lov] Mijozga tasdiq yuborilmadi: admin bot topilmadi.")
-        return
+        return False
     plan = get_plan(tenant.get("plan_code"))
     expiry = (tenant.get("subscription_expires_at") or "")[:10]
     text = (
@@ -208,21 +208,30 @@ async def _notify_tenant_payment_approved(result: dict) -> None:
         "Tarifingiz faol. Boshqarish uchun /start bosing."
     )
     bot = Bot(token=tenant["admin_bot_token"])
+    sent_any = False
     try:
         for admin_id in tenant["admin_user_ids"]:
             try:
                 await bot.send_message(admin_id, text)
+                sent_any = True
             except Exception:
                 logger.exception(
                     "[to'lov] Mijoz adminiga tasdiq yuborilmadi (id=%s).", admin_id
                 )
     finally:
         await bot.session.close()
+    if not sent_any:
+        logger.error(
+            "[to'lov] Hech bir mijoz adminiga tasdiq yuborilmadi; recovery qayta urinadi: %s",
+            result["order_code"],
+        )
+        return False
     await database.mark_customer_payment_notified(result["order_code"])
     logger.info(
         "[to'lov] Mijozga tasdiq yuborildi: %s",
         result["order_code"],
     )
+    return True
 
 
 async def start_userbot():

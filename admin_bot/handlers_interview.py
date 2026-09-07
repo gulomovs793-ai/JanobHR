@@ -133,9 +133,12 @@ async def show_delete_slot_list(callback: CallbackQuery, tenant_id: int):
 
 @router.callback_query(F.data.startswith("ivslot:del:"))
 async def delete_slot(callback: CallbackQuery, state: FSMContext, tenant_id: int):
-    try:
-        slot_id = int(callback.data.split(":")[2])
-    except (ValueError, IndexError):
+    parts = (callback.data or "").split(":")
+    if len(parts) != 3 or parts[:2] != ["ivslot", "del"] or not parts[2].isdecimal():
+        await callback.answer("Noto'g'ri vaqt.", show_alert=True)
+        return
+    slot_id = int(parts[2])
+    if slot_id <= 0:
         await callback.answer("Noto'g'ri vaqt.", show_alert=True)
         return
     try:
@@ -248,6 +251,9 @@ async def interview_outcome(callback: CallbackQuery, tenant_id: int):
         _, app_id_raw, outcome = callback.data.split(":", 2)
         app_id = int(app_id_raw)
     except (TypeError, ValueError):
+        await callback.answer("Noto'g'ri amal.", show_alert=True)
+        return
+    if app_id <= 0:
         await callback.answer("Noto'g'ri amal.", show_alert=True)
         return
     if outcome not in {"hired", "not_hired", "no_show"}:

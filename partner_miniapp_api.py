@@ -10,10 +10,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl
 
+import aiosqlite
 from aiohttp import web
+
 from services import partner_database as pdb
 from services import partner_payouts
-from services.partner_links import build_referral_link, configured_main_bot_username
+from services.partner_links import build_referral_link, resolve_main_bot_username
+from services.plans import PUBLIC_PLAN_CODES
 
 BASE_DIR = Path(__file__).resolve().parent
 PARTNER_MINIAPP_DIR = BASE_DIR / "partner_miniapp"
@@ -76,20 +79,26 @@ async def partner_stats(request: web.Request) -> web.Response:
         if balance.get("active_request")
         else partner_payouts.next_payout_date().isoformat()
     )
-    referral_link = build_referral_link(
-        configured_main_bot_username(), partner.get("referral_code")
-    )
+    referral_target = await resolve_main_bot_username()
+    referral_link = build_referral_link(referral_target, partner.get("referral_code"))
 
     promo = None
     try:
-        import aiosqlite
         from config import SQLITE_PATH
+
         async with aiosqlite.connect(SQLITE_PATH) as db:
             db.row_factory = aiosqlite.Row
-            cur = await db.execute("SELECT code, discount_percent, discount_type, discount_value, expires_at, plan_code FROM partner_promo_codes WHERE partner_id=? AND status='active' AND (expires_at IS NULL OR expires_at > ?) ORDER BY id DESC LIMIT 1", (partner["id"], datetime.now(timezone.utc).isoformat()))
+            cur = await db.execute(
+                "SELECT code, discount_percent, discount_type, discount_value, "
+                "expires_at, plan_code FROM partner_promo_codes "
+                "WHERE partner_id=? AND status='active' "
+                "AND (expires_at IS NULL OR expires_at > ?) "
+                "ORDER BY id DESC LIMIT 1",
+                (partner["id"], datetime.now(timezone.utc).isoformat()),
+            )
             row = await cur.fetchone()
             promo = dict(row) if row else None
-    except Exception:
+    except aiosqlite.Error:
         promo = None
 
     return web.json_response({
@@ -97,6 +106,13 @@ async def partner_stats(request: web.Request) -> web.Response:
         "partner": {"id": partner["id"], "full_name": partner.get("full_name") or "Hamkor", "username": partner.get("username") or "", "referral_code": partner.get("referral_code") or ""},
         "referral_link": referral_link,
         "promo": promo,
+        "promo_caps": {
+            plan_code: {
+                "percent": pdb.max_promo_percent(plan_code),
+                "amount": pdb.max_promo_amount(plan_code),
+            }
+            for plan_code in ("all", *PUBLIC_PLAN_CODES)
+        },
         "stats": {**stats, "earned_label": pdb.format_uzs(stats.get("earned", 0))},
         "balance": {
             **balance,
@@ -116,19 +132,29 @@ async def partner_promo(request: web.Request) -> web.Response:
         return error
     try:
         payload = await request.json()
+    except (json.JSONDecodeError, TypeError):
+        return web.json_response({"ok": False, "error": "invalid_discount"}, status=400)
+    if not isinstance(payload, dict):
+        return web.json_response({"ok": False, "error": "invalid_discount"}, status=400)
+    try:
         discount_type = str(payload.get("discount_type") or "percent").strip().lower()
         discount = int(payload.get("discount_value"))
         duration_days = int(payload.get("duration_days"))
         plan_code = str(payload.get("plan_code") or "all").strip().lower()
-        if discount_type not in {"percent", "amount"} or discount <= 0 or duration_days < 1 or duration_days > 365:
+        if (
+            discount_type not in {"percent", "amount"}
+            or discount <= 0
+            or duration_days < 1
+            or duration_days > 365
+        ):
             raise ValueError
-        if discount_type == "percent" and discount > pdb.MAX_UNIVERSAL_PROMO_PERCENT:
+        if plan_code != "all" and plan_code not in PUBLIC_PLAN_CODES:
             raise ValueError
-        if discount_type == "amount" and discount > pdb.MAX_UNIVERSAL_PROMO_AMOUNT:
+        if discount_type == "percent" and discount > pdb.max_promo_percent(plan_code):
             raise ValueError
-        if plan_code != "all" and plan_code not in {"start", "growth", "business"}:
+        if discount_type == "amount" and discount > pdb.max_promo_amount(plan_code):
             raise ValueError
-    except Exception:
+    except (TypeError, ValueError):
         return web.json_response({"ok": False, "error": "invalid_discount"}, status=400)
 
     try:
@@ -139,11 +165,25 @@ async def partner_promo(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "promo_not_created"}, status=400)
 
     payouts = {}
-    for plan in ("start", "growth", "business"):
+    plans_to_show = PUBLIC_PLAN_CODES if plan_code == "all" else (plan_code,)
+    for plan in plans_to_show:
         calc = pdb.calculate_partner_payout(plan, discount if discount_type == "percent" else 0, discount_type=discount_type, discount_value=discount)
         payouts[plan] = pdb.format_uzs(calc["commission_amount"])
 
-    return web.json_response({"ok": True, "promo": {"code": promo["code"], "discount_type": promo["discount_type"], "discount_value": promo["discount_value"], "discount_percent": promo["discount_percent"], "expires_at": promo["expires_at"], "plan_code": promo.get("plan_code") or "all"}, "payouts": payouts})
+    return web.json_response(
+        {
+            "ok": True,
+            "promo": {
+                "code": promo["code"],
+                "discount_type": promo["discount_type"],
+                "discount_value": promo["discount_value"],
+                "discount_percent": promo["discount_percent"],
+                "expires_at": promo["expires_at"],
+                "plan_code": promo.get("plan_code") or "all",
+            },
+            "payouts": payouts,
+        }
+    )
 
 
 def register_partner_miniapp(app: web.Application) -> None:

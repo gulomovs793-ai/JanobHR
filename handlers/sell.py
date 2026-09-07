@@ -138,9 +138,19 @@ async def handle_slot_choice(
 ):
     from handlers.admin import notify_admin_slot_selected
 
-    _, app_id_str, slot_id_str = callback.data.split(":")
-    app_id = int(app_id_str)
-    slot_id = int(slot_id_str)
+    parts = (callback.data or "").split(":")
+    if len(parts) != 3 or parts[0] != "slot":
+        await callback.answer("Noto'g'ri suhbat so'rovi.", show_alert=True)
+        return
+    try:
+        app_id = int(parts[1])
+        slot_id = int(parts[2])
+    except (TypeError, ValueError):
+        await callback.answer("Noto'g'ri suhbat so'rovi.", show_alert=True)
+        return
+    if app_id <= 0 or slot_id <= 0:
+        await callback.answer("Noto'g'ri suhbat so'rovi.", show_alert=True)
+        return
 
     app = await database.get_application(tenant_id, app_id)
     lang = (app or {}).get("lang", DEFAULT_LANG)
@@ -162,9 +172,19 @@ async def handle_slot_choice(
         await callback.answer(t("no_slots_left", lang), show_alert=True)
         return
 
-    booked = await database.try_book_slot(
-        tenant_id, app_id, slot["label"], slot["capacity"]
-    )
+    booking_status = await database.book_interview_slot(tenant_id, app_id, slot_id)
+
+    if booking_status == "already_booked":
+        await callback.answer("Bu vaqt allaqachon tanlangan.", show_alert=True)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            logger.exception(
+                "Takroriy suhbat tugmasini olib tashlab bo'lmadi (app_id=%s).", app_id
+            )
+        return
+
+    booked = booking_status == "booked"
 
     if not booked:
         await callback.answer(t("slot_taken_retry", lang), show_alert=True)

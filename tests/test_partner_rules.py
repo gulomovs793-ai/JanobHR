@@ -1,15 +1,19 @@
 import os
 import tempfile
 import unittest
-import aiosqlite
 from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import aiosqlite
+from aiogram.types import ReplyKeyboardRemove
+
 from partner_bot import main_menu
+from services import database
 from services import partner_database as pdb
 from services import partner_payouts
 from services.partner_links import build_referral_link
+from services.payment_automation import create_payment_order
 
 
 class PartnerRulesTests(unittest.TestCase):
@@ -72,21 +76,11 @@ class PartnerRulesTests(unittest.TestCase):
         self.assertIn("To'lov tasdig'i chek sifatida yuborildi", source)
 
     def test_partner_menu_has_clear_operational_order(self):
-        rows = [[button.text for button in row] for row in main_menu().keyboard]
-        self.assertEqual(
-            rows,
-            [
-                ["📊 Statistika", "💰 Komissiya"],
-                ["🔗 Referral link", "🎟 Promo kod"],
-                ["💸 Pul yechish"],
-                ["📦 Reklama materiallari"],
-                ["❓ Tez-tez so'raladigan savollar", "🆘 Yordam"],
-            ],
-        )
-        self.assertNotIn(
-            "partner_panel_button",
-            Path("partner_bot.py").read_text(encoding="utf-8"),
-        )
+        self.assertIsInstance(main_menu(), ReplyKeyboardRemove)
+        self.assertTrue(main_menu().remove_keyboard)
+        source = Path("partner_bot.py").read_text(encoding="utf-8")
+        self.assertNotIn('KeyboardButton(text="📊 Statistika")', source)
+        self.assertIn("MenuButtonWebApp", source)
 
 
 class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):
@@ -204,6 +198,89 @@ class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(result["ok"])
         self.assertIn("ism va familiya", result["error"].lower())
+
+
+class PaymentAttributionIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.temp_dir.name, "shared.db")
+        self.database_patch = patch.object(database, "SQLITE_PATH", self.db_path)
+        self.partner_patch = patch.object(pdb, "SQLITE_PATH", self.db_path)
+        self.database_patch.start()
+        self.partner_patch.start()
+        await database.init_db()
+        await pdb.init_partner_db()
+
+        self.tenant_id = await database.create_tenant(
+            "Integration Tenant", "candidate-token", "admin-token", [777]
+        )
+        partner = await pdb.upsert_application(
+            user_id=991,
+            full_name="Integration Partner",
+            username="integration_partner",
+            phone="+998901234599",
+            role="blogger",
+            has_business_clients=True,
+            client_band="1-3",
+        )
+        partner = await pdb.set_partner_status(partner["id"], "approved")
+        self.promo = await pdb.create_or_update_promo_code(
+            partner["id"],
+            10,
+            discount_type="percent",
+            duration_days=30,
+            plan_code="start",
+        )
+
+    async def asyncTearDown(self):
+        self.partner_patch.stop()
+        self.database_patch.stop()
+        self.temp_dir.cleanup()
+
+    async def test_order_and_partner_attribution_commit_together(self):
+        attribution = await pdb.prepare_payment_attribution(
+            self.tenant_id,
+            "start",
+            promo_code=self.promo["code"],
+        )
+        self.assertTrue(attribution["ok"])
+
+        order = await create_payment_order(
+            self.tenant_id,
+            attribution["discounted_base_amount"],
+            plan_code="start",
+            attribution=attribution,
+        )
+
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM partner_payment_attributions WHERE payment_order_id=?",
+                (order["id"],),
+            )
+            row = await cursor.fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["tenant_id"], self.tenant_id)
+        self.assertEqual(row["promo_code"], self.promo["code"])
+        self.assertEqual(row["order_amount"], order["amount"])
+        self.assertEqual(row["status"], "awaiting_payment")
+
+    async def test_invalid_legacy_promo_does_not_claim_tenant(self):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE partner_promo_codes SET discount_type='amount', "
+                "discount_value=99001, discount_percent=0 WHERE code=?",
+                (self.promo["code"],),
+            )
+            await db.commit()
+
+        attribution = await pdb.prepare_payment_attribution(
+            self.tenant_id,
+            "start",
+            promo_code=self.promo["code"],
+        )
+        self.assertFalse(attribution["ok"])
+        self.assertIsNone(await pdb.get_tenant_attribution(self.tenant_id))
 
 
 if __name__ == "__main__":

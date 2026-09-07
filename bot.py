@@ -162,7 +162,7 @@ async def main():
     candidate_bot, candidate_dp = _build_candidate_bot(fsm_storage)
     bot_registry.candidate_bot = candidate_bot
     logger.info("Janob HR (nomzod) bot ishga tushdi ✅")
-    await candidate_bot.delete_webhook(drop_pending_updates=True)
+    await candidate_bot.delete_webhook(drop_pending_updates=False)
     polling_tasks = [candidate_dp.start_polling(candidate_bot)]
     from services.reminders import run_reminders_forever
 
@@ -194,7 +194,7 @@ async def main():
             "Janob HR Admin bot ishga tushdi ✅ (ruxsat etilgan adminlar: %d)",
             len(ADMIN_USER_IDS),
         )
-        await admin_bot.delete_webhook(drop_pending_updates=True)
+        await admin_bot.delete_webhook(drop_pending_updates=False)
         polling_tasks.append(admin_dp.start_polling(admin_bot))
     else:
         logger.warning(

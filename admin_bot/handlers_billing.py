@@ -7,7 +7,8 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER
-from services import database, partner_database as pdb
+from services import database
+from services import partner_database as pdb
 from services.payment_automation import create_payment_order
 from services.plans import PUBLIC_PLAN_CODES, format_som, get_plan, get_plan_transition
 
@@ -120,13 +121,14 @@ async def _create_order_payload(tenant_id: int, code: str, promo_code: str | Non
     if not attribution.get("ok"):
         return False, attribution.get("error") or "Promo kod ishlamadi.", None
 
+    order_kwargs = {}
+    if attribution.get("has_partner"):
+        order_kwargs["attribution"] = attribution
     order = await create_payment_order(
         tenant_id,
         attribution["discounted_base_amount"],
         plan_code=code,
-    )
-    await pdb.attach_payment_attribution(
-        order["id"], tenant_id, attribution, order_amount=order["amount"]
+        **order_kwargs,
     )
 
     holder = (
@@ -170,8 +172,10 @@ async def _create_order_payload(tenant_id: int, code: str, promo_code: str | Non
             "",
             "Muhim: aynan ko'rsatilgan summani yuboring. To'lov aniqlangach tarif avtomatik yoqiladi.",
             "",
-            "To'lovdan keyin tarif yoqilmasa yoki tushunarsiz holat bo'lsa, "
-            f"<b>@F45746</b> ga buyurtma raqamini yuboring: <code>{order['order_code']}</code>",
+            (
+                "To'lovdan keyin tarif yoqilmasa yoki tushunarsiz holat bo'lsa, "
+                f"<b>@F45746</b> ga buyurtma raqamini yuboring: <code>{order['order_code']}</code>"
+            ),
         ]
     )
     return True, "\n".join(lines), _order_keyboard(order["order_code"])

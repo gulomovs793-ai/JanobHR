@@ -31,7 +31,7 @@ import aiosqlite
 
 from config import MONTHLY_PRICE_SOM, ORDER_TTL_MINUTES, PAYMENT_CARD_NUMBER
 from services import database
-from services.plans import get_plan_transition
+from services.plans import PUBLIC_PLAN_CODES, get_plan, get_plan_transition
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -44,7 +44,6 @@ _NOTIFY_EXCLUDE_KEYWORDS = [
     "spisano",
     "spisanie",  # yechib olindi — bu CHIQUVCHI tranzaksiya
     "otmen",
-    "otkaz",
     "cancel",  # bekor qilindi
     "oshibk",
     "error",
@@ -225,7 +224,7 @@ async def _handle_late_or_duplicate_payment(amount: int, notify_founders) -> dic
     # Amounts are reserved for 24h, so a recent approved order cannot belong to
     # a new customer. Treat a repeated bank notification as duplicate, not money
     # for a different tenant.
-    if recent[0]["status"] == "approved":
+    if any(order["status"] == "approved" for order in recent):
         return {"status": "duplicate", "amount": amount}
 
     unresolved = [
@@ -257,6 +256,7 @@ async def create_payment_order(
     *,
     plan_code: str = "start",
     billing_months: int = 1,
+    attribution: dict | None = None,
 ) -> dict:
     """Create an order atomically and reserve its exact amount for 24 hours.
 
@@ -265,7 +265,27 @@ async def create_payment_order(
     reserved so a delayed bank notification can never activate a different
     customer's newly-created order.
     """
-    base_amount = base_amount or MONTHLY_PRICE_SOM
+    try:
+        base_amount = int(MONTHLY_PRICE_SOM if base_amount is None else base_amount)
+        billing_months = int(billing_months)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("To'lov summasi yoki muddati noto'g'ri") from exc
+    plan_code = str(plan_code or "").strip().lower()
+    if plan_code not in PUBLIC_PLAN_CODES:
+        raise ValueError("Noto'g'ri tarif")
+    plan = get_plan(plan_code)
+    if not 1 <= billing_months <= 12:
+        raise ValueError("Billing oylar soni 1–12 oralig'ida bo'lishi kerak")
+    if not 0 < base_amount <= plan.price:
+        raise ValueError("To'lov summasi tarifga mos emas")
+
+    if attribution and attribution.get("has_partner"):
+        from services import partner_database as pdb
+
+        # Schema creation happens before the core payment transaction. The
+        # attribution row itself is then inserted by the same SQLite connection
+        # below, so a crash cannot leave an order without its partner identity.
+        await pdb.init_partner_db()
 
     for attempt in range(4):
         now = datetime.now(timezone.utc)
@@ -277,6 +297,7 @@ async def create_payment_order(
 
         try:
             async with aiosqlite.connect(database.SQLITE_PATH, timeout=10) as db:
+                db.row_factory = aiosqlite.Row
                 await db.execute("PRAGMA busy_timeout=10000")
                 await db.execute("BEGIN IMMEDIATE")
 
@@ -331,13 +352,25 @@ async def create_payment_order(
                         expires_at,
                     ),
                 )
+                if attribution and attribution.get("has_partner"):
+                    from services import partner_database as pdb
+
+                    await pdb._attach_payment_attribution_in_transaction(
+                        db,
+                        cursor.lastrowid,
+                        tenant_id,
+                        attribution,
+                        order_amount=amount,
+                    )
                 await db.commit()
                 return {
                     "id": cursor.lastrowid,
                     "order_code": order_code,
+                    "base_amount": base_amount,
                     "amount": amount,
                     "expires_at": expires_at,
                     "plan_code": plan_code,
+                    "billing_months": billing_months,
                 }
         except aiosqlite.OperationalError as exc:
             if "locked" not in str(exc).lower() or attempt == 3:
@@ -349,6 +382,96 @@ async def create_payment_order(
             await asyncio.sleep(0)
 
     raise RuntimeError("To'lov buyurtmasini yaratib bo'lmadi")
+
+
+async def reconcile_approved_orders(
+    activate_tenant,
+    *,
+    notify_founders=None,
+    limit: int = 50,
+) -> dict:
+    """Recover approved payments interrupted between approval and activation.
+
+    The payment notification is intentionally recorded before external webhook
+    provisioning. If Render restarts at that exact point, the bank message will
+    not be delivered again; this recovery pass closes that gap safely using the
+    order-level activation marker.
+    """
+    orders = await database.list_approved_orders_without_subscription(limit)
+    recovered = 0
+    failed = 0
+    partner_recovered = 0
+    from services import partner_database as pdb
+
+    for order in orders:
+        try:
+            result = await activate_tenant(order["tenant_id"])
+            if not result or not result.get("ok"):
+                raise RuntimeError(
+                    (result or {}).get("error", "Tenantni faollashtirib bo'lmadi")
+                )
+            activation = await database.activate_subscription_for_order(order["id"])
+            if activation.get("ok"):
+                recovered += 1
+            sale = await pdb.finalize_sale_for_order(
+                order["id"], actual_amount=order["amount"]
+            )
+            if sale:
+                partner_recovered += 1
+        except Exception as exc:
+            failed += 1
+            logger.exception(
+                "Approved order recovery ishlamadi: order=%s", order.get("order_code")
+            )
+            if notify_founders:
+                try:
+                    await notify_founders(
+                        f"🚨 Recovery kerak: {order.get('order_code')} to'lovi tasdiqlangan, "
+                        f"lekin tarif hali yoqilmadi. Xato: {str(exc)[:180]}"
+                    )
+                except Exception:
+                    logger.exception("Founderga payment recovery xabari yuborilmadi")
+    return {
+        "found": len(orders),
+        "recovered": recovered,
+        "partner_recovered": partner_recovered,
+        "failed": failed,
+    }
+
+
+async def run_approved_order_recovery_forever(
+    activate_tenant,
+    *,
+    notify_founders=None,
+    interval_seconds: int = 300,
+) -> None:
+    await asyncio.sleep(15)
+    while True:
+        try:
+            result = await reconcile_approved_orders(
+                activate_tenant,
+                notify_founders=notify_founders,
+            )
+            if result["found"]:
+                logger.info("Approved payment recovery: %s", result)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Approved payment recovery loop ishlamadi")
+        try:
+            # Activation can succeed while partner finalization is interrupted.
+            # Keep this retry independent from subscription recovery so a
+            # transient partner-table/DB error cannot hide payment recovery.
+            from services import partner_database as pdb
+
+            partner_result = await pdb.reconcile_approved_partner_sales()
+            if partner_result["found"]:
+                logger.info("Partner sale recovery: %s", partner_result)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Partner sale recovery loop ishlamadi")
+        await asyncio.sleep(max(30, int(interval_seconds)))
 
 
 async def handle_payment_notification(
@@ -450,22 +573,22 @@ async def handle_payment_notification(
         if not activation or not activation.get("ok"):
             error = (activation or {}).get("error", "Noma'lum faollashtirish xatosi")
             raise RuntimeError(error)
-        await database.activate_subscription(
-            order["tenant_id"],
-            order.get("plan_code", "start"),
-            order.get("billing_months", 1),
-        )
+        activation_record = await database.activate_subscription_for_order(order["id"])
+        if not activation_record.get("ok"):
+            raise RuntimeError("Tarifni atomik faollashtirish amalga oshmadi")
     except Exception:
         logger.exception(
             "Tolov aniqlandi, lekin tenantni faollashtirishda xato (order=%s).",
             order["order_code"],
         )
-        await database.mark_payment_order_needs_review(order["id"], str(text[:200]))
+        await database.mark_payment_order_needs_review(
+            order["id"], str(text[:200]), keep_approved=True
+        )
         await notify_founders(
             f"🚨 Avtomatik tasdiqlash xatosi: {order['order_code']} to'lovi aniqlandi, "
             "lekin faollashtirishda xato yuz berdi. Qo'lda tekshiring."
         )
-        return {"status": "no_match", "amount": amount}
+        return {"status": "needs_review", "amount": amount}
 
     partner_sale = None
     from services import partner_database as pdb
@@ -508,7 +631,7 @@ async def handle_payment_notification(
                     f"\nPromo: {partner_sale['promo_code']} "
                     f"(-{discount_label})"
                 )
-        except Exception:
+        except (KeyError, TypeError, ValueError):
             partner_note = "\n\n🤝 Partner komissiyasi yozildi."
 
     await notify_founders(

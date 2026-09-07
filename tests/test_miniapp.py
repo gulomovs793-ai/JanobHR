@@ -215,6 +215,29 @@ class MiniAppWorkflowTests(unittest.IsolatedAsyncioTestCase):
             await create_billing_order(self.JsonRequest({"plan_code": "start"}))
         create_order.assert_not_awaited()
 
+    async def test_create_billing_order_rejects_unpriced_multiple_months(self):
+        create_order = AsyncMock()
+        with (
+            patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),
+            patch("miniapp_api.PAYMENT_CARD_NUMBER", "8600123412341234"),
+            patch(
+                "miniapp_api.database.get_subscription_usage",
+                AsyncMock(
+                    return_value={
+                        "plan": get_plan("start"),
+                        "expired": False,
+                        "expires_at": "2099-01-01T00:00:00+00:00",
+                    }
+                ),
+            ),
+            patch("miniapp_api.create_payment_order_for_plan", create_order),
+            self.assertRaises(web.HTTPBadRequest),
+        ):
+            await create_billing_order(
+                self.JsonRequest({"plan_code": "growth", "billing_months": 2})
+            )
+        create_order.assert_not_awaited()
+
     async def test_billing_order_status_is_tenant_scoped(self):
         with (
             patch("miniapp_api._authorize", AsyncMock(return_value=({"id": 7}, {}))),

@@ -25,7 +25,12 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, WEBHOOK_BASE_URL
+from config import (
+    FOUNDER_BOT_TOKEN,
+    FOUNDER_USER_IDS,
+    PARTNER_BOT_TOKEN,
+    WEBHOOK_BASE_URL,
+)
 from services import database
 from services import partner_database as pdb
 from services.plans import get_plan_transition
@@ -310,30 +315,40 @@ async def _set_partner_application_status(callback: CallbackQuery, status: str):
         f"{'✅ Tasdiqlandi' if status == 'approved' else '❌ Rad etildi'}: "
         f"<b>{escape(str(partner.get('full_name') or 'Hamkor'))}</b> (#{partner_id})"
     )
-    if status == "approved":
-        try:
-            from partner_bot import main_menu
-
-            reply_markup = main_menu()
-        except ImportError:
-            reply_markup = None
-        try:
-            await callback.bot.send_message(
-                partner["telegram_user_id"],
-                "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
-                "Sizga referral link, promo kod, leadlar va komissiya paneli ochildi.",
-                reply_markup=reply_markup,
-            )
-        except Exception:
-            logger.exception("Tasdiqlangan partnerga xabar yuborilmadi: %s", partner_id)
+    # Ariza Founder Botda ko'riladi, lekin javob partnerning o'zi ochgan
+    # Partner Bot chatiga borishi kerak. Founder Botdan yuborilsa, partner
+    # u bot bilan hech qachon suhbat boshlamagan bo'lishi mumkin va xabar
+    # yetib bormaydi; reply keyboard ham noto'g'ri botda qolib ketadi.
+    if not PARTNER_BOT_TOKEN:
+        logger.error("Partner status notification yuborilmadi: PARTNER_BOT_TOKEN sozlanmagan.")
     else:
+        partner_bot = Bot(
+            token=PARTNER_BOT_TOKEN,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
         try:
-            await callback.bot.send_message(
-                partner["telegram_user_id"],
-                "Arizangiz hozircha tasdiqlanmadi. Keyinroq /start orqali qayta topshirishingiz mumkin.",
-            )
+            if status == "approved":
+                from partner_bot import main_menu
+
+                await partner_bot.send_message(
+                    partner["telegram_user_id"],
+                    "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
+                    "Sizga referral link, promo kod, leadlar va komissiya paneli ochildi.",
+                    reply_markup=main_menu(),
+                )
+            else:
+                await partner_bot.send_message(
+                    partner["telegram_user_id"],
+                    "Arizangiz hozircha tasdiqlanmadi. Keyinroq /start orqali qayta topshirishingiz mumkin.",
+                )
         except Exception:
-            logger.exception("Rad etilgan partnerga xabar yuborilmadi: %s", partner_id)
+            logger.exception(
+                "Partner status notification yuborilmadi: partner_id=%s status=%s",
+                partner_id,
+                status,
+            )
+        finally:
+            await partner_bot.session.close()
     await callback.answer("Saqlandi")
 
 

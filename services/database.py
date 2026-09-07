@@ -2082,7 +2082,7 @@ async def set_vacancy_active(tenant_id: int, key: str, active: bool) -> bool:
     """Vakansiyani atomik faollashtiradi/faolsizlantiradi va quota bypassni yopadi."""
     from services.plans import get_plan
 
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
     async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
         await db.execute("PRAGMA busy_timeout=5000")
         await db.execute("BEGIN IMMEDIATE")
@@ -2109,10 +2109,10 @@ async def set_vacancy_active(tenant_id: int, key: str, active: bool) -> bool:
                 if not tenant:
                     raise ValueError("Mijoz topilmadi")
                 plan = get_plan(tenant[0])
-                expires_at = tenant[1]
+                expires_at = _as_utc_datetime(tenant[1])
                 expired = bool(
                     plan.code not in {"trial", "legacy"}
-                    and (not expires_at or expires_at <= now_iso)
+                    and (not expires_at or expires_at <= now)
                 )
                 if expired:
                     raise VacancyLimitReached("Tarif muddati tugagan")
@@ -2548,8 +2548,12 @@ async def create_payment_order(
     if plan_code not in PUBLIC_PLAN_CODES:
         raise ValueError("Noto'g'ri tarif")
     plan = get_plan(plan_code)
-    if not 1 <= billing_months <= 12:
-        raise ValueError("Billing oylar soni 1–12 oralig'ida bo'lishi kerak")
+    # This low-level creator must enforce the same pricing invariant as the
+    # payment service.  Subscription activation keeps support for historical
+    # multi-month rows, but a new order cannot buy multiple months for one
+    # monthly amount.
+    if billing_months != 1:
+        raise ValueError("Hozircha faqat 1 oylik to'lov buyurtmasi mavjud")
     if not 0 < base_amount <= plan.price or amount < base_amount:
         raise ValueError("To'lov summasi tarifga mos emas")
     if not _as_utc_datetime(expires_at):

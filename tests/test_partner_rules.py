@@ -32,6 +32,15 @@ class PartnerRulesTests(unittest.TestCase):
                 "start", discount_type="amount", discount_value=99_001
             )
 
+    def test_zero_percent_promo_is_allowed_but_zero_amount_is_not(self):
+        percent = pdb.calculate_partner_payout("start", 0)
+        self.assertEqual(percent["discount_amount"], 0)
+        self.assertEqual(percent["commission_amount"], 99_000)
+        with self.assertRaises(ValueError):
+            pdb.calculate_partner_payout(
+                "start", discount_type="amount", discount_value=0
+            )
+
     def test_referral_link_is_main_bot_link(self):
         self.assertEqual(
             build_referral_link("janobHR_bot", "ABC123"),
@@ -61,7 +70,10 @@ class PartnerRulesTests(unittest.TestCase):
         source = Path("partner_bot.py").read_text(encoding="utf-8")
         self.assertIn("FOUNDER_BOT_TOKEN", source)
         self.assertIn('callback_data=f"fp:partnerapprove:{partner_id}"', source)
-        self.assertIn('"partners": "🤝 Hamkorlar uchun arizalar"', Path("founder_panel.py").read_text(encoding="utf-8"))
+        founder_source = Path("founder_panel.py").read_text(encoding="utf-8")
+        self.assertIn('"partners": "🤝 Hamkorlar uchun arizalar"', founder_source)
+        self.assertIn("PARTNER_BOT_TOKEN", founder_source)
+        self.assertIn("token=PARTNER_BOT_TOKEN", founder_source)
 
     def test_business_leads_are_routed_to_founder_bot(self):
         source = Path("handlers/create_bot.py").read_text(encoding="utf-8")

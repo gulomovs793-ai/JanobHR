@@ -954,8 +954,10 @@ async def create_billing_order(request: web.Request):
         billing_months = int(body.get("billing_months", 1))
     except (TypeError, ValueError) as exc:
         raise web.HTTPBadRequest(text="Billing muddati noto'g'ri.") from exc
-    if not 1 <= billing_months <= 12:
-        raise web.HTTPBadRequest(text="Billing muddati 1–12 oy bo'lishi kerak.")
+    if billing_months != 1:
+        raise web.HTTPBadRequest(
+            text="Hozircha faqat 1 oylik to'lovni tanlash mumkin."
+        )
 
     promo_code = str(body.get("promo_code") or "").strip()
     # Unit tests can replace only the core DB path. In production both modules

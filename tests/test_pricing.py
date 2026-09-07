@@ -46,6 +46,25 @@ class PricingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(orders[0]["id"], order_id)
         self.assertEqual(orders[0]["plan_code"], "growth")
 
+    async def test_new_payment_cannot_buy_unpriced_multiple_months(self):
+        with self.assertRaisesRegex(ValueError, "faqat 1 oylik"):
+            await create_payment_order(
+                self.tenant_id,
+                299_000,
+                plan_code="start",
+                billing_months=2,
+            )
+        with self.assertRaisesRegex(ValueError, "faqat 1 oylik"):
+            await database.create_payment_order(
+                self.tenant_id,
+                "JH-MULTI-MONTH",
+                299_000,
+                299_107,
+                "2099-01-01T00:00:00+00:00",
+                plan_code="start",
+                billing_months=2,
+            )
+
     async def test_payment_activates_selected_subscription(self):
         await database.create_payment_order(
             self.tenant_id,

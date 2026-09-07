@@ -128,7 +128,7 @@ def _founder_payout_message(request: dict, *, title: str = "💸 Hamkor pul yech
     receipt_username = escape(str(receipt_username))
     if receipt_username and not receipt_username.startswith("@"):
         receipt_username = "@" + receipt_username
-    username = escape(request.get("partner_username") or "")
+    username = escape(str(request.get("partner_username") or "").lstrip("@"))
     phone = escape(request.get("partner_phone") or "")
 
     return (

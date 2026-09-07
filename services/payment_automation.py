@@ -274,8 +274,14 @@ async def create_payment_order(
     if plan_code not in PUBLIC_PLAN_CODES:
         raise ValueError("Noto'g'ri tarif")
     plan = get_plan(plan_code)
-    if not 1 <= billing_months <= 12:
-        raise ValueError("Billing oylar soni 1–12 oralig'ida bo'lishi kerak")
+    # The catalogue amount and partner commission are monthly amounts.  Until
+    # a separate multi-month invoice/pricing flow exists, accepting a larger
+    # month count here would let a caller pay once and receive several months.
+    # Historical orders are still activated with their stored month count by
+    # ``database.activate_subscription_for_order``; this guard applies only
+    # to newly-created orders.
+    if billing_months != 1:
+        raise ValueError("Hozircha faqat 1 oylik to'lov buyurtmasi mavjud")
     if not 0 < base_amount <= plan.price:
         raise ValueError("To'lov summasi tarifga mos emas")
 

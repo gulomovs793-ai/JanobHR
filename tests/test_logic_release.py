@@ -82,6 +82,27 @@ class LogicReleaseTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(database.VacancyLimitReached):
             await database.set_vacancy_active(self.tenant_id, "one", True)
 
+    async def test_vacancy_reactivation_rejects_malformed_subscription_expiry(self):
+        await database.create_vacancy(
+            tenant_id=self.tenant_id,
+            key="malformed-expiry",
+            title="Malformed expiry",
+            reject_message="Rahmat, hozircha mos kelmadi.",
+            questions=[{"key": "q1", "text": "Savol?"}],
+            resume_required=False,
+        )
+        self.assertTrue(
+            await database.set_vacancy_active(self.tenant_id, "malformed-expiry", False)
+        )
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE tenants SET plan_code='start', subscription_expires_at=? WHERE id=?",
+                ("not-a-date", self.tenant_id),
+            )
+            await db.commit()
+        with self.assertRaises(database.VacancyLimitReached):
+            await database.set_vacancy_active(self.tenant_id, "malformed-expiry", True)
+
     async def test_duplicate_slot_and_booked_slot_delete_are_blocked(self):
         slot_id = await database.add_interview_slot(
             self.tenant_id, "2026-09-05 10:00", capacity=1

@@ -77,7 +77,11 @@ def calculate_partner_payout(
         value = int(discount_value if discount_value is not None else discount_percent or 0)
     except (TypeError, ValueError) as exc:
         raise ValueError("Promo qiymati noto'g'ri") from exc
-    if value < 0 or (discount_type == "percent" and value > 100):
+    if (
+        value < 0
+        or (discount_type == "amount" and value == 0)
+        or (discount_type == "percent" and value > 100)
+    ):
         raise ValueError("Promo chegirma noto'g'ri")
     base_commission = PARTNER_COMMISSIONS.get(plan.code, 0)
     discount_amount = round(plan.price * value / 100) if discount_type == "percent" else value

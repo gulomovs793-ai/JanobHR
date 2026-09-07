@@ -96,14 +96,14 @@
     $$('[data-promo-type]').forEach(b => b.classList.toggle('selected', b.dataset.promoType === promoType));
     text('discountSuffix', promoType === 'amount' ? 'UZS' : '%');
     const input = $('discountValue');
-    if (input) { input.max = promoType === 'amount' ? '100000000' : '100'; input.placeholder = promoType === 'amount' ? 'Masalan, 30000' : 'Masalan, 10'; }
+    if (input) { input.max = promoType === 'amount' ? '99000' : '25'; input.placeholder = promoType === 'amount' ? 'Masalan, 30000' : 'Masalan, 10'; }
   }));
 
   $('createPromo')?.addEventListener('click', async () => {
     const discount = Number($('discountValue')?.value || 0);
     const duration = Number($('durationDays')?.value || 0);
     if (!initData) return fail('Telegram sessiyasi topilmadi.');
-    if (discount <= 0 || duration < 1 || duration > 365 || (promoType === 'percent' && discount > 100)) {
+    if (discount <= 0 || duration < 1 || duration > 365 || (promoType === 'percent' && discount > 25) || (promoType === 'amount' && discount > 99000)) {
       if (tg?.showAlert) tg.showAlert('Chegirma miqdori yoki amal qilish kuni noto‘g‘ri.');
       return;
     }
@@ -120,7 +120,7 @@
       text('promoText', `${label} chegirma. Amal qilish muddati: ${expires}. START: ${data.payouts.start}, GROWTH: ${data.payouts.growth}, BUSINESS: ${data.payouts.business} komissiya qoladi.`);
       $('promoResult')?.classList.remove('hidden');
     } catch (_) {
-      if (tg?.showAlert) tg.showAlert('Promo kodni yaratib bo‘lmadi. Qayta urinib ko‘ring.');
+      if (tg?.showAlert) tg.showAlert('Promo kodni yaratib bo‘lmadi. Maksimal chegirma: 25% yoki 99 000 UZS.');
       else alert('Promo kodni yaratib bo‘lmadi.');
     } finally { btn.disabled = false; }
   });

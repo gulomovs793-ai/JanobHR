@@ -27,8 +27,10 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
     MenuButtonWebApp,
     Message,
+    ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     WebAppInfo,
 )
@@ -81,7 +83,7 @@ FAQ_TEXT = (
     "<b>5. Referral link nima?</b>\n"
     "Bu sizga biriktirilgan maxsus link. Mijoz shu link orqali kirsa, tizim uni siz olib kelgan mijoz sifatida eslab qoladi va tizimga kiritadi.\n\n"
     "<b>6. Promo kod nima?</b>\n"
-    "Promo kod mijozga chegirma beradi. Tasdiqlangan partner Boshqaruv panelida foiz yoki aniq summa, shuningdek qaysi tarifga tegishli ekanini va necha kun amal qilishini belgilaydi. Bitta kod barcha tariflarda ishlasa, xavfsiz maksimal chegirma 25% yoki 99 000 UZS bo'ladi. Har bir partnerda bitta faol promo kod bo'ladi.\n\n"
+    "Promo kod mijozga chegirma beradi. Tasdiqlangan partner Boshqaruv panelida foiz yoki aniq summa, qaysi tarifga tegishli ekanini va necha kun amal qilishini belgilaydi. 0%, 5%, 10%, 15% yoki 20% kabi qiymatlar tanlanadi; tizim tanlangan tarif komissiyasidan oshadigan chegirmani qabul qilmaydi. Bitta kod barcha tariflarda ishlasa, maksimal xavfsiz chegirma 25% yoki 99 000 UZS bo'ladi. Har bir partnerda bitta faol promo kod bo'ladi.\n\n"
     "<b>7. Promo chegirma kim hisobidan beriladi?</b>\n"
     "Chegirma Janob HR hisobidan emas, sizning komissiyangizdan ayriladi. Masalan, 30 000 UZS chegirma berilsa, START komissiyasi 99 000 - 30 000 = 69 000 UZS bo'ladi. Komissiya manfiy bo'lib qolmaydi.\n\n"
     "<b>8. Menga to'lanadigan komissiya qancha?</b>\n"
@@ -95,7 +97,7 @@ FAQ_TEXT = (
     "<b>12. Mijoz link orqali kirib, keyin promo kod ishlatsa nima bo'ladi?</b>\n"
     "Referral link mijozni sizga bog'laydi. Keyin o'zingiz yaratgan promo kod ishlatilsa, mijoz sizniki bo'lib qoladi va chegirma shu kod qoidasi bo'yicha hisoblanadi.\n\n"
     "<b>13. Mijoz boshqa partner promo kodini ishlatsa-chi?</b>\n"
-    "Agar mijoz avval boshqa partner referral linki orqali bog'langan bo'lsa, boshqa partner promo kodi qabul qilinmaydi. Agar hali hech bir partnerga bog'lanmagan bo'lsa, ishlatilgan promo kod egasi partner sifatida qayd qilinadi. Komissiya ikki partnerga bo'linmaydi.\n\n"
+    "Bunday holat alohida tekshiriladi. Mijoz avval qaysi hamkorga biriktirilgan bo'lsa, boshqa partner kodi avtomatik qabul qilinmaydi; komissiya ikki partnerga bo'linmaydi. Zarur bo'lsa Founder jamoasi to'lovni qo'lda ko'rib chiqadi.\n\n"
     "<b>14. Komissiyani qanday qabul qilaman?</b>\n"
     "To'lov yechish vaqtida sizdan karta yoki kerakli to'lov ma'lumoti so'raladi. Ma'lumotlar to'g'ri bo'lishi kerak. To'lov qilingandan keyin siz taqdim qilgan Telegram username'ga chek yuboriladi, agar spam yoki aloqa bo'yicha muammo bo'lmasa.\n\n"
     "<b>15. Hamkor bo'lsam daromad kafolatlanadimi?</b>\n"
@@ -359,12 +361,8 @@ async def send_phone_step(message: Message, state: FSMContext) -> None:
 async def send_partner_home(message: Message, partner: dict) -> None:
     await message.answer(
         "🤝 <b>Janob HR Hamkor</b>\n\n"
-        "Profilingiz faol. Endi sizda 3 ta asosiy bo'lim bor:\n\n"
-        "🔗 <b>Referral link</b> — mijozni asosiy Janob HR botga olib kiradi.\n"
-        "🎟 <b>Promo kod</b> — mijozga chegirma beradi, chegirma sizning komissiyangizdan ayriladi.\n"
-        "💸 <b>Pul yechish</b> — tasdiqlangan komissiya bo'yicha ariza yuboradi.\n\n"
-        "Mijoz tarif sotib olsa — sizga komissiya hisoblanadi.\n\n"
-        "Savollar bo'lsa, <b>❓ Tez-tez so'raladigan savollar</b> bo'limini oching.",
+        "Profilingiz faol. Ko'k <b>«Boshqaruv paneli»</b> tugmasini bosing — referral, leadlar, promo, komissiya va pul yechish bitta Mini App ichida.\n\n"
+        "Mijoz referral link yoki promo orqali tarif sotib olib, to'lovi tasdiqlanganda komissiya balansingizga yoziladi.",
         reply_markup=main_menu(),
     )
 
@@ -577,12 +575,8 @@ async def approve_partner(callback: CallbackQuery) -> None:
         await callback.bot.send_message(
             partner["telegram_user_id"],
             "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
-            "Endi sizda 3 ta asosiy yo'l bor:\n\n"
-            "📱 Hamkor paneli — statistika, referral, komissiya va FAQ bir joyda.\n"
-            "🔗 Referral link — mijozni asosiy Janob HR botga olib kiradi.\n"
-            "🎟 Promo kod — mijozga chegirma beradi. Chegirma sizning komissiyangizdan ayriladi.\n"
-            "💸 Pul yechish — tasdiqlangan komissiya bo'yicha ariza yuboradi.\n\n"
-            "Quyidagi menyudan Hamkor panelini oching.",
+            "Ko'k <b>«Boshqaruv paneli»</b> tugmasi yoqildi. Unda referral link, leadlar, promo kod, komissiya, pul yechish va FAQ bir joyda ishlaydi.\n\n"
+            "Mijoz tarif sotib olib, to'lovi tasdiqlanganda komissiya balansingizga yoziladi.",
             reply_markup=main_menu(),
         )
     except Exception:

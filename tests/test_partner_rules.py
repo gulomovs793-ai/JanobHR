@@ -9,9 +9,8 @@ import aiosqlite
 from aiogram.types import ReplyKeyboardRemove
 
 from partner_bot import main_menu
-from services import database
+from services import database, partner_payouts
 from services import partner_database as pdb
-from services import partner_payouts
 from services.partner_links import build_referral_link
 from services.payment_automation import create_payment_order
 
@@ -139,6 +138,51 @@ class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(attribution["discount_amount"], 29_900)
         self.assertEqual(attribution["discounted_base_amount"], 269_100)
         self.assertEqual(attribution["commission_amount"], 69_100)
+
+    async def test_promo_caps_follow_selected_tariff(self):
+        partner = await pdb.upsert_application(
+            user_id=557,
+            full_name="Cap Partner",
+            username="cap_partner",
+            phone="+998901234569",
+            role="blogger",
+            has_business_clients=True,
+            client_band="1-3",
+        )
+        partner = await pdb.set_partner_status(partner["id"], "approved")
+        growth_promo = await pdb.create_or_update_promo_code(
+            partner["id"],
+            33,
+            discount_type="percent",
+            duration_days=30,
+            plan_code="growth",
+        )
+        self.assertEqual(growth_promo["plan_code"], "growth")
+        with self.assertRaises(ValueError):
+            await pdb.create_or_update_promo_code(
+                partner["id"],
+                34,
+                discount_type="percent",
+                duration_days=30,
+                plan_code="growth",
+            )
+
+        business_promo = await pdb.create_or_update_promo_code(
+            partner["id"],
+            299_000,
+            discount_type="amount",
+            duration_days=30,
+            plan_code="business",
+        )
+        self.assertEqual(business_promo["discount_value"], 299_000)
+        with self.assertRaises(ValueError):
+            await pdb.create_or_update_promo_code(
+                partner["id"],
+                299_001,
+                discount_type="amount",
+                duration_days=30,
+                plan_code="business",
+            )
 
     async def test_payout_request_stores_explicit_payment_identity(self):
         partner = await pdb.upsert_application(

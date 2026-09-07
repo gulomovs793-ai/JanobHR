@@ -183,6 +183,13 @@ async def _notify_founders_about_payout(
     return sent_any
 
 
+async def notify_founders_about_payout(
+    request: dict, *, title: str = "💸 Hamkor pul yechish arizasi"
+) -> bool:
+    """Expose the Founder Bot notification for the Mini App API as well."""
+    return await _notify_founders_about_payout(None, request, title=title)
+
+
 def _partner_paid_message(request: dict) -> str:
     card = str(request.get("payout_card_number") or "")
     masked_card = f"**** {card[-4:]}" if len(card) >= 4 else "—"

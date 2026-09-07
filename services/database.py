@@ -2052,6 +2052,11 @@ async def create_vacancy(
                     "ON CONFLICT(tenant_id) DO UPDATE SET location_text=excluded.location_text",
                     (tenant_id, interview_location),
                 )
+            elif replace_empty_workspace:
+                await db.execute(
+                    "DELETE FROM interview_settings WHERE tenant_id=?",
+                    (tenant_id,),
+                )
 
             if onboarding_industry is not None or onboarding_profile is not None:
                 await db.execute(

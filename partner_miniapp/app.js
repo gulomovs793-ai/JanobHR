@@ -19,6 +19,7 @@
   const haptic = (kind='light') => { try { tg?.HapticFeedback?.impactOccurred(kind); } catch (_) {} };
   const text = (id, value) => { const el = $(id); if (el) el.textContent = value; };
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const formatUzs = (value) => `${Number(value || 0).toLocaleString('uz-UZ')} UZS`;
   const dateLabel = (value, options={day:'2-digit', month:'short'}) => {
     if (!value) return '';
     const date = new Date(value);
@@ -33,6 +34,7 @@
     const input = $('discountValue');
     if (input) {
       input.max = String(cap);
+      input.min = type === 'amount' ? '1' : '0';
       input.placeholder = type === 'amount' ? 'Masalan, 30000' : 'Masalan, 10';
     }
     text('discountSuffix', type === 'amount' ? 'UZS' : '%');
@@ -59,6 +61,20 @@
       const earning = plan && commission > 0 ? `<small><b>${esc(plan)}</b> → sizga <b>${commission.toLocaleString('uz-UZ')} UZS</b></small>` : '';
       return `<div class="lead-row"><div><b>${esc(item.company_name || 'Noma’lum kompaniya')}</b><small>${esc(source)}${date ? ` · ${esc(date)}` : ''}</small>${earning}</div><span class="lead-status">${esc(item.status_label || '🆕 Yangi')}</span></div>`;
     }).join('');
+  }
+  function renderPayout(balance) {
+    const active = balance?.active_request;
+    const status = $('payoutStatus');
+    const form = $('payoutForm');
+    if (!status || !form) return;
+    if (active) {
+      status.classList.remove('hidden'); form.classList.add('hidden');
+      text('payoutStatusTitle', `#${active.id} — ko‘rib chiqilmoqda`);
+      const delay = Number(active.delay_days || 0);
+      text('payoutStatusText', `Asosiy summa: ${formatUzs(active.requested_amount)}\nKechikish bonusi: ${formatUzs(active.bonus_amount)}${delay ? ` (${delay} kun)` : ''}\nAniq o‘tkazma: ${formatUzs(active.total_amount)}\nTo‘lov kuni: ${active.payout_due_date || '—'}\n\nSana o‘tsa, summa har yangilanganda qayta hisoblanadi.`);
+    } else {
+      status.classList.add('hidden'); form.classList.remove('hidden');
+    }
   }
   function show(name) {
     $$('.view').forEach(v => v.classList.toggle('active', v.id === name));
@@ -94,6 +110,10 @@
       const delay = Number(balance.active_request?.delay_days || 0);
       text('balanceNote', delay ? `Faol ariza · ${delay} kun kechikish` : 'Tasdiqlangan sotuvlardan.');
       text('earningsNote', delay ? `Kechikish bonusi: ${Number(balance.active_request?.bonus_amount || 0).toLocaleString('uz-UZ')} UZS` : 'Tasdiqlangan sotuvlardan.');
+      text('openPayout', balance.active_request ? 'Arizani ko‘rish' : 'Pul yechish arizasini yuborish');
+      renderPayout(balance);
+      if ($('payoutFullName') && !$('payoutFullName').value) $('payoutFullName').value = data.partner?.full_name || '';
+      if ($('payoutUsername') && !$('payoutUsername').value && data.partner?.username) $('payoutUsername').value = data.partner.username.startsWith('@') ? data.partner.username : `@${data.partner.username}`;
       renderActivity(data.activity || []); renderLeads(data.leads || [], 'leads'); renderLeads(data.leads || [], 'leadsFull');
       text('referral_link', data.referral_link || 'Referral link topilmadi');
       if (data.promo?.code) {
@@ -129,7 +149,7 @@
     const discount = Number($('discountValue')?.value || 0); const duration = Number($('durationDays')?.value || 0); const planCode = $('promoPlan')?.value || 'all';
     if (!initData) return fail('Telegram sessiyasi topilmadi.');
     const cap = getPromoCap(planCode, promoType);
-    if (discount <= 0 || duration < 1 || duration > 365 || discount > cap) { if (tg?.showAlert) tg.showAlert(`Chegirma miqdori noto‘g‘ri. Maksimum: ${cap.toLocaleString('uz-UZ')}${promoType === 'amount' ? ' UZS' : '%'}.`); return; }
+    if (discount < 0 || (promoType === 'amount' && discount === 0) || duration < 1 || duration > 365 || discount > cap) { if (tg?.showAlert) tg.showAlert(`Chegirma miqdori noto‘g‘ri. Maksimum: ${cap.toLocaleString('uz-UZ')}${promoType === 'amount' ? ' UZS' : '%'}.`); return; }
     haptic('medium'); const btn = $('createPromo'); btn.disabled = true;
     try {
       const res = await api('/api/partner-miniapp/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({discount_type:promoType, discount_value:discount, duration_days:duration, plan_code:planCode})});
@@ -144,7 +164,30 @@
     } catch (_) { if (tg?.showAlert) tg.showAlert(`Promo kodni yaratib bo‘lmadi. Maksimum: ${cap.toLocaleString('uz-UZ')}${promoType === 'amount' ? ' UZS' : '%'}.`); else alert('Promo kodni yaratib bo‘lmadi.'); }
     finally { btn.disabled = false; }
   });
-  $('closeToPayout')?.addEventListener('click', () => { haptic('medium'); if (tg?.showPopup) tg.showPopup({title:'Pul yechish', message:'Mini App yopilgach botdagi “💸 Pul yechish” tugmasini bosing.', buttons:[{type:'ok'}]}, () => tg.close()); else tg?.close(); });
+  $('submitPayout')?.addEventListener('click', async () => {
+    const fullName = $('payoutFullName')?.value?.trim() || '';
+    const cardNumber = $('payoutCard')?.value?.trim() || '';
+    const receiptUsername = $('payoutUsername')?.value?.trim() || '';
+    if (!fullName || !cardNumber || !receiptUsername) {
+      const message = "Ism-familiya, karta raqami va Telegram username'ni to‘liq kiriting.";
+      text('payoutMessage', message); if (tg?.showAlert) tg.showAlert(message); return;
+    }
+    const btn = $('submitPayout'); btn.disabled = true; text('payoutMessage', 'Ariza yuborilmoqda…'); haptic('medium');
+    try {
+      const res = await api('/api/partner-miniapp/payout', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({full_name:fullName, card_number:cardNumber, receipt_username:receiptUsername})});
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Payout arizasi yaratilmadi.');
+      const payout = data.payout || {};
+      const notice = data.founder_notified ? 'Founder Botga notification yuborildi.' : 'Founder Bot notificationi recovery orqali qayta yuboriladi.';
+      const message = `Ariza #${payout.id || '—'} yuborildi. Aniq summa: ${formatUzs(payout.total_amount)}. ${notice}`;
+      text('payoutMessage', message);
+      if (tg?.showPopup) tg.showPopup({title:'Ariza yuborildi', message, buttons:[{type:'ok'}]});
+      await load(); show('payout');
+    } catch (error) {
+      const message = error?.message || 'Payout arizasini yuborib bo‘lmadi. Qayta urinib ko‘ring.';
+      text('payoutMessage', message); if (tg?.showAlert) tg.showAlert(message);
+    } finally { btn.disabled = false; }
+  });
   updatePromoLimit();
   load(); window.setInterval(() => { if (!document.hidden) load(); }, 15000);
 })();

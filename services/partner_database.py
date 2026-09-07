@@ -561,7 +561,7 @@ async def create_or_update_promo_code(
         raise ValueError("Promo muddati 1-365 kun bo'lishi kerak")
     if plan_code != "all" and plan_code not in PUBLIC_PLAN_CODES:
         raise ValueError("Promo tarifi noto'g'ri")
-    if discount_value <= 0:
+    if discount_value < 0 or (discount_type == "amount" and discount_value == 0):
         raise ValueError("Promo qiymati noto'g'ri")
     if discount_type == "percent":
         if discount_value > max_promo_percent(plan_code):

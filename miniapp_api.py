@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote
 
+import aiosqlite
 from aiogram import Bot
 from aiohttp import web
 from openpyxl import Workbook
@@ -369,7 +370,9 @@ async def update_interview_settings(request: web.Request):
     tenant, _ = await _authorize(request)
     try:
         body = await request.json()
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
+        raise web.HTTPBadRequest(text="Sozlamalar noto'g'ri.")
+    if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="Sozlamalar noto'g'ri.")
     limits = {
         "location_text": 240,
@@ -455,6 +458,8 @@ async def candidate_decision(request: web.Request):
         body = await request.json()
     except (ValueError, json.JSONDecodeError):
         raise web.HTTPBadRequest(text="Noto'g'ri so'rov.")
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest(text="Noto'g'ri so'rov.")
     action = body.get("action")
     if action not in {"accept", "save", "reject"}:
         raise web.HTTPBadRequest(text="Noto'g'ri qaror.")
@@ -516,6 +521,8 @@ async def candidate_outcome(request: web.Request):
         app_id = int(request.match_info["app_id"])
         body = await request.json()
     except (ValueError, json.JSONDecodeError):
+        raise web.HTTPBadRequest(text="Noto'g'ri so'rov.")
+    if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="Noto'g'ri so'rov.")
     outcome = body.get("outcome")
     if outcome not in {"hired", "not_hired", "no_show"}:
@@ -703,6 +710,10 @@ async def quick_setup(request: web.Request):
         raise web.HTTPPaymentRequired(text="Tarifdagi vakansiya limiti tugagan.") from exc
     except database.InterviewSlotConflict as exc:
         raise web.HTTPConflict(text="Suhbat vaqti takrorlangan yoki allaqachon mavjud.") from exc
+    except aiosqlite.IntegrityError as exc:
+        raise web.HTTPConflict(
+            text="Onboarding allaqachon ishga tushgan. Panelni yangilang."
+        ) from exc
     return web.json_response({"ok": True, "vacancy_key": key, "questions": len(questions)})
 
 
@@ -771,7 +782,9 @@ async def create_vacancy(request: web.Request):
     tenant, _ = await _authorize(request)
     try:
         body = await request.json()
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
+        raise web.HTTPBadRequest(text="Vakansiya ma'lumoti noto'g'ri.")
+    if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="Vakansiya ma'lumoti noto'g'ri.")
     title = str(body.get("title") or "").strip()
     reject_message = str(body.get("reject_message") or "").strip()
@@ -800,6 +813,8 @@ async def create_vacancy(request: web.Request):
         )
     except database.VacancyLimitReached as exc:
         raise web.HTTPPaymentRequired(text="Tarifdagi vakansiya limiti tugagan.") from exc
+    except aiosqlite.IntegrityError as exc:
+        raise web.HTTPConflict(text="Vakansiya allaqachon yaratildi. Panelni yangilang.") from exc
     return web.json_response({"ok": True, "key": key}, status=201)
 
 
@@ -810,7 +825,9 @@ async def edit_vacancy(request: web.Request):
         raise web.HTTPNotFound(text="Vakansiya topilmadi.")
     try:
         body = await request.json()
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
+        raise web.HTTPBadRequest(text="Vakansiya ma'lumoti noto'g'ri.")
+    if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="Vakansiya ma'lumoti noto'g'ri.")
     title = str(body.get("title") or "").strip()
     reject_message = str(body.get("reject_message") or "").strip()

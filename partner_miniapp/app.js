@@ -4,6 +4,7 @@
   const $$ = (selector) => Array.from(document.querySelectorAll(selector));
   const initData = tg?.initData || '';
   let currentPromo = '';
+  let promoType = 'percent';
 
   if (tg) {
     tg.ready();
@@ -64,9 +65,13 @@
       if (data.promo?.code) {
         currentPromo = data.promo.code;
         text('promoCode', data.promo.code);
-        text('promoText', `${data.promo.discount_percent}% chegirma faol.`);
+        const value = data.promo.discount_type === 'amount' ? `${Number(data.promo.discount_value || 0).toLocaleString('uz-UZ')} UZS` : `${data.promo.discount_value || data.promo.discount_percent}%`;
+        const expires = data.promo.expires_at ? new Date(data.promo.expires_at).toLocaleDateString('uz-UZ') : '—';
+        text('promoText', `${value} chegirma faol. Amal qilish muddati: ${expires}.`);
         $('promoResult')?.classList.remove('hidden');
-        $$('[data-discount]').forEach(b => b.classList.toggle('selected', Number(b.dataset.discount) === Number(data.promo.discount_percent)));
+        promoType = data.promo.discount_type || 'percent';
+        $$('[data-promo-type]').forEach(b => b.classList.toggle('selected', b.dataset.promoType === promoType));
+        if ($('discountValue')) $('discountValue').value = data.promo.discount_value || data.promo.discount_percent || '';
       }
     } catch (_) { fail('Server bilan aloqa bo‘lmadi. Qayta urinib ko‘ring.'); }
     finally { $('refresh')?.classList.remove('loading'); }
@@ -86,25 +91,39 @@
   $('refresh')?.addEventListener('click', load);
   $('retry')?.addEventListener('click', () => { show('home'); load(); });
 
-  $$('[data-discount]').forEach(btn => btn.addEventListener('click', async () => {
-    const discount = Number(btn.dataset.discount);
+  $$('[data-promo-type]').forEach(btn => btn.addEventListener('click', () => {
+    promoType = btn.dataset.promoType;
+    $$('[data-promo-type]').forEach(b => b.classList.toggle('selected', b.dataset.promoType === promoType));
+    text('discountSuffix', promoType === 'amount' ? 'UZS' : '%');
+    const input = $('discountValue');
+    if (input) { input.max = promoType === 'amount' ? '100000000' : '100'; input.placeholder = promoType === 'amount' ? 'Masalan, 30000' : 'Masalan, 10'; }
+  }));
+
+  $('createPromo')?.addEventListener('click', async () => {
+    const discount = Number($('discountValue')?.value || 0);
+    const duration = Number($('durationDays')?.value || 0);
     if (!initData) return fail('Telegram sessiyasi topilmadi.');
+    if (discount <= 0 || duration < 1 || duration > 365 || (promoType === 'percent' && discount > 100)) {
+      if (tg?.showAlert) tg.showAlert('Chegirma miqdori yoki amal qilish kuni noto‘g‘ri.');
+      return;
+    }
     haptic('medium');
-    btn.disabled = true;
+    const btn = $('createPromo'); btn.disabled = true;
     try {
-      const res = await api('/api/partner-miniapp/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({discount_percent:discount})});
+      const res = await api('/api/partner-miniapp/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({discount_type:promoType, discount_value:discount, duration_days:duration})});
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || 'promo_failed');
       currentPromo = data.promo.code;
       text('promoCode', currentPromo);
-      text('promoText', `${data.promo.discount_percent}% chegirma. START: ${data.payouts.start}, GROWTH: ${data.payouts.growth}, BUSINESS: ${data.payouts.business} komissiya qoladi.`);
+      const label = promoType === 'amount' ? `${discount.toLocaleString('uz-UZ')} UZS` : `${discount}%`;
+      const expires = data.promo.expires_at ? new Date(data.promo.expires_at).toLocaleDateString('uz-UZ') : '—';
+      text('promoText', `${label} chegirma. Amal qilish muddati: ${expires}. START: ${data.payouts.start}, GROWTH: ${data.payouts.growth}, BUSINESS: ${data.payouts.business} komissiya qoladi.`);
       $('promoResult')?.classList.remove('hidden');
-      $$('[data-discount]').forEach(b => b.classList.toggle('selected', Number(b.dataset.discount) === discount));
     } catch (_) {
       if (tg?.showAlert) tg.showAlert('Promo kodni yaratib bo‘lmadi. Qayta urinib ko‘ring.');
       else alert('Promo kodni yaratib bo‘lmadi.');
     } finally { btn.disabled = false; }
-  }));
+  });
 
   $('closeToPayout')?.addEventListener('click', () => {
     haptic('medium');

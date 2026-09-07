@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl
 
@@ -76,7 +77,7 @@ async def partner_stats(request: web.Request) -> web.Response:
         from config import SQLITE_PATH
         async with aiosqlite.connect(SQLITE_PATH) as db:
             db.row_factory = aiosqlite.Row
-            cur = await db.execute("SELECT code, discount_percent FROM partner_promo_codes WHERE partner_id=? AND status='active' ORDER BY id DESC LIMIT 1", (partner["id"],))
+            cur = await db.execute("SELECT code, discount_percent, discount_type, discount_value, expires_at FROM partner_promo_codes WHERE partner_id=? AND status='active' AND (expires_at IS NULL OR expires_at > ?) ORDER BY id DESC LIMIT 1", (partner["id"], datetime.now(timezone.utc).isoformat()))
             row = await cur.fetchone()
             promo = dict(row) if row else None
     except Exception:
@@ -98,22 +99,24 @@ async def partner_promo(request: web.Request) -> web.Response:
         return error
     try:
         payload = await request.json()
-        discount = int(payload.get("discount_percent"))
-        if discount not in pdb.ALLOWED_PROMO_DISCOUNTS:
+        discount_type = str(payload.get("discount_type") or "percent").strip().lower()
+        discount = int(payload.get("discount_value"))
+        duration_days = int(payload.get("duration_days"))
+        if discount_type not in {"percent", "amount"} or discount <= 0 or duration_days < 1 or duration_days > 365:
             raise ValueError
     except Exception:
         return web.json_response({"ok": False, "error": "invalid_discount"}, status=400)
 
-    promo = await pdb.create_or_update_promo_code(partner["id"], discount)
+    promo = await pdb.create_or_update_promo_code(partner["id"], discount, discount_type=discount_type, duration_days=duration_days)
     if not promo:
         return web.json_response({"ok": False, "error": "promo_not_created"}, status=400)
 
     payouts = {}
     for plan in ("start", "growth", "business"):
-        calc = pdb.calculate_partner_payout(plan, discount)
+        calc = pdb.calculate_partner_payout(plan, discount if discount_type == "percent" else 0, discount_type=discount_type, discount_value=discount)
         payouts[plan] = pdb.format_uzs(calc["commission_amount"])
 
-    return web.json_response({"ok": True, "promo": {"code": promo["code"], "discount_percent": promo["discount_percent"]}, "payouts": payouts})
+    return web.json_response({"ok": True, "promo": {"code": promo["code"], "discount_type": promo["discount_type"], "discount_value": promo["discount_value"], "discount_percent": promo["discount_percent"], "expires_at": promo["expires_at"]}, "payouts": payouts})
 
 
 def register_partner_miniapp(app: web.Application) -> None:

@@ -186,8 +186,9 @@ Kirish Telegram `initData` HMAC imzosi bilan serverda tekshiriladi. URLdagi
 
 ## Partner Bot — hamkor boshqaruv paneli
 
-Partner Bot alohida token bilan ishlaydi. Uning **📱 Boshqaruv paneli** tugmasi
-Telegram Mini App'ni `/partner` manzilida ochadi. Server `initData` imzosini
+Partner Bot alohida token bilan ishlaydi. Telegram chat menyusidagi ko'k
+**Boshqaruv paneli** tugmasi Mini App'ni `/partner` manzilida ochadi; reply
+keyboard ichida uning kulrang nusxasi yo'q. Server `initData` imzosini
 `PARTNER_BOT_TOKEN` bilan tekshiradi va Telegram user ID orqali faqat shu
 hamkorning ma'lumotlarini qaytaradi.
 
@@ -209,6 +210,21 @@ Partner panelda referral link, lead holatlari, promo kod (foiz yoki summa),
 tarifga bog'lash, amal qilish muddati va komissiya balansi ko'rsatiladi.
 Promo chegirma komissiyadan ayriladi: masalan START 10% promo uchun
 `99 000 - (299 000 × 10%) = 69 100 UZS`.
+
+To'lov buyurtmasida mijozga chegirmadan keyingi summa asos qilib olinadi. Masalan
+START 299 000 UZS bo'lsa, 29 000 UZS summali promo bilan baza 270 000 UZS bo'ladi;
+tizim unga 270 006–271 999 oralig'idan boshqa ochiq buyurtmalarda band bo'lmagan,
+oxiri 6/7/8/9 bilan tugaydigan **aniq to'lov summasi**ni beradi (masalan
+270 007). Mijoz bankda aynan shu summani o'tkazadi. Userbot xabaridagi kirim,
+karta va summa mos kelsa, buyurtma atomik tasdiqlanadi, tarif avtomatik yoqiladi
+va partner komissiyasi bir marta yoziladi. 10% START misolida baza 269 100 UZS,
+komissiya esa 99 000 - 29 900 = 69 100 UZS bo'ladi.
+
+Avtomatik yoqilish uchun Render'da `PAYMENT_LISTENER_ENABLED=1`,
+`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_USERBOT_SESSION`,
+`CARD_BOT_USERNAME`, `PAYMENT_CARD_NUMBER` va `PAYMENT_CARD_HOLDER` to'g'ri
+sozlangan bo'lishi kerak. Userbot ishlamasa yoki bildirishnoma kelmasa, to'lov
+avtomatik tasdiqlanmaydi va Founder tekshiruviga tushadi.
 
 Partnerga ariza topshirish va biznes leadlar **Founder Bot**ga yuboriladi.
 Founder Bot menyusidagi **🤝 Hamkorlar uchun arizalar** bo'limidan founder arizani

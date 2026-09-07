@@ -4,7 +4,11 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from services import database
-from services.payment_automation import handle_payment_notification
+from services.payment_automation import (
+    create_payment_order,
+    handle_payment_notification,
+    parse_notification_amount,
+)
 from services.plans import get_plan_transition
 
 
@@ -65,6 +69,43 @@ class PricingTests(unittest.IsolatedAsyncioTestCase):
         tenant = await database.get_tenant(self.tenant_id)
         self.assertEqual(tenant["plan_code"], "start")
         self.assertIsNotNone(tenant["subscription_expires_at"])
+
+    async def test_discounted_order_uses_exact_unique_amount_and_auto_activates(self):
+        order = await create_payment_order(
+            self.tenant_id,
+            270_000,
+            plan_code="start",
+        )
+
+        # The customer is shown this exact amount, not the rounded catalogue
+        # price. The suffix is reserved for Janob HR's bank-notification route.
+        self.assertGreater(order["amount"], 270_000)
+        self.assertLessEqual(order["amount"], 271_999)
+        self.assertIn(order["amount"] % 10, {6, 7, 8, 9})
+        self.assertEqual(
+            parse_notification_amount(f"+ {order['amount']:,} so'm"),
+            order["amount"],
+        )
+
+        notify = AsyncMock()
+        activate = AsyncMock(return_value={"ok": True})
+        with (
+            patch("services.payment_automation.PAYMENT_CARD_NUMBER", "8600123412341234"),
+            patch.object(
+                database,
+                "was_notification_seen_recently",
+                AsyncMock(return_value=False),
+            ),
+            patch.object(database, "record_seen_notification", AsyncMock()),
+        ):
+            result = await handle_payment_notification(
+                f"+ {order['amount']:,} so'm karta **1234", notify, activate
+            )
+
+        self.assertEqual(result["status"], "approved")
+        activate.assert_awaited_once_with(self.tenant_id)
+        tenant = await database.get_tenant(self.tenant_id)
+        self.assertEqual(tenant["plan_code"], "start")
 
     async def test_active_plan_transition_rules_are_ordered(self):
         self.assertEqual(

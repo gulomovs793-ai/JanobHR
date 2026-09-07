@@ -152,19 +152,14 @@ def partner_miniapp_url() -> str:
     return f"{WEBHOOK_BASE_URL}/partner" if WEBHOOK_BASE_URL else ""
 
 
-def partner_panel_button() -> KeyboardButton:
-    # Reply-keyboard WebApp buttons do not reliably carry signed initData.
-    # Keep the menu item as text and open the signed inline WebApp button from
-    # its handler below. The Telegram chat menu button is also configured.
-    return KeyboardButton(text="📱 Boshqaruv paneli")
-
-
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            # 1) Overview: the partner's personal workspace and key numbers.
+            # The personal dashboard is opened from Telegram's blue chat-menu
+            # WebApp button configured in configure_partner_miniapp_menu().
+            # Keep the reply keyboard focused on chat-native actions.
             [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
-            # 2) Acquisition tools: bring a client and configure the offer.
+            # Acquisition tools: bring a client and configure the offer.
             [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
             # 3) Payouts, then supporting resources.
             [KeyboardButton(text="💸 Pul yechish")],
@@ -733,7 +728,6 @@ async def promo_section(message: Message) -> None:
         "🎟 <b>Promo kod</b>\n\n"
         "Boshqaruv panelida o'zingizga promo kod yarating: chegirmani foizda yoki aniq summada belgilang va amal qilish kunini tanlang.\n\n"
         "Chegirma sizning komissiyangizdan ayriladi. Yangi kod yaratilsa, avvalgi faol kod yopiladi.",
-        reply_markup=ReplyKeyboardMarkup(keyboard=[[partner_panel_button()]], resize_keyboard=True),
     )
 
 

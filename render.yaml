@@ -33,6 +33,8 @@ services:
         sync: false
       - key: PAYMENT_ROUTER_SECRET
         sync: false
+      - key: PAYMENT_LISTENER_ENABLED
+        sync: false
       - key: MINI_APP_BASE_URL
         sync: false
       - key: ADMIN_BOT_TOKEN
@@ -62,4 +64,6 @@ services:
       - key: PAYMENT_CARD_NUMBER
         sync: false
       - key: PAYMENT_CARD_HOLDER
+        sync: false
+      - key: OVOZ_PAYMENT_URL
         sync: false

@@ -76,13 +76,16 @@ class PartnerRulesTests(unittest.TestCase):
         self.assertEqual(
             rows,
             [
-                ["📱 Boshqaruv paneli"],
                 ["📊 Statistika", "💰 Komissiya"],
                 ["🔗 Referral link", "🎟 Promo kod"],
                 ["💸 Pul yechish"],
                 ["📦 Reklama materiallari"],
                 ["❓ Tez-tez so'raladigan savollar", "🆘 Yordam"],
             ],
+        )
+        self.assertNotIn(
+            "partner_panel_button",
+            Path("partner_bot.py").read_text(encoding="utf-8"),
         )
 
 
@@ -111,6 +114,37 @@ class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(first["partner_id"], 1)
         self.assertIsNone(second)
+
+    async def test_promo_attribution_passes_discounted_amount_to_checkout(self):
+        partner = await pdb.upsert_application(
+            user_id=556,
+            full_name="Promo Partner",
+            username="promo_partner",
+            phone="+998901234568",
+            role="blogger",
+            has_business_clients=True,
+            client_band="1-3",
+        )
+        partner = await pdb.set_partner_status(partner["id"], "approved")
+        promo = await pdb.create_or_update_promo_code(
+            partner["id"],
+            10,
+            discount_type="percent",
+            duration_days=30,
+            plan_code="start",
+        )
+
+        attribution = await pdb.prepare_payment_attribution(
+            88,
+            "start",
+            promo_code=promo["code"],
+        )
+
+        self.assertTrue(attribution["ok"])
+        self.assertEqual(attribution["original_amount"], 299_000)
+        self.assertEqual(attribution["discount_amount"], 29_900)
+        self.assertEqual(attribution["discounted_base_amount"], 269_100)
+        self.assertEqual(attribution["commission_amount"], 69_100)
 
     async def test_payout_request_stores_explicit_payment_identity(self):
         partner = await pdb.upsert_application(

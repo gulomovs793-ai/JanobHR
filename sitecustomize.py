@@ -111,17 +111,19 @@ def _patch_partner_reply_keyboard(module) -> None:
         if original_send_partner_home and not getattr(original_send_partner_home, "_janobhr_menu_wrapped", False):
             async def send_partner_home(message, partner):
                 base_url = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
+                if not base_url and os.getenv("RENDER_EXTERNAL_HOSTNAME"):
+                    base_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME').strip()}"
                 if base_url:
                     try:
                         await message.bot.set_chat_menu_button(
                             chat_id=message.chat.id,
                             menu_button=MenuButtonWebApp(
-                                text="Hamkor paneli",
+                                text="Boshqaruv paneli",
                                 web_app=WebAppInfo(url=f"{base_url}/partner"),
                             ),
                         )
                         logger.info(
-                            "Partner Mini App menu tugmasi chatga o'rnatildi: chat_id=%s",
+                    "Partner Mini App boshqaruv tugmasi chatga o'rnatildi: chat_id=%s",
                             message.chat.id,
                         )
                     except Exception:
@@ -135,7 +137,7 @@ def _patch_partner_reply_keyboard(module) -> None:
             module.send_partner_home = send_partner_home
 
         module._janobhr_partner_keyboard_patched = True
-        logger.info("Partner reply keyboarddan Hamkor paneli tugmasi olib tashlandi.")
+        logger.info("Partner reply keyboarddan Boshqaruv paneli tugmasi olib tashlandi.")
     except Exception:
         logger.exception("Partner reply keyboard patch qo'llanmadi")
 
@@ -204,6 +206,8 @@ def _install_partner_bot_main_guard() -> None:
 async def _configure_partner_miniapp_menu() -> None:
     token = os.getenv("PARTNER_BOT_TOKEN", "").strip()
     base_url = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
+    if not base_url and os.getenv("RENDER_EXTERNAL_HOSTNAME"):
+        base_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME').strip()}"
     if not token or not base_url:
         return
     try:
@@ -214,7 +218,7 @@ async def _configure_partner_miniapp_menu() -> None:
         try:
             await bot.set_chat_menu_button(
                 menu_button=MenuButtonWebApp(
-                    text="Hamkor paneli",
+                    text="Boshqaruv paneli",
                     web_app=WebAppInfo(url=f"{base_url}/partner"),
                 )
             )

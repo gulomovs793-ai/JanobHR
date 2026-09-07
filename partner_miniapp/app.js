@@ -7,11 +7,9 @@
   let promoType = 'percent';
 
   if (tg) {
-    tg.ready();
-    tg.expand();
+    tg.ready(); tg.expand();
     try { tg.setHeaderColor('#f5f5f7'); tg.setBackgroundColor('#f5f5f7'); } catch (_) {}
   }
-
   const haptic = (kind='light') => { try { tg?.HapticFeedback?.impactOccurred(kind); } catch (_) {} };
   const text = (id, value) => { const el = $(id); if (el) el.textContent = value; };
   function renderActivity(items) {
@@ -24,75 +22,58 @@
       return `<div class="activity-row"><span class="activity-icon">${item.icon || '•'}</span><div><b>${item.label || 'Faoliyat'}</b><small>${detail}${date ? ` · ${date}` : ''}</small></div>${commission}</div>`;
     }).join('');
   }
-
   function renderLeads(items, id='leads') {
     const root = $(id); if (!root) return;
     if (!items?.length) { root.innerHTML = '<p class="empty">Leadlar hali yo‘q.</p>'; return; }
     root.innerHTML = items.map(item => {
-      const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('uz-UZ', {day:'2-digit', month:'short'}) : '';
-      return `<div class="lead-row"><div><b>${item.company_name || 'Noma’lum kompaniya'}</b><small>${item.contact_name || 'Biznes egasi'}${date ? ` · ${date}` : ''}</small></div><span class="lead-status">${item.status_label || '🆕 Yangi'}</span></div>`;
+      const date = item.created_at ? new Date(item.created_at).toLocaleDateString('uz-UZ', {day:'2-digit', month:'short'}) : '';
+      const source = item.source === 'promo_code' ? 'Promo orqali' : 'Referral orqali';
+      const plan = item.plan_code ? item.plan_code.toUpperCase() : '';
+      const commission = Number(item.commission_amount || 0);
+      const earning = plan && commission > 0 ? `<small><b>${plan}</b> → sizga <b>${commission.toLocaleString('uz-UZ')} UZS</b></small>` : '';
+      return `<div class="lead-row"><div><b>${item.company_name || 'Noma’lum kompaniya'}</b><small>${source}${date ? ` · ${date}` : ''}</small>${earning}</div><span class="lead-status">${item.status_label || '🆕 Yangi'}</span></div>`;
     }).join('');
   }
-
   function show(name) {
     $$('.view').forEach(v => v.classList.toggle('active', v.id === name));
     $$('.bottom-nav [data-go]').forEach(b => b.classList.toggle('active', b.dataset.go === name));
-    window.scrollTo({top:0, behavior:'smooth'});
-    haptic();
+    window.scrollTo({top:0, behavior:'smooth'}); haptic();
   }
-
   $$('[data-go]').forEach(btn => btn.addEventListener('click', () => show(btn.dataset.go)));
-
-  function fail(message) {
-    text('errorMessage', message || 'Mini Appni Hamkor bot ichidan qayta oching.');
-    show('error');
-  }
-
+  function fail(message) { text('errorMessage', message || 'Mini Appni Hamkor bot ichidan qayta oching.'); show('error'); }
   async function api(path, options={}) {
     const headers = Object.assign({'X-Telegram-Init-Data': initData}, options.headers || {});
     return fetch(path, Object.assign({cache:'no-store'}, options, {headers}));
   }
-
   async function load() {
     if (!initData) return fail('Telegram tasdiqlashi topilmadi. Panelni Hamkor bot ichidagi ko‘k tugmadan oching.');
     $('refresh')?.classList.add('loading');
     try {
-      const res = await api('/api/partner-miniapp/stats');
-      const data = await res.json().catch(() => ({}));
+      const res = await api('/api/partner-miniapp/stats'); const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         if (res.status === 403) return fail('Bu panel faqat tasdiqlangan hamkorlar uchun.');
         if (res.status === 401) return fail('Telegram sessiyasi tasdiqlanmadi. Mini Appni bot ichidan qayta oching.');
         return fail('Ma’lumotlarni yuklab bo‘lmadi. Qayta urinib ko‘ring.');
       }
-      const s = data.stats || {};
-      const earned = s.earned_label || '0 UZS';
+      const s = data.stats || {}; const earned = s.earned_label || '0 UZS';
       text('partnerName', data.partner?.full_name || 'Hamkor paneli');
       text('clicks', s.clicks ?? 0); text('trials', s.trials ?? 0); text('sales', s.sales ?? 0); text('promo_sales', s.promo_sales ?? 0);
       text('earned', earned); text('earnedLarge', earned);
       const balance = data.balance || {};
-      text('totalEarned', balance.earned_label || earned);
-      text('totalEarnedLarge', balance.earned_label || earned);
-      text('paidAmount', balance.paid_label || '0 UZS');
-      text('paidAmountLarge', balance.paid_label || '0 UZS');
-      text('reservedAmount', balance.reserved_label || '0 UZS');
-      text('earned', balance.available_label || earned);
-      text('earnedLarge', balance.available_label || earned);
-      const due = balance.next_payout_date || balance.active_request?.payout_due_date || '—';
-      text('nextPayout', due);
+      text('totalEarned', balance.earned_label || earned); text('totalEarnedLarge', balance.earned_label || earned);
+      text('paidAmount', balance.paid_label || '0 UZS'); text('paidAmountLarge', balance.paid_label || '0 UZS');
+      text('reservedAmount', balance.reserved_label || '0 UZS'); text('earned', balance.available_label || earned); text('earnedLarge', balance.available_label || earned);
+      const due = balance.next_payout_date || balance.active_request?.payout_due_date || '—'; text('nextPayout', due);
       const delay = Number(balance.active_request?.delay_days || 0);
       text('balanceNote', delay ? `Faol ariza · ${delay} kun kechikish` : 'Tasdiqlangan sotuvlardan.');
       text('earningsNote', delay ? `Kechikish bonusi: ${Number(balance.active_request?.bonus_amount || 0).toLocaleString('uz-UZ')} UZS` : 'Tasdiqlangan sotuvlardan.');
-      renderActivity(data.activity || []);
-      renderLeads(data.leads || [], 'leads');
-      renderLeads(data.leads || [], 'leadsFull');
+      renderActivity(data.activity || []); renderLeads(data.leads || [], 'leads'); renderLeads(data.leads || [], 'leadsFull');
       text('referral_link', data.referral_link || 'Referral link topilmadi');
       if (data.promo?.code) {
-        currentPromo = data.promo.code;
-        text('promoCode', data.promo.code);
+        currentPromo = data.promo.code; text('promoCode', data.promo.code);
         const value = data.promo.discount_type === 'amount' ? `${Number(data.promo.discount_value || 0).toLocaleString('uz-UZ')} UZS` : `${data.promo.discount_value || data.promo.discount_percent}%`;
         const expires = data.promo.expires_at ? new Date(data.promo.expires_at).toLocaleDateString('uz-UZ') : '—';
-        text('promoText', `${value} chegirma faol. Amal qilish muddati: ${expires}.`);
-        $('promoResult')?.classList.remove('hidden');
+        text('promoText', `${value} chegirma faol. Amal qilish muddati: ${expires}.`); $('promoResult')?.classList.remove('hidden');
         promoType = data.promo.discount_type || 'percent';
         $$('[data-promo-type]').forEach(b => b.classList.toggle('selected', b.dataset.promoType === promoType));
         if ($('discountValue')) $('discountValue').value = data.promo.discount_value || data.promo.discount_percent || '';
@@ -101,63 +82,36 @@
     } catch (_) { fail('Server bilan aloqa bo‘lmadi. Qayta urinib ko‘ring.'); }
     finally { $('refresh')?.classList.remove('loading'); }
   }
-
   async function copyValue(value, label) {
-    if (!value) return;
-    let copied = false;
+    if (!value) return; let copied = false;
     try { await navigator.clipboard.writeText(value); copied = true; } catch (_) {}
     haptic('medium');
     if (tg?.showPopup) tg.showPopup({title: copied ? 'Nusxalandi' : label, message: copied ? `${label} nusxalandi.` : value, buttons:[{type:'ok'}]});
     else alert(copied ? `${label} nusxalandi.` : value);
   }
-
   $('copyReferral')?.addEventListener('click', () => copyValue($('referral_link')?.textContent?.trim(), 'Referral link'));
   $('copyPromo')?.addEventListener('click', () => copyValue(currentPromo, 'Promo kod'));
-  $('refresh')?.addEventListener('click', load);
-  $('retry')?.addEventListener('click', () => { show('home'); load(); });
-
+  $('refresh')?.addEventListener('click', load); $('retry')?.addEventListener('click', () => { show('home'); load(); });
   $$('[data-promo-type]').forEach(btn => btn.addEventListener('click', () => {
-    promoType = btn.dataset.promoType;
-    $$('[data-promo-type]').forEach(b => b.classList.toggle('selected', b.dataset.promoType === promoType));
+    promoType = btn.dataset.promoType; $$('[data-promo-type]').forEach(b => b.classList.toggle('selected', b.dataset.promoType === promoType));
     text('discountSuffix', promoType === 'amount' ? 'UZS' : '%');
-    const input = $('discountValue');
-    if (input) { input.max = promoType === 'amount' ? '99000' : '25'; input.placeholder = promoType === 'amount' ? 'Masalan, 30000' : 'Masalan, 10'; }
+    const input = $('discountValue'); if (input) { input.max = promoType === 'amount' ? '99000' : '25'; input.placeholder = promoType === 'amount' ? 'Masalan, 30000' : 'Masalan, 10'; }
   }));
-
   $('createPromo')?.addEventListener('click', async () => {
-    const discount = Number($('discountValue')?.value || 0);
-    const duration = Number($('durationDays')?.value || 0);
-    const planCode = $('promoPlan')?.value || 'all';
+    const discount = Number($('discountValue')?.value || 0); const duration = Number($('durationDays')?.value || 0); const planCode = $('promoPlan')?.value || 'all';
     if (!initData) return fail('Telegram sessiyasi topilmadi.');
-    if (discount <= 0 || duration < 1 || duration > 365 || (promoType === 'percent' && discount > 25) || (promoType === 'amount' && discount > 99000)) {
-      if (tg?.showAlert) tg.showAlert('Chegirma miqdori yoki amal qilish kuni noto‘g‘ri.');
-      return;
-    }
-    haptic('medium');
-    const btn = $('createPromo'); btn.disabled = true;
+    if (discount <= 0 || duration < 1 || duration > 365 || (promoType === 'percent' && discount > 25) || (promoType === 'amount' && discount > 99000)) { if (tg?.showAlert) tg.showAlert('Chegirma miqdori yoki amal qilish kuni noto‘g‘ri.'); return; }
+    haptic('medium'); const btn = $('createPromo'); btn.disabled = true;
     try {
       const res = await api('/api/partner-miniapp/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({discount_type:promoType, discount_value:discount, duration_days:duration, plan_code:planCode})});
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data.error || 'promo_failed');
-      currentPromo = data.promo.code;
-      text('promoCode', currentPromo);
-      const label = promoType === 'amount' ? `${discount.toLocaleString('uz-UZ')} UZS` : `${discount}%`;
-      const expires = data.promo.expires_at ? new Date(data.promo.expires_at).toLocaleDateString('uz-UZ') : '—';
+      const data = await res.json().catch(() => ({})); if (!res.ok || !data.ok) throw new Error(data.error || 'promo_failed');
+      currentPromo = data.promo.code; text('promoCode', currentPromo);
+      const label = promoType === 'amount' ? `${discount.toLocaleString('uz-UZ')} UZS` : `${discount}%`; const expires = data.promo.expires_at ? new Date(data.promo.expires_at).toLocaleDateString('uz-UZ') : '—';
       const planLabel = {all:'barcha tariflar', start:'faqat START', growth:'faqat GROWTH', business:'faqat BUSINESS'}[planCode] || 'barcha tariflar';
-      text('promoText', `${label} chegirma · ${planLabel}. Amal qilish muddati: ${expires}. START: ${data.payouts.start}, GROWTH: ${data.payouts.growth}, BUSINESS: ${data.payouts.business} komissiya qoladi.`);
-      $('promoResult')?.classList.remove('hidden');
-    } catch (_) {
-      if (tg?.showAlert) tg.showAlert('Promo kodni yaratib bo‘lmadi. Maksimal chegirma: 25% yoki 99 000 UZS.');
-      else alert('Promo kodni yaratib bo‘lmadi.');
-    } finally { btn.disabled = false; }
+      text('promoText', `${label} chegirma · ${planLabel}. Amal qilish muddati: ${expires}. START: ${data.payouts.start}, GROWTH: ${data.payouts.growth}, BUSINESS: ${data.payouts.business} komissiya qoladi.`); $('promoResult')?.classList.remove('hidden');
+    } catch (_) { if (tg?.showAlert) tg.showAlert('Promo kodni yaratib bo‘lmadi. Maksimal chegirma: 25% yoki 99 000 UZS.'); else alert('Promo kodni yaratib bo‘lmadi.'); }
+    finally { btn.disabled = false; }
   });
-
-  $('closeToPayout')?.addEventListener('click', () => {
-    haptic('medium');
-    if (tg?.showPopup) tg.showPopup({title:'Pul yechish', message:'Mini App yopilgach botdagi “💸 Pul yechish” tugmasini bosing.', buttons:[{type:'ok'}]}, () => tg.close());
-    else tg?.close();
-  });
-
-  load();
-  window.setInterval(() => { if (!document.hidden) load(); }, 15000);
+  $('closeToPayout')?.addEventListener('click', () => { haptic('medium'); if (tg?.showPopup) tg.showPopup({title:'Pul yechish', message:'Mini App yopilgach botdagi “💸 Pul yechish” tugmasini bosing.', buttons:[{type:'ok'}]}, () => tg.close()); else tg?.close(); });
+  load(); window.setInterval(() => { if (!document.hidden) load(); }, 15000);
 })();

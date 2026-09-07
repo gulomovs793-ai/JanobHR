@@ -19,7 +19,7 @@ from aiogram import BaseMiddleware
 from aiogram.filters import BaseFilter
 from aiogram.types import TelegramObject
 
-from config import BOT_TOKEN, FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
+from config import BOT_TOKEN, FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS, PARTNER_BOT_TOKEN
 from services import database
 
 logger = logging.getLogger("janob_hr_bot")
@@ -44,6 +44,21 @@ class TenantMiddleware(BaseMiddleware):
 
         if FOUNDER_BOT_TOKEN and bot.token == FOUNDER_BOT_TOKEN:
             data["bot_role"] = "founder"
+            data["is_admin"] = False
+            return await handler(event, data)
+
+        # Partner Bot is a first-class bot in the shared webhook service, but
+        # it has no tenant row. Keep it isolated from candidate/admin flows.
+        # If an operator accidentally reuses BOT_TOKEN, the public main bot
+        # branch below must keep precedence and remain the candidate bot.
+        if (
+            PARTNER_BOT_TOKEN
+            and bot.token == PARTNER_BOT_TOKEN
+            and bot.token != BOT_TOKEN
+        ):
+            data["tenant_id"] = 0
+            data["tenant"] = {"id": 0, "status": "active", "admin_user_ids": []}
+            data["bot_role"] = "partner"
             data["is_admin"] = False
             return await handler(event, data)
 
@@ -122,3 +137,12 @@ class IsFounderBot(BaseFilter):
             return False
         user = getattr(event, "from_user", None)
         return bool(user and user.id in FOUNDER_USER_IDS)
+
+
+class IsPartnerBot(BaseFilter):
+    """Faqat Partner Bot orqali kelgan yangilanishlar uchun."""
+
+    async def __call__(
+        self, event: TelegramObject, bot_role: str = "candidate"
+    ) -> bool:
+        return bot_role == "partner"

@@ -27,6 +27,7 @@ from config import (
     BOT_TOKEN,
     FOUNDER_BOT_TOKEN,
     MINI_APP_BASE_URL,
+    PARTNER_BOT_TOKEN,
     PAYMENT_LISTENER_ENABLED,
     PAYMENT_ROUTER_SECRET,
     TELEGRAM_USERBOT_SESSION,
@@ -157,7 +158,14 @@ def _build_dispatcher() -> Dispatcher:
         start,
         vacancy,
     )
-    from services.tenant_middleware import IsAdminBot, IsCandidateBot, IsFounderBot
+    from services.tenant_middleware import (
+        IsAdminBot,
+        IsCandidateBot,
+        IsFounderBot,
+        IsPartnerBot,
+    )
+    import partner_bot
+    from partner_payout_bot import payout_router
 
     fsm_storage = SQLiteStorage(db_path=database.SQLITE_PATH)
     dp = Dispatcher(storage=fsm_storage)
@@ -201,6 +209,13 @@ def _build_dispatcher() -> Dispatcher:
     founder_root.include_router(founder_panel.router)
     founder_root.include_router(founder_payout_router)
     dp.include_router(founder_root)
+
+    partner_root = Router(name="partner_root")
+    partner_root.message.filter(IsPartnerBot())
+    partner_root.callback_query.filter(IsPartnerBot())
+    partner_root.include_router(partner_bot.router)
+    partner_root.include_router(payout_router)
+    dp.include_router(partner_root)
 
     return dp
 
@@ -334,6 +349,15 @@ async def on_startup(app: web.Application):
             logger.info("Founder Bot webhooki ornatildi.")
         except Exception:
             logger.exception("Founder Bot webhookini ornatib bolmadi.")
+
+    if PARTNER_BOT_TOKEN and PARTNER_BOT_TOKEN != BOT_TOKEN:
+        try:
+            await register_new_tenant_webhook(PARTNER_BOT_TOKEN)
+            partner_bot_instance = _SECURE_WEBHOOK_HANDLER.add_bot(PARTNER_BOT_TOKEN)
+            await partner_bot.configure_partner_miniapp_menu(partner_bot_instance)
+            logger.info("Partner Bot webhooki va ko'k Mini App menyusi o'rnatildi.")
+        except Exception:
+            logger.exception("Partner Bot webhooki yoki Mini App menyusi o'rnatilmadi.")
 
     # Partner bot founder_miniapp_api startup hook orqali shu service ichida
     # bitta background task sifatida start bo'ladi.

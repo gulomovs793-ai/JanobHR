@@ -57,6 +57,13 @@ class MarketReadyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("set_chat_menu_button", source)
         self.assertIn("MenuButtonWebApp", source)
 
+    def test_partner_bot_is_registered_with_shared_webhook_and_menu(self):
+        source = Path("webhook_app.py").read_text(encoding="utf-8")
+        self.assertIn("PARTNER_BOT_TOKEN", source)
+        self.assertIn("partner_bot.configure_partner_miniapp_menu", source)
+        self.assertIn("register_new_tenant_webhook(PARTNER_BOT_TOKEN)", source)
+        self.assertIn("IsPartnerBot", source)
+
     async def test_submission_key_is_idempotent(self):
         first = await self._save("same-key", user_id=10)
         second = await self._save("same-key", user_id=10)

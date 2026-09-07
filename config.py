@@ -100,6 +100,10 @@ SETUP_BOT_TOKEN = os.getenv("SETUP_BOT_TOKEN", "")
 # ko'rib chiqish va to'lovdan keyin faollashtirish uchun.
 FOUNDER_BOT_TOKEN = os.getenv("FOUNDER_BOT_TOKEN", "")
 
+# Hamkorlar uchun alohida bot. Multi-tenant webhook server bu tokenni
+# "partner" bot roli bilan ajratadi va uning ko'k Mini App menyusini o'rnatadi.
+PARTNER_BOT_TOKEN = os.getenv("PARTNER_BOT_TOKEN", "")
+
 # --- To'lovni avtomatlashtirish (noyob summa + userbot) ---
 PAYMENT_CARD_NUMBER = os.getenv("PAYMENT_CARD_NUMBER", "")
 PAYMENT_CARD_HOLDER = os.getenv("PAYMENT_CARD_HOLDER", "")

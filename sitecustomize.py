@@ -92,18 +92,8 @@ def _patch_partner_reply_keyboard(module) -> None:
     try:
         from aiogram.types import KeyboardButton, MenuButtonWebApp, ReplyKeyboardMarkup, WebAppInfo
 
-        def main_menu() -> ReplyKeyboardMarkup:
-            return ReplyKeyboardMarkup(
-                keyboard=[
-                    [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
-                    [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
-                    [KeyboardButton(text="💸 Pul yechish")],
-                    [KeyboardButton(text="📦 Reklama materiallari")],
-                    [KeyboardButton(text="❓ Tez-tez so'raladigan savollar")],
-                    [KeyboardButton(text="🆘 Yordam")],
-                ],
-                resize_keyboard=True,
-            )
+        def main_menu() -> ReplyKeyboardRemove:
+            return ReplyKeyboardRemove()
 
         module.main_menu = main_menu
 

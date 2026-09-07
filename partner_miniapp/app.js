@@ -72,6 +72,7 @@
         promoType = data.promo.discount_type || 'percent';
         $$('[data-promo-type]').forEach(b => b.classList.toggle('selected', b.dataset.promoType === promoType));
         if ($('discountValue')) $('discountValue').value = data.promo.discount_value || data.promo.discount_percent || '';
+        if ($('promoPlan')) $('promoPlan').value = data.promo.plan_code || 'all';
       }
     } catch (_) { fail('Server bilan aloqa bo‘lmadi. Qayta urinib ko‘ring.'); }
     finally { $('refresh')?.classList.remove('loading'); }
@@ -102,6 +103,7 @@
   $('createPromo')?.addEventListener('click', async () => {
     const discount = Number($('discountValue')?.value || 0);
     const duration = Number($('durationDays')?.value || 0);
+    const planCode = $('promoPlan')?.value || 'all';
     if (!initData) return fail('Telegram sessiyasi topilmadi.');
     if (discount <= 0 || duration < 1 || duration > 365 || (promoType === 'percent' && discount > 25) || (promoType === 'amount' && discount > 99000)) {
       if (tg?.showAlert) tg.showAlert('Chegirma miqdori yoki amal qilish kuni noto‘g‘ri.');
@@ -110,14 +112,15 @@
     haptic('medium');
     const btn = $('createPromo'); btn.disabled = true;
     try {
-      const res = await api('/api/partner-miniapp/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({discount_type:promoType, discount_value:discount, duration_days:duration})});
+      const res = await api('/api/partner-miniapp/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({discount_type:promoType, discount_value:discount, duration_days:duration, plan_code:planCode})});
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || 'promo_failed');
       currentPromo = data.promo.code;
       text('promoCode', currentPromo);
       const label = promoType === 'amount' ? `${discount.toLocaleString('uz-UZ')} UZS` : `${discount}%`;
       const expires = data.promo.expires_at ? new Date(data.promo.expires_at).toLocaleDateString('uz-UZ') : '—';
-      text('promoText', `${label} chegirma. Amal qilish muddati: ${expires}. START: ${data.payouts.start}, GROWTH: ${data.payouts.growth}, BUSINESS: ${data.payouts.business} komissiya qoladi.`);
+      const planLabel = {all:'barcha tariflar', start:'faqat START', growth:'faqat GROWTH', business:'faqat BUSINESS'}[planCode] || 'barcha tariflar';
+      text('promoText', `${label} chegirma · ${planLabel}. Amal qilish muddati: ${expires}. START: ${data.payouts.start}, GROWTH: ${data.payouts.growth}, BUSINESS: ${data.payouts.business} komissiya qoladi.`);
       $('promoResult')?.classList.remove('hidden');
     } catch (_) {
       if (tg?.showAlert) tg.showAlert('Promo kodni yaratib bo‘lmadi. Maksimal chegirma: 25% yoki 99 000 UZS.');

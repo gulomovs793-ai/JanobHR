@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+import aiosqlite
 from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -64,6 +65,12 @@ class PartnerRulesTests(unittest.TestCase):
         self.assertIn("async def _send_to_founder_bot", source)
         self.assertIn("FOUNDER_BOT_TOKEN", source)
 
+    def test_payout_notifications_and_actions_are_founder_owned(self):
+        source = Path("partner_payout_bot.py").read_text(encoding="utf-8")
+        self.assertIn("founder_payout_router = Router", source)
+        self.assertIn("token=FOUNDER_BOT_TOKEN", source)
+        self.assertIn("To'lov tasdig'i chek sifatida yuborildi", source)
+
     def test_partner_menu_has_clear_operational_order(self):
         rows = [[button.text for button in row] for row in main_menu().keyboard]
         self.assertEqual(
@@ -85,10 +92,14 @@ class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):
         self.db_path = os.path.join(self.temp_dir.name, "partner.db")
         self.patch = patch.object(pdb, "SQLITE_PATH", self.db_path)
         self.patch.start()
+        self.payout_patch = patch.object(partner_payouts, "SQLITE_PATH", self.db_path)
+        self.payout_patch.start()
         await pdb.init_partner_db()
+        await partner_payouts.init_partner_payout_db()
 
     async def asyncTearDown(self):
         self.patch.stop()
+        self.payout_patch.stop()
         self.temp_dir.cleanup()
 
     async def test_first_promo_claim_locks_tenant_to_partner(self):
@@ -100,6 +111,65 @@ class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(first["partner_id"], 1)
         self.assertIsNone(second)
+
+    async def test_payout_request_stores_explicit_payment_identity(self):
+        partner = await pdb.upsert_application(
+            user_id=555,
+            full_name="Partner User",
+            username="partner_user",
+            phone="+998901234567",
+            role="blogger",
+            has_business_clients=True,
+            client_band="1-3",
+        )
+        partner = await pdb.set_partner_status(partner["id"], "approved")
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                CREATE TABLE tenants (
+                    id INTEGER PRIMARY KEY,
+                    company_name TEXT,
+                    contact_name TEXT,
+                    contact_phone TEXT,
+                    contact_username TEXT
+                )
+                """
+            )
+            await db.execute("INSERT INTO tenants(id, company_name) VALUES (7, 'Acme')")
+            await db.execute(
+                """
+                INSERT INTO partner_referral_events(
+                    partner_id, event_type, tenant_id, plan_code, amount,
+                    commission_amount, metadata, created_at
+                ) VALUES (?, 'sale', 7, 'start', 299000, 69100, ?, ?)
+                """,
+                (
+                    partner["id"],
+                    '{"discount_type":"percent","discount_value":10,"discount_amount":29900,"base_commission":99000}',
+                    "2026-09-01T00:00:00+00:00",
+                ),
+            )
+            await db.commit()
+
+        result = await partner_payouts.create_payout_request(
+            partner["id"],
+            "Jasur Karimov",
+            "8600 1234 5678 9012",
+            "@janobhr",
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["payout_full_name"], "Jasur Karimov")
+        self.assertEqual(result["payout_card_number"], "8600123456789012")
+        self.assertEqual(result["receipt_telegram_username"], "@janobhr")
+        self.assertEqual(result["requested_amount"], 69100)
+        self.assertEqual(result["total_amount"], 69100)
+
+    async def test_payout_request_rejects_invalid_payment_identity(self):
+        result = await partner_payouts.create_payout_request(
+            1, "Jasur", "1234", "janobhr"
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("ism va familiya", result["error"].lower())
 
 
 if __name__ == "__main__":

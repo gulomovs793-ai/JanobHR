@@ -217,6 +217,18 @@ hamkorga Partner Bot orqali panel, referral link va promo funksiyalari ochilgani
 haqida xabar boradi. Ushbu oqim uchun `FOUNDER_BOT_TOKEN` va `FOUNDER_USER_ID`
 (bir yoki bir nechta Telegram ID, vergul bilan ajratilgan) sozlangan bo'lishi kerak.
 
+### Hamkor pul yechish oqimi
+
+Hamkor **💸 Pul yechish** bo'limida ism-familiya, 16–19 xonali karta raqami va
+chek yuboriladigan Telegram username'ini alohida kiritadi. Founder Botdagi ariza
+har bir mijoz bo'yicha tarif narxi, mijoz to'lovi, bazaviy komissiya, promo
+chegirma va sof komissiyani ko'rsatadi. Asosiy payout 1-, 11- yoki 21-sanaga
+belgilanadi; yakshanba va rasmiy bayramlar o'tkazib yuboriladi. Kechikkan har bir
+hisoblanadigan ish kuni uchun 3 000 UZS, ko'pi bilan 7 kungacha, real vaqtda
+qo'shiladi. Founder **✅ To'landi** tugmasini faqat pulni o'tkazgandan keyin
+bosadi; shundan so'ng hamkorga summasi ko'rsatilgan elektron to'lov tasdig'i
+yuboriladi.
+
 ## Admin bot — arizalarni ko'rib chiqish, vakansiyalarni boshqarish, statistika
 
 **Muhim: bu bot endi ixtiyoriy emas.** Nomzod arizalari (✅/❌ tugmalari bilan)

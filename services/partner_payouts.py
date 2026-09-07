@@ -8,6 +8,7 @@ Bu modul hamkorlar uchun pul yechish arizasini xavfsiz qiladi:
 """
 
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 
 import aiosqlite
@@ -145,6 +146,9 @@ async def init_partner_payout_db() -> None:
                 founder_notified_at TEXT,
                 last_reminded_at TEXT,
                 reminder_count INTEGER NOT NULL DEFAULT 0,
+                payout_full_name TEXT,
+                payout_card_number TEXT,
+                receipt_telegram_username TEXT,
                 FOREIGN KEY(partner_id) REFERENCES partners(id)
             );
 
@@ -172,6 +176,20 @@ async def init_partner_payout_db() -> None:
                 ON partner_payout_request_items(referral_event_id);
             """
         )
+        # Existing Render disks already contain this table. Keep the migration
+        # additive so old payout requests remain readable and payable.
+        for column in (
+            "payout_full_name",
+            "payout_card_number",
+            "receipt_telegram_username",
+        ):
+            try:
+                await db.execute(
+                    f"ALTER TABLE partner_payout_requests ADD COLUMN {column} TEXT"
+                )
+            except aiosqlite.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise
         await db.commit()
 
 
@@ -324,11 +342,71 @@ async def get_payout_request(request_id: int, *, include_items: bool = True) -> 
         return result
 
 
-async def create_payout_request(partner_id: int, payment_details: str) -> dict:
+def normalize_payout_full_name(value: str) -> str:
+    return " ".join((value or "").strip().split())[:120]
+
+
+def normalize_card_number(value: str) -> str:
+    return re.sub(r"\D", "", value or "")
+
+
+def normalize_receipt_username(value: str) -> str:
+    username = (value or "").strip().replace(" ", "")
+    if username and not username.startswith("@"):
+        username = "@" + username
+    return username
+
+
+def validate_payout_details(
+    full_name: str, card_number: str, receipt_username: str
+) -> tuple[str, str, str, str | None]:
+    """Normalize payout identity/payment fields before one DB transaction."""
+    clean_name = normalize_payout_full_name(full_name)
+    clean_card = normalize_card_number(card_number)
+    clean_username = normalize_receipt_username(receipt_username)
+    if len(clean_name) < 5 or len(clean_name.split()) < 2:
+        return clean_name, clean_card, clean_username, "Ism va familiyangizni to'liq kiriting."
+    if len(clean_card) not in {16, 17, 18, 19}:
+        return clean_name, clean_card, clean_username, "Karta raqami 16–19 ta raqamdan iborat bo'lishi kerak."
+    if not re.fullmatch(r"@[A-Za-z0-9_]{5,32}", clean_username):
+        return clean_name, clean_card, clean_username, "Telegram username @ bilan, masalan @janobhr bo'lishi kerak."
+    return clean_name, clean_card, clean_username, None
+
+
+async def create_payout_request(
+    partner_id: int,
+    full_name: str,
+    card_number: str | None = None,
+    receipt_username: str | None = None,
+    *,
+    payment_details: str | None = None,
+) -> dict:
     await init_partner_payout_db()
-    payment_details = (payment_details or "").strip()[:800]
-    if len(payment_details) < 6:
-        return {"ok": False, "error": "Karta yoki to'lov ma'lumoti juda qisqa."}
+    legacy_details = payment_details is not None or (
+        card_number is None and receipt_username is None
+    )
+    if legacy_details:
+        # Backward compatibility for already-integrated callers. New requests
+        # always use the three explicit fields below.
+        payment_details = (payment_details or full_name or "").strip()[:800]
+        if len(payment_details) < 6:
+            return {"ok": False, "error": "Karta yoki to'lov ma'lumoti juda qisqa."}
+        payout_full_name = ""
+        payout_card_number = ""
+        receipt_telegram_username = ""
+    else:
+        (
+            payout_full_name,
+            payout_card_number,
+            receipt_telegram_username,
+            validation_error,
+        ) = validate_payout_details(full_name, card_number or "", receipt_username or "")
+        if validation_error:
+            return {"ok": False, "error": validation_error}
+        payment_details = (
+            f"Ism: {payout_full_name}; Karta: {payout_card_number}; "
+            f"Chek uchun: {receipt_telegram_username}"
+        )[:800]
 
     now = _now()
     due = next_payout_date().isoformat()
@@ -372,10 +450,21 @@ async def create_payout_request(partner_id: int, payment_details: str) -> dict:
             """
             INSERT INTO partner_payout_requests(
                 partner_id, requested_amount, bonus_amount, total_amount,
-                payment_details, status, payout_due_date, requested_at
-            ) VALUES (?, ?, 0, ?, ?, 'pending', ?, ?)
+                payment_details, status, payout_due_date, requested_at,
+                payout_full_name, payout_card_number, receipt_telegram_username
+            ) VALUES (?, ?, 0, ?, ?, 'pending', ?, ?, ?, ?, ?)
             """,
-            (partner_id, amount, amount, payment_details, due, now),
+            (
+                partner_id,
+                amount,
+                amount,
+                payment_details,
+                due,
+                now,
+                payout_full_name,
+                payout_card_number,
+                receipt_telegram_username,
+            ),
         )
         request_id = cur.lastrowid
         for sale in sales:
@@ -479,7 +568,7 @@ async def set_payout_request_status(
     async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
         await db.execute("PRAGMA busy_timeout=5000")
         if status == "paid":
-            await db.execute(
+            cursor = await db.execute(
                 """
                 UPDATE partner_payout_requests
                 SET status='paid', paid_at=?, decided_at=?, decided_by=?, note=?,
@@ -497,7 +586,7 @@ async def set_payout_request_status(
                 ),
             )
         else:
-            await db.execute(
+            cursor = await db.execute(
                 """
                 UPDATE partner_payout_requests
                 SET status='rejected', rejected_at=?, decided_at=?, decided_by=?, note=?,
@@ -514,5 +603,10 @@ async def set_payout_request_status(
                     request_id,
                 ),
             )
+        # Two founder clicks or duplicate webhook deliveries must not send a
+        # second success message or pay the same request twice.
+        if cursor.rowcount != 1:
+            await db.rollback()
+            return None
         await db.commit()
     return await get_payout_request(request_id, include_items=True)

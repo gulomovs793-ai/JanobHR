@@ -787,9 +787,13 @@ async def finalize_sale_for_order(payment_order_id: int, *, actual_amount: int |
                 "source": attribution.get("source"),
                 "promo_code": attribution.get("promo_code") or "",
                 "discount_percent": attribution.get("discount_percent") or 0,
+                "discount_type": attribution.get("discount_type") or "percent",
+                "discount_value": attribution.get("discount_value") or 0,
                 "discount_amount": attribution.get("discount_amount") or 0,
                 "original_amount": attribution.get("original_amount") or 0,
                 "discounted_base_amount": attribution.get("discounted_base_amount") or 0,
+                "base_commission": attribution.get("base_commission") or 0,
+                "commission_amount": attribution.get("commission_amount") or 0,
             },
             ensure_ascii=False,
         )

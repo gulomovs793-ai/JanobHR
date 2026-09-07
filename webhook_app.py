@@ -136,6 +136,7 @@ def _build_dispatcher() -> Dispatcher:
     """
 
     import founder_panel
+    from partner_payout_bot import founder_payout_router
     from admin_bot import (
         handlers_billing,
         handlers_candidates,
@@ -198,6 +199,7 @@ def _build_dispatcher() -> Dispatcher:
     founder_root.message.filter(IsFounderBot())
     founder_root.callback_query.filter(IsFounderBot())
     founder_root.include_router(founder_panel.router)
+    founder_root.include_router(founder_payout_router)
     dp.include_router(founder_root)
 
     return dp

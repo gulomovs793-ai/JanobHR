@@ -138,10 +138,15 @@ async def _create_order_payload(tenant_id: int, code: str, promo_code: str | Non
             f"Hamkor: <b>{attribution.get('partner_name') or 'Hamkor'}</b>",
         ])
         if attribution.get("promo_code"):
+            discount_label = (
+                f"{format_som(attribution['discount_value'])}"
+                if attribution.get("discount_type") == "amount"
+                else f"{attribution['discount_percent']}%"
+            )
             lines.extend(
                 [
                     f"Promo kod: <code>{attribution['promo_code']}</code>",
-                    f"Chegirma: <b>{attribution['discount_percent']}%</b> — {format_som(attribution['discount_amount'])}",
+                    f"Chegirma: <b>{discount_label}</b> — {format_som(attribution['discount_amount'])}",
                     f"Narx: <s>{format_som(attribution['original_amount'])}</s> → <b>{format_som(attribution['discounted_base_amount'])}</b>",
                     "Chegirma hamkor komissiyasidan ayriladi.",
                     f"Hamkor komissiyasi: {format_som(attribution['base_commission'])} → {format_som(attribution['commission_amount'])}",

@@ -419,6 +419,8 @@ async def send_phone_step(message: Message, state: FSMContext) -> None:
 
 
 async def send_partner_home(message: Message, partner: dict) -> None:
+    # Partner boshqaruvi Mini App ichida. Eski katta Reply Keyboardni
+    # qayta yubormaymiz — Telegram chatida faqat MenuButtonWebApp qoladi.
     await message.answer(
         "🤝 <b>Janob HR Hamkor</b>\n\n"
         "Profilingiz faol. Endi sizda 3 ta asosiy bo'lim bor:\n\n"
@@ -427,7 +429,7 @@ async def send_partner_home(message: Message, partner: dict) -> None:
         "💸 <b>Pul yechish</b> — tasdiqlangan komissiya bo'yicha ariza yuboradi.\n\n"
         "Mijoz tarif sotib olsa — sizga komissiya hisoblanadi.\n\n"
         "Savollar bo'lsa, <b>❓ Tez-tez so'raladigan savollar</b> bo'limini oching.",
-        reply_markup=main_menu(),
+        reply_markup=ReplyKeyboardRemove(),
     )
 
 

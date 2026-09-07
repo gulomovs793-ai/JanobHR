@@ -67,8 +67,7 @@ COMMISSION_TEXT = (
     "BUSINESS — 299 000 UZS\n\n"
     "Mijoz sizning referral linkingiz yoki promo kodingiz orqali kelsa, to'lov tasdiqlangandan keyin komissiya yoziladi.\n\n"
     "🎟 Promo kod bersangiz, chegirma sizning bonus/komissiyangizdan ayriladi.\n"
-    "Masalan START 299 000 UZS, 10% promo = 29 900 UZS chegirma.\n"
-    "Sizning komissiyangiz: 99 000 - 29 900 = 69 100 UZS.\n\n"
+    "Masalan, START tarifi 10% chegirma bilan sotilsa, chegirma shu tarif narxining 10 foizi bo'ladi. Chegirma miqdori komissiyangizdan ayriladi.\n\n"
     "💸 To'lovlar oyiga 3 marta beriladi: 1-sana, 11-sana va 21-sana. "
     "Agar tasdiqlangan komissiya belgilangan sanadan keyin 7 kungacha kechiksa, "
     "har bir kechikkan kun uchun 3 000 UZS qo'shimcha komissiya qo'shiladi. "
@@ -88,9 +87,9 @@ FAQ_TEXT = (
     "<b>5. Referral link nima?</b>\n"
     "Bu sizga biriktirilgan maxsus link. Mijoz shu link orqali kirsa, tizim uni siz olib kelgan mijoz sifatida eslab qoladi va tizimga kiritadi.\n\n"
     "<b>6. Promo kod nima?</b>\n"
-    "Promo kod mijozga chegirma beradi. Partner 0%, 5%, 10%, 15% yoki 20% chegirma tanlashi mumkin.\n\n"
+    "Promo kod mijozga chegirma beradi. Tasdiqlangan partner Boshqaruv panelida foiz yoki aniq summa tanlaydi, chegirma miqdori va necha kun amal qilishini o'zi belgilaydi. Har bir partnerda bitta faol promo kod bo'ladi.\n\n"
     "<b>7. Promo chegirma kim hisobidan beriladi?</b>\n"
-    "Chegirma Janob HR hisobidan emas, sizning komissiyangizdan ayriladi. Masalan START 299 000 UZS, 10% promo = 29 900 UZS. Sizning komissiyangiz 99 000 - 29 900 = 69 100 UZS bo'ladi.\n\n"
+    "Chegirma Janob HR hisobidan emas, sizning komissiyangizdan ayriladi. Masalan, 30 000 UZS chegirma berilsa, START komissiyasi 99 000 - 30 000 = 69 000 UZS bo'ladi. Komissiya manfiy bo'lib qolmaydi.\n\n"
     "<b>8. Menga to'lanadigan komissiya qancha?</b>\n"
     "START — 99 000 UZS, GROWTH — 199 000 UZS, BUSINESS — 299 000 UZS. Promo ishlatilsa, chegirma shu summadan ayriladi.\n\n"
     "<b>9. Komissiya qachon balansimga tushirib beriladi?</b>\n"
@@ -100,9 +99,9 @@ FAQ_TEXT = (
     "<b>11. 1, 11 yoki 21-sana yakshanba yoki bayram kuniga tushsa-chi?</b>\n"
     "To'lov keyingi ish kunida ko'rib chiqiladi. Yakshanba va rasmiy bayram kunlari kechikish hisobiga kirmaydi. Asosiysi, komissiya avval tasdiqlangan bo'lishi kerak.\n\n"
     "<b>12. Mijoz link orqali kirib, keyin promo kod ishlatsa nima bo'ladi?</b>\n"
-    "Agar ikkalasi ham sizniki bo'lsa, mijoz bitta hamkor sifatida sizga bog'lanadi. Komissiya esa mijozingiz qaysi referral yoki promo kod orqali tarif sotib olganiga qarab belgilanadi.\n\n"
+    "Referral link mijozni sizga bog'laydi. Keyin o'zingiz yaratgan promo kod ishlatilsa, mijoz sizniki bo'lib qoladi va chegirma shu kod qoidasi bo'yicha hisoblanadi.\n\n"
     "<b>13. Mijoz boshqa partner promo kodini ishlatsa-chi?</b>\n"
-    "Bunday holat alohida tekshiriladi. Odatda komissiya mijoz ishlatgan oxirgi aniq promo/referral bo'yicha belgilanadi.\n\n"
+    "Agar mijoz avval boshqa partner referral linki orqali bog'langan bo'lsa, boshqa partner promo kodi qabul qilinmaydi. Agar hali hech bir partnerga bog'lanmagan bo'lsa, ishlatilgan promo kod egasi partner sifatida qayd qilinadi. Komissiya ikki partnerga bo'linmaydi.\n\n"
     "<b>14. Komissiyani qanday qabul qilaman?</b>\n"
     "To'lov yechish vaqtida sizdan karta yoki kerakli to'lov ma'lumoti so'raladi. Ma'lumotlar to'g'ri bo'lishi kerak. To'lov qilingandan keyin siz taqdim qilgan Telegram username'ga chek yuboriladi, agar spam yoki aloqa bo'yicha muammo bo'lmasa.\n\n"
     "<b>15. Hamkor bo'lsam daromad kafolatlanadimi?</b>\n"
@@ -692,11 +691,9 @@ async def promo_section(message: Message) -> None:
         return
     await message.answer(
         "🎟 <b>Promo kod</b>\n\n"
-        "Promo kod mijozga chegirma beradi. Lekin bu chegirma Janob HR hisobidan emas — <b>sizning komissiyangizdan ayriladi</b>.\n\n"
-        "Misol: START 299 000 UZS. Agar 10% promo bersangiz, mijoz 29 900 UZS kam to'laydi.\n"
-        "Sizning komissiyangiz: 99 000 - 29 900 = 69 100 UZS.\n\n"
-        "Chegirmani tanlang:",
-        reply_markup=promo_discount_keyboard(),
+        "Boshqaruv panelida o'zingizga promo kod yarating: chegirmani foizda yoki aniq summada belgilang va amal qilish kunini tanlang.\n\n"
+        "Chegirma sizning komissiyangizdan ayriladi. Yangi kod yaratilsa, avvalgi faol kod yopiladi.",
+        reply_markup=ReplyKeyboardMarkup(keyboard=[[partner_panel_button()]], resize_keyboard=True),
     )
 
 

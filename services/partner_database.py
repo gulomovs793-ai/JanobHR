@@ -21,6 +21,11 @@ PARTNER_COMMISSIONS = {
     "business": 299_000,
 }
 ALLOWED_PROMO_DISCOUNTS = (0, 5, 10, 15, 20)
+MAX_UNIVERSAL_PROMO_AMOUNT = min(PARTNER_COMMISSIONS.values())
+MAX_UNIVERSAL_PROMO_PERCENT = min(
+    int(PARTNER_COMMISSIONS[code] * 100 / get_plan(code).price)
+    for code in PARTNER_COMMISSIONS
+)
 
 
 def _now() -> str:
@@ -48,7 +53,11 @@ def calculate_partner_payout(
     if value < 0 or (discount_type == "percent" and value > 100):
         raise ValueError("Promo chegirma noto'g'ri")
     base_commission = PARTNER_COMMISSIONS.get(plan.code, 0)
-    discount_amount = round(plan.price * value / 100) if discount_type == "percent" else min(value, plan.price)
+    discount_amount = round(plan.price * value / 100) if discount_type == "percent" else value
+    if discount_amount > base_commission:
+        raise ValueError(
+            f"Chegirma {plan.name} uchun {format_uzs(base_commission)} komissiyadan oshmasligi kerak"
+        )
     discounted_base_amount = max(0, plan.price - discount_amount)
     commission_amount = max(0, base_commission - discount_amount)
     return {
@@ -420,7 +429,11 @@ async def create_or_update_promo_code(
     duration_days = int(duration_days)
     if discount_type not in {"percent", "amount"}:
         raise ValueError("Promo turi noto'g'ri")
-    if discount_value <= 0 or (discount_type == "percent" and discount_value > 100):
+    if discount_value <= 0 or (
+        discount_type == "percent" and discount_value > MAX_UNIVERSAL_PROMO_PERCENT
+    ) or (
+        discount_type == "amount" and discount_value > MAX_UNIVERSAL_PROMO_AMOUNT
+    ):
         raise ValueError("Promo qiymati noto'g'ri")
     if duration_days < 1 or duration_days > 365:
         raise ValueError("Promo muddati 1-365 kun bo'lishi kerak")

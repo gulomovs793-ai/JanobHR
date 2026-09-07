@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+from partner_bot import main_menu
 from services import partner_database as pdb
 from services import partner_payouts
 from services.partner_links import build_referral_link
@@ -62,6 +63,20 @@ class PartnerRulesTests(unittest.TestCase):
         source = Path("handlers/create_bot.py").read_text(encoding="utf-8")
         self.assertIn("async def _send_to_founder_bot", source)
         self.assertIn("FOUNDER_BOT_TOKEN", source)
+
+    def test_partner_menu_has_clear_operational_order(self):
+        rows = [[button.text for button in row] for row in main_menu().keyboard]
+        self.assertEqual(
+            rows,
+            [
+                ["📱 Boshqaruv paneli"],
+                ["📊 Statistika", "💰 Komissiya"],
+                ["🔗 Referral link", "🎟 Promo kod"],
+                ["💸 Pul yechish"],
+                ["📦 Reklama materiallari"],
+                ["❓ Tez-tez so'raladigan savollar", "🆘 Yordam"],
+            ],
+        )
 
 
 class PartnerAttributionTests(unittest.IsolatedAsyncioTestCase):

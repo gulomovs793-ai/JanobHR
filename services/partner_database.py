@@ -35,20 +35,29 @@ def _clean_promo_code(code: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (code or "").upper())[:32]
 
 
-def calculate_partner_payout(plan_code: str, discount_percent: int = 0) -> dict:
+def calculate_partner_payout(
+    plan_code: str,
+    discount_percent: int = 0,
+    *,
+    discount_type: str = "percent",
+    discount_value: int | None = None,
+) -> dict:
     plan = get_plan(plan_code)
-    discount_percent = int(discount_percent or 0)
-    if discount_percent not in ALLOWED_PROMO_DISCOUNTS:
+    discount_type = discount_type if discount_type in {"percent", "amount"} else "percent"
+    value = int(discount_value if discount_value is not None else discount_percent or 0)
+    if value < 0 or (discount_type == "percent" and value > 100):
         raise ValueError("Promo chegirma noto'g'ri")
     base_commission = PARTNER_COMMISSIONS.get(plan.code, 0)
-    discount_amount = round(plan.price * discount_percent / 100)
+    discount_amount = round(plan.price * value / 100) if discount_type == "percent" else min(value, plan.price)
     discounted_base_amount = max(0, plan.price - discount_amount)
     commission_amount = max(0, base_commission - discount_amount)
     return {
         "plan_code": plan.code,
         "plan_name": plan.name,
         "original_amount": int(plan.price),
-        "discount_percent": discount_percent,
+        "discount_percent": value if discount_type == "percent" else 0,
+        "discount_type": discount_type,
+        "discount_value": value,
         "discount_amount": int(discount_amount),
         "discounted_base_amount": int(discounted_base_amount),
         "base_commission": int(base_commission),
@@ -97,6 +106,9 @@ async def init_partner_db() -> None:
                 partner_id INTEGER NOT NULL,
                 code TEXT NOT NULL UNIQUE,
                 discount_percent INTEGER NOT NULL,
+                discount_type TEXT NOT NULL DEFAULT 'percent',
+                discount_value INTEGER NOT NULL DEFAULT 0,
+                expires_at TEXT,
                 status TEXT NOT NULL DEFAULT 'active',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
@@ -123,6 +135,8 @@ async def init_partner_db() -> None:
                 source TEXT NOT NULL,
                 promo_code TEXT,
                 discount_percent INTEGER NOT NULL DEFAULT 0,
+                discount_type TEXT NOT NULL DEFAULT 'percent',
+                discount_value INTEGER NOT NULL DEFAULT 0,
                 original_amount INTEGER NOT NULL DEFAULT 0,
                 discounted_base_amount INTEGER NOT NULL DEFAULT 0,
                 order_amount INTEGER NOT NULL DEFAULT 0,
@@ -151,6 +165,29 @@ async def init_partner_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_partner_payment_partner
                 ON partner_payment_attributions(partner_id, created_at);
             """
+        )
+        # Existing production SQLite databases predate fixed-sum promos.
+        # Migrate them in place without dropping or recreating any data.
+        cur = await db.execute("PRAGMA table_info(partner_promo_codes)")
+        existing_columns = {row[1] for row in await cur.fetchall()}
+        for name, definition in (
+            ("discount_type", "TEXT NOT NULL DEFAULT 'percent'"),
+            ("discount_value", "INTEGER NOT NULL DEFAULT 0"),
+            ("expires_at", "TEXT"),
+        ):
+            if name not in existing_columns:
+                await db.execute(f"ALTER TABLE partner_promo_codes ADD COLUMN {name} {definition}")
+        cur = await db.execute("PRAGMA table_info(partner_payment_attributions)")
+        payment_columns = {row[1] for row in await cur.fetchall()}
+        for name, definition in (
+            ("discount_type", "TEXT NOT NULL DEFAULT 'percent'"),
+            ("discount_value", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if name not in payment_columns:
+                await db.execute(f"ALTER TABLE partner_payment_attributions ADD COLUMN {name} {definition}")
+        await db.execute(
+            "UPDATE partner_promo_codes SET discount_value=discount_percent "
+            "WHERE discount_value=0 AND discount_percent!=0"
         )
         await db.commit()
 
@@ -369,13 +406,27 @@ async def get_tenant_attribution(tenant_id: int) -> dict | None:
         return dict(row) if row else None
 
 
-async def create_or_update_promo_code(partner_id: int, discount_percent: int) -> dict | None:
-    """Partner uchun bitta faol promo kod yaratadi. Kod partner referral_code asosida bo'ladi."""
+async def create_or_update_promo_code(
+    partner_id: int,
+    discount_value: int,
+    *,
+    discount_type: str = "percent",
+    duration_days: int = 30,
+) -> dict | None:
+    """Create the partner's single active promo code with an expiry date."""
     await init_partner_db()
-    discount_percent = int(discount_percent)
-    if discount_percent not in ALLOWED_PROMO_DISCOUNTS:
-        raise ValueError("Promo foizi noto'g'ri")
+    discount_type = (discount_type or "percent").strip().lower()
+    discount_value = int(discount_value)
+    duration_days = int(duration_days)
+    if discount_type not in {"percent", "amount"}:
+        raise ValueError("Promo turi noto'g'ri")
+    if discount_value <= 0 or (discount_type == "percent" and discount_value > 100):
+        raise ValueError("Promo qiymati noto'g'ri")
+    if duration_days < 1 or duration_days > 365:
+        raise ValueError("Promo muddati 1-365 kun bo'lishi kerak")
     now = _now()
+    from datetime import timedelta
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=duration_days)).isoformat()
     async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA busy_timeout=5000")
@@ -385,21 +436,27 @@ async def create_or_update_promo_code(partner_id: int, discount_percent: int) ->
         partner = await cur.fetchone()
         if not partner or not partner["referral_code"]:
             return None
-        code = _clean_promo_code(f"{partner['referral_code']}{discount_percent}")
+        code = _clean_promo_code(f"{partner['referral_code']}{secrets.token_hex(2).upper()}")
         await db.execute(
             "UPDATE partner_promo_codes SET status='inactive', updated_at=? WHERE partner_id=? AND status='active'",
             (now, partner_id),
         )
         await db.execute(
             """
-            INSERT INTO partner_promo_codes(partner_id, code, discount_percent, status, created_at, updated_at)
-            VALUES (?, ?, ?, 'active', ?, ?)
+            INSERT INTO partner_promo_codes(
+                partner_id, code, discount_percent, discount_type, discount_value,
+                expires_at, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
             ON CONFLICT(code) DO UPDATE SET
                 discount_percent=excluded.discount_percent,
+                discount_type=excluded.discount_type,
+                discount_value=excluded.discount_value,
+                expires_at=excluded.expires_at,
                 status='active',
                 updated_at=excluded.updated_at
             """,
-            (partner_id, code, discount_percent, now, now),
+            (partner_id, code, 0 if discount_type == "amount" else discount_value,
+             discount_type, discount_value, expires_at, now, now),
         )
         await db.commit()
         cur = await db.execute(
@@ -424,9 +481,10 @@ async def get_active_promo_code(code: str) -> dict | None:
             FROM partner_promo_codes pc
             JOIN partners p ON p.id=pc.partner_id
             WHERE UPPER(pc.code)=UPPER(?) AND pc.status='active' AND p.status='approved'
+              AND (pc.expires_at IS NULL OR pc.expires_at > ?)
             LIMIT 1
             """,
-            (cleaned,),
+            (cleaned, _now()),
         )
         row = await cur.fetchone()
         return dict(row) if row else None
@@ -456,7 +514,12 @@ async def prepare_payment_attribution(
                 "ok": False,
                 "error": "Bu hisob allaqachon boshqa hamkor orqali kelgan. Boshqa promo kod ishlamaydi.",
             }
-        payout = calculate_partner_payout(plan_code, int(promo["discount_percent"]))
+        payout = calculate_partner_payout(
+            plan_code,
+            int(promo["discount_percent"] or 0),
+            discount_type=promo.get("discount_type") or "percent",
+            discount_value=int(promo.get("discount_value") or promo["discount_percent"] or 0),
+        )
         payout.update(
             {
                 "ok": True,
@@ -516,9 +579,10 @@ async def attach_payment_attribution(
             """
             INSERT OR IGNORE INTO partner_payment_attributions(
                 payment_order_id, tenant_id, partner_id, source, promo_code,
-                discount_percent, original_amount, discounted_base_amount, order_amount,
+                discount_percent, discount_type, discount_value,
+                original_amount, discounted_base_amount, order_amount,
                 base_commission, discount_amount, commission_amount, status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_payment', ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_payment', ?)
             """,
             (
                 payment_order_id,
@@ -527,6 +591,8 @@ async def attach_payment_attribution(
                 attribution.get("source") or "referral_link",
                 attribution.get("promo_code") or "",
                 int(attribution.get("discount_percent") or 0),
+                attribution.get("discount_type") or "percent",
+                int(attribution.get("discount_value") or attribution.get("discount_percent") or 0),
                 int(attribution.get("original_amount") or 0),
                 int(attribution.get("discounted_base_amount") or 0),
                 int(order_amount),

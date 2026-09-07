@@ -88,6 +88,7 @@ async def partner_stats(request: web.Request) -> web.Response:
         "referral_link": referral_link,
         "promo": promo,
         "stats": {**stats, "earned_label": pdb.format_uzs(stats.get("earned", 0))},
+        "activity": await pdb.get_partner_activity(partner["id"]),
     })
 
 

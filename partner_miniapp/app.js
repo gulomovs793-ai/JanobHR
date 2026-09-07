@@ -13,6 +13,16 @@
 
   const haptic = (kind='light') => { try { tg?.HapticFeedback?.impactOccurred(kind); } catch (_) {} };
   const text = (id, value) => { const el = $(id); if (el) el.textContent = value; };
+  function renderActivity(items) {
+    const root = $('activity'); if (!root) return;
+    if (!items?.length) { root.innerHTML = '<p class="empty">Faoliyat hali yo‘q.</p>'; return; }
+    root.innerHTML = items.map(item => {
+      const date = item.created_at ? new Date(item.created_at).toLocaleDateString('uz-UZ', {day:'2-digit', month:'short'}) : '';
+      const detail = item.type === 'sale' && item.plan_code ? ` · ${item.plan_code.toUpperCase()}` : ' · Referral kanali';
+      const commission = item.type === 'sale' ? `<strong>${Number(item.commission || 0).toLocaleString('uz-UZ')} UZS</strong>` : '';
+      return `<div class="activity-row"><span class="activity-icon">${item.icon || '•'}</span><div><b>${item.label || 'Faoliyat'}</b><small>${detail}${date ? ` · ${date}` : ''}</small></div>${commission}</div>`;
+    }).join('');
+  }
 
   function show(name) {
     $$('.view').forEach(v => v.classList.toggle('active', v.id === name));
@@ -49,6 +59,7 @@
       text('partnerName', data.partner?.full_name || 'Hamkor paneli');
       text('clicks', s.clicks ?? 0); text('trials', s.trials ?? 0); text('sales', s.sales ?? 0); text('promo_sales', s.promo_sales ?? 0);
       text('earned', earned); text('earnedLarge', earned);
+      renderActivity(data.activity || []);
       text('referral_link', data.referral_link || 'Referral link topilmadi');
       if (data.promo?.code) {
         currentPromo = data.promo.code;

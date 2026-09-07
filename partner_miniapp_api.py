@@ -104,10 +104,17 @@ async def partner_promo(request: web.Request) -> web.Response:
         duration_days = int(payload.get("duration_days"))
         if discount_type not in {"percent", "amount"} or discount <= 0 or duration_days < 1 or duration_days > 365:
             raise ValueError
+        if discount_type == "percent" and discount > pdb.MAX_UNIVERSAL_PROMO_PERCENT:
+            raise ValueError
+        if discount_type == "amount" and discount > pdb.MAX_UNIVERSAL_PROMO_AMOUNT:
+            raise ValueError
     except Exception:
         return web.json_response({"ok": False, "error": "invalid_discount"}, status=400)
 
-    promo = await pdb.create_or_update_promo_code(partner["id"], discount, discount_type=discount_type, duration_days=duration_days)
+    try:
+        promo = await pdb.create_or_update_promo_code(partner["id"], discount, discount_type=discount_type, duration_days=duration_days)
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
     if not promo:
         return web.json_response({"ok": False, "error": "promo_not_created"}, status=400)
 

@@ -1,128 +1,105 @@
 (() => {
-  const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-  const q = (id) => document.getElementById(id);
-  const all = (selector) => Array.from(document.querySelectorAll(selector));
+  const tg = window.Telegram?.WebApp || null;
+  const $ = (id) => document.getElementById(id);
+  const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+  const initData = tg?.initData || '';
+  let currentPromo = '';
 
   if (tg) {
     tg.ready();
     tg.expand();
-    try { tg.setHeaderColor('#f5f5f7'); } catch (_) {}
-    try { tg.setBackgroundColor('#f5f5f7'); } catch (_) {}
+    try { tg.setHeaderColor('#f5f5f7'); tg.setBackgroundColor('#f5f5f7'); } catch (_) {}
   }
 
-  const initData = tg && tg.initData ? tg.initData : '';
-  let currentView = 'home';
+  const haptic = (kind='light') => { try { tg?.HapticFeedback?.impactOccurred(kind); } catch (_) {} };
+  const text = (id, value) => { const el = $(id); if (el) el.textContent = value; };
 
-  function haptic(type = 'light') {
-    try { tg?.HapticFeedback?.impactOccurred(type); } catch (_) {}
+  function show(name) {
+    $$('.view').forEach(v => v.classList.toggle('active', v.id === name));
+    $$('.bottom-nav [data-go]').forEach(b => b.classList.toggle('active', b.dataset.go === name));
+    window.scrollTo({top:0, behavior:'smooth'});
+    haptic();
   }
 
-  function setText(id, value) {
-    const el = q(id);
-    if (el) el.textContent = value;
+  $$('[data-go]').forEach(btn => btn.addEventListener('click', () => show(btn.dataset.go)));
+
+  function fail(message) {
+    text('errorMessage', message || 'Mini Appni Hamkor bot ichidan qayta oching.');
+    show('error');
   }
 
-  function showView(name) {
-    currentView = name;
-    all('.view').forEach((view) => view.classList.toggle('active', view.id === name));
-    all('.bottom-nav [data-go]').forEach((btn) => btn.classList.toggle('active', btn.dataset.go === name));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    haptic('light');
+  async function api(path, options={}) {
+    const headers = Object.assign({'X-Telegram-Init-Data': initData}, options.headers || {});
+    return fetch(path, Object.assign({cache:'no-store'}, options, {headers}));
   }
 
-  all('[data-go]').forEach((button) => {
-    button.addEventListener('click', () => showView(button.dataset.go));
-  });
-
-  function showError(message) {
-    setText('errorMessage', message || 'Mini Appni Hamkor bot ichidan qayta oching.');
-    showView('error');
-  }
-
-  async function loadStats() {
-    if (!initData) {
-      showError('Telegram tasdiqlashi topilmadi. Panelni Hamkor bot ichidagi Mini App tugmasidan oching.');
-      return;
-    }
-
-    q('refresh')?.classList.add('loading');
+  async function load() {
+    if (!initData) return fail('Telegram tasdiqlashi topilmadi. Panelni Hamkor bot ichidagi ko‘k tugmadan oching.');
+    $('refresh')?.classList.add('loading');
     try {
-      const res = await fetch('/api/partner-miniapp/stats', {
-        headers: { 'X-Telegram-Init-Data': initData },
-        cache: 'no-store'
-      });
+      const res = await api('/api/partner-miniapp/stats');
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
-        if (res.status === 403) {
-          showError('Bu panel faqat tasdiqlangan hamkorlar uchun.');
-        } else if (res.status === 401) {
-          showError('Telegram sessiyasi tasdiqlanmadi. Mini Appni bot ichidan qayta oching.');
-        } else {
-          showError('Statistikani yuklab bo‘lmadi. Keyinroq qayta urinib ko‘ring.');
-        }
-        return;
+        if (res.status === 403) return fail('Bu panel faqat tasdiqlangan hamkorlar uchun.');
+        if (res.status === 401) return fail('Telegram sessiyasi tasdiqlanmadi. Mini Appni bot ichidan qayta oching.');
+        return fail('Ma’lumotlarni yuklab bo‘lmadi. Qayta urinib ko‘ring.');
       }
-
-      const stats = data.stats || {};
-      const earned = stats.earned_label || '0 UZS';
-      setText('clicks', stats.clicks ?? '0');
-      setText('trials', stats.trials ?? '0');
-      setText('sales', stats.sales ?? '0');
-      setText('promo_sales', stats.promo_sales ?? '0');
-      setText('earned', earned);
-      setText('earnedLarge', earned);
-      setText('partnerName', data.partner?.full_name ? `${data.partner.full_name}` : 'Hamkor paneli');
-      if (data.referral_link) setText('referral_link', data.referral_link);
-    } catch (err) {
-      console.warn('Partner stats yuklanmadi', err);
-      showError('Internet yoki server bilan aloqa bo‘lmadi. Qayta urinib ko‘ring.');
-    } finally {
-      q('refresh')?.classList.remove('loading');
-    }
+      const s = data.stats || {};
+      const earned = s.earned_label || '0 UZS';
+      text('partnerName', data.partner?.full_name || 'Hamkor paneli');
+      text('clicks', s.clicks ?? 0); text('trials', s.trials ?? 0); text('sales', s.sales ?? 0); text('promo_sales', s.promo_sales ?? 0);
+      text('earned', earned); text('earnedLarge', earned);
+      text('referral_link', data.referral_link || 'Referral link topilmadi');
+      if (data.promo?.code) {
+        currentPromo = data.promo.code;
+        text('promoCode', data.promo.code);
+        text('promoText', `${data.promo.discount_percent}% chegirma faol.`);
+        $('promoResult')?.classList.remove('hidden');
+        $$('[data-discount]').forEach(b => b.classList.toggle('selected', Number(b.dataset.discount) === Number(data.promo.discount_percent)));
+      }
+    } catch (_) { fail('Server bilan aloqa bo‘lmadi. Qayta urinib ko‘ring.'); }
+    finally { $('refresh')?.classList.remove('loading'); }
   }
 
-  async function copyReferral() {
-    const text = q('referral_link')?.textContent?.trim() || '';
-    if (!text || text === 'Yuklanmoqda…') return;
+  async function copyValue(value, label) {
+    if (!value) return;
     let copied = false;
-    try {
-      await navigator.clipboard.writeText(text);
-      copied = true;
-    } catch (_) {}
-
+    try { await navigator.clipboard.writeText(value); copied = true; } catch (_) {}
     haptic('medium');
-    if (tg?.showPopup) {
-      tg.showPopup({
-        title: copied ? 'Nusxalandi' : 'Referral link',
-        message: copied ? 'Referral link clipboardga nusxalandi.' : text,
-        buttons: [{ type: 'ok' }]
-      });
-    } else {
-      alert(copied ? 'Referral link nusxalandi.' : text);
-    }
+    if (tg?.showPopup) tg.showPopup({title: copied ? 'Nusxalandi' : label, message: copied ? `${label} nusxalandi.` : value, buttons:[{type:'ok'}]});
+    else alert(copied ? `${label} nusxalandi.` : value);
   }
 
-  q('copyReferral')?.addEventListener('click', copyReferral);
-  q('refresh')?.addEventListener('click', () => {
-    haptic('light');
-    loadStats();
-  });
-  q('retry')?.addEventListener('click', () => {
-    showView('home');
-    loadStats();
-  });
-  q('closeToPayout')?.addEventListener('click', () => {
+  $('copyReferral')?.addEventListener('click', () => copyValue($('referral_link')?.textContent?.trim(), 'Referral link'));
+  $('copyPromo')?.addEventListener('click', () => copyValue(currentPromo, 'Promo kod'));
+  $('refresh')?.addEventListener('click', load);
+  $('retry')?.addEventListener('click', () => { show('home'); load(); });
+
+  $$('[data-discount]').forEach(btn => btn.addEventListener('click', async () => {
+    const discount = Number(btn.dataset.discount);
+    if (!initData) return fail('Telegram sessiyasi topilmadi.');
     haptic('medium');
-    if (tg?.showPopup) {
-      tg.showPopup({
-        title: 'Pul yechish',
-        message: 'Mini App yopilgach bot menyusidagi “💸 Pul yechish” tugmasini bosing.',
-        buttons: [{ type: 'ok' }]
-      }, () => tg.close());
-    } else if (tg) {
-      tg.close();
-    }
+    btn.disabled = true;
+    try {
+      const res = await api('/api/partner-miniapp/promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({discount_percent:discount})});
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || 'promo_failed');
+      currentPromo = data.promo.code;
+      text('promoCode', currentPromo);
+      text('promoText', `${data.promo.discount_percent}% chegirma. START: ${data.payouts.start}, GROWTH: ${data.payouts.growth}, BUSINESS: ${data.payouts.business} komissiya qoladi.`);
+      $('promoResult')?.classList.remove('hidden');
+      $$('[data-discount]').forEach(b => b.classList.toggle('selected', Number(b.dataset.discount) === discount));
+    } catch (_) {
+      if (tg?.showAlert) tg.showAlert('Promo kodni yaratib bo‘lmadi. Qayta urinib ko‘ring.');
+      else alert('Promo kodni yaratib bo‘lmadi.');
+    } finally { btn.disabled = false; }
+  }));
+
+  $('closeToPayout')?.addEventListener('click', () => {
+    haptic('medium');
+    if (tg?.showPopup) tg.showPopup({title:'Pul yechish', message:'Mini App yopilgach botdagi “💸 Pul yechish” tugmasini bosing.', buttons:[{type:'ok'}]}, () => tg.close());
+    else tg?.close();
   });
 
-  loadStats();
+  load();
 })();

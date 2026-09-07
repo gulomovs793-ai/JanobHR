@@ -87,7 +87,7 @@ FAQ_TEXT = (
     "<b>5. Referral link nima?</b>\n"
     "Bu sizga biriktirilgan maxsus link. Mijoz shu link orqali kirsa, tizim uni siz olib kelgan mijoz sifatida eslab qoladi va tizimga kiritadi.\n\n"
     "<b>6. Promo kod nima?</b>\n"
-    "Promo kod mijozga chegirma beradi. Tasdiqlangan partner Boshqaruv panelida foiz yoki aniq summa tanlaydi, chegirma miqdori va necha kun amal qilishini o'zi belgilaydi. Har bir partnerda bitta faol promo kod bo'ladi.\n\n"
+    "Promo kod mijozga chegirma beradi. Tasdiqlangan partner Boshqaruv panelida foiz yoki aniq summa tanlaydi, chegirma miqdori va necha kun amal qilishini o'zi belgilaydi. Bitta kod barcha tariflarda ishlagani uchun xavfsiz maksimal chegirma 25% yoki 99 000 UZS. Har bir partnerda bitta faol promo kod bo'ladi.\n\n"
     "<b>7. Promo chegirma kim hisobidan beriladi?</b>\n"
     "Chegirma Janob HR hisobidan emas, sizning komissiyangizdan ayriladi. Masalan, 30 000 UZS chegirma berilsa, START komissiyasi 99 000 - 30 000 = 69 000 UZS bo'ladi. Komissiya manfiy bo'lib qolmaydi.\n\n"
     "<b>8. Menga to'lanadigan komissiya qancha?</b>\n"

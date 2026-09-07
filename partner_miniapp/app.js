@@ -60,6 +60,19 @@
       text('partnerName', data.partner?.full_name || 'Hamkor paneli');
       text('clicks', s.clicks ?? 0); text('trials', s.trials ?? 0); text('sales', s.sales ?? 0); text('promo_sales', s.promo_sales ?? 0);
       text('earned', earned); text('earnedLarge', earned);
+      const balance = data.balance || {};
+      text('totalEarned', balance.earned_label || earned);
+      text('totalEarnedLarge', balance.earned_label || earned);
+      text('paidAmount', balance.paid_label || '0 UZS');
+      text('paidAmountLarge', balance.paid_label || '0 UZS');
+      text('reservedAmount', balance.reserved_label || '0 UZS');
+      text('earned', balance.available_label || earned);
+      text('earnedLarge', balance.available_label || earned);
+      const due = balance.next_payout_date || balance.active_request?.payout_due_date || '—';
+      text('nextPayout', due);
+      const delay = Number(balance.active_request?.delay_days || 0);
+      text('balanceNote', delay ? `Faol ariza · ${delay} kun kechikish` : 'Tasdiqlangan sotuvlardan.');
+      text('earningsNote', delay ? `Kechikish bonusi: ${Number(balance.active_request?.bonus_amount || 0).toLocaleString('uz-UZ')} UZS` : 'Tasdiqlangan sotuvlardan.');
       renderActivity(data.activity || []);
       text('referral_link', data.referral_link || 'Referral link topilmadi');
       if (data.promo?.code) {
@@ -135,4 +148,5 @@
   });
 
   load();
+  window.setInterval(() => { if (!document.hidden) load(); }, 15000);
 })();

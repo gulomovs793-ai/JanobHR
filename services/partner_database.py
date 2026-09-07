@@ -118,6 +118,7 @@ async def init_partner_db() -> None:
                 discount_type TEXT NOT NULL DEFAULT 'percent',
                 discount_value INTEGER NOT NULL DEFAULT 0,
                 expires_at TEXT,
+                plan_code TEXT NOT NULL DEFAULT 'all',
                 status TEXT NOT NULL DEFAULT 'active',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
@@ -183,6 +184,7 @@ async def init_partner_db() -> None:
             ("discount_type", "TEXT NOT NULL DEFAULT 'percent'"),
             ("discount_value", "INTEGER NOT NULL DEFAULT 0"),
             ("expires_at", "TEXT"),
+            ("plan_code", "TEXT NOT NULL DEFAULT 'all'"),
         ):
             if name not in existing_columns:
                 await db.execute(f"ALTER TABLE partner_promo_codes ADD COLUMN {name} {definition}")
@@ -421,12 +423,14 @@ async def create_or_update_promo_code(
     *,
     discount_type: str = "percent",
     duration_days: int = 30,
+    plan_code: str = "all",
 ) -> dict | None:
     """Create the partner's single active promo code with an expiry date."""
     await init_partner_db()
     discount_type = (discount_type or "percent").strip().lower()
     discount_value = int(discount_value)
     duration_days = int(duration_days)
+    plan_code = (plan_code or "all").strip().lower()
     if discount_type not in {"percent", "amount"}:
         raise ValueError("Promo turi noto'g'ri")
     if discount_value <= 0 or (
@@ -437,6 +441,8 @@ async def create_or_update_promo_code(
         raise ValueError("Promo qiymati noto'g'ri")
     if duration_days < 1 or duration_days > 365:
         raise ValueError("Promo muddati 1-365 kun bo'lishi kerak")
+    if plan_code != "all" and plan_code not in {"start", "growth", "business"}:
+        raise ValueError("Promo tarifi noto'g'ri")
     now = _now()
     from datetime import timedelta
     expires_at = (datetime.now(timezone.utc) + timedelta(days=duration_days)).isoformat()
@@ -459,17 +465,19 @@ async def create_or_update_promo_code(
             INSERT INTO partner_promo_codes(
                 partner_id, code, discount_percent, discount_type, discount_value,
                 expires_at, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                , plan_code
+            ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
             ON CONFLICT(code) DO UPDATE SET
                 discount_percent=excluded.discount_percent,
                 discount_type=excluded.discount_type,
                 discount_value=excluded.discount_value,
                 expires_at=excluded.expires_at,
+                plan_code=excluded.plan_code,
                 status='active',
                 updated_at=excluded.updated_at
             """,
             (partner_id, code, 0 if discount_type == "amount" else discount_value,
-             discount_type, discount_value, expires_at, now, now),
+             discount_type, discount_value, expires_at, now, now, plan_code),
         )
         await db.commit()
         cur = await db.execute(
@@ -522,6 +530,11 @@ async def prepare_payment_attribution(
         promo = await get_active_promo_code(cleaned_promo)
         if not promo:
             return {"ok": False, "error": "Promo kod topilmadi yoki faol emas."}
+        if promo.get("plan_code") not in (None, "", "all", plan_code):
+            return {
+                "ok": False,
+                "error": f"Bu promo kod faqat {promo['plan_code'].upper()} tarifi uchun amal qiladi.",
+            }
         if tenant_attr and int(tenant_attr["partner_id"]) != int(promo["partner_id"]):
             return {
                 "ok": False,

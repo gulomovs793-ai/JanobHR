@@ -21,6 +21,20 @@ services:
         value: 3.12.11
       - key: BOT_TOKEN
         sync: false
+      - key: JANOBHR_MAIN_BOT_USERNAME
+        sync: false
+      - key: PARTNER_BOT_TOKEN
+        sync: false
+      - key: PARTNER_PAYOUT_HOLIDAYS
+        sync: false
+      - key: WEBHOOK_BASE_URL
+        sync: false
+      - key: WEBHOOK_ROUTING_SECRET
+        sync: false
+      - key: PAYMENT_ROUTER_SECRET
+        sync: false
+      - key: MINI_APP_BASE_URL
+        sync: false
       - key: ADMIN_BOT_TOKEN
         sync: false
       - key: ADMIN_USER_IDS

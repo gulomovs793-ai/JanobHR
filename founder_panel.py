@@ -397,6 +397,20 @@ async def _activate_order(message: Message, code: str, state: FSMContext | None 
         order.get("plan_code", "start"),
         order.get("billing_months", 1),
     )
+    partner_sale = None
+    try:
+        from services import partner_database as pdb
+
+        partner_sale = await pdb.finalize_sale_for_order(
+            order["id"], actual_amount=order["amount"]
+        )
+    except Exception:
+        # The payment/customer activation is already committed. Startup
+        # reconciliation will retry the partner commission durably.
+        logger.exception(
+            "Qo'lda tasdiqlangan payment uchun partner komissiyasi yozilmadi: %s",
+            code,
+        )
     tenant = await database.get_tenant(order["tenant_id"])
     if tenant and tenant.get("admin_bot_token") and tenant.get("admin_user_ids"):
         customer_bot = Bot(token=tenant["admin_bot_token"])
@@ -421,6 +435,11 @@ async def _activate_order(message: Message, code: str, state: FSMContext | None 
         f"Buyurtma: <code>{code}</code>\n"
         f"Mijoz №{order['tenant_id']}\n"
         f"Summa: <b>{order['amount']:,} so'm</b>"
+        + (
+            f"\nPartner komissiyasi: <b>{pdb.format_uzs(partner_sale['commission_amount'])}</b>"
+            if partner_sale
+            else "\nPartner komissiyasi keyingi reconcile orqali yoziladi."
+        )
     )
     if state:
         await state.clear()

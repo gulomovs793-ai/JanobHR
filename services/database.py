@@ -171,6 +171,9 @@ CREATE TABLE IF NOT EXISTS business_leads (
     desired_result TEXT,
     tenant_id INTEGER,
     status TEXT NOT NULL DEFAULT 'new',
+    partner_id INTEGER,
+    partner_referral_code TEXT,
+    partner_promo_code TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     last_reminded_at TEXT,
@@ -499,6 +502,19 @@ async def init_db():
             await db.execute(
                 "ALTER TABLE business_leads ADD COLUMN last_reminded_at TEXT"
             )
+        for column, definition in (
+            ("partner_id", "INTEGER"),
+            ("partner_referral_code", "TEXT"),
+            ("partner_promo_code", "TEXT"),
+        ):
+            if column not in lead_columns:
+                await db.execute(
+                    f"ALTER TABLE business_leads ADD COLUMN {column} {definition}"
+                )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_business_leads_partner "
+            "ON business_leads(partner_id, updated_at)"
+        )
         cursor = await db.execute(
             "SELECT id, company_name, admin_user_ids, contact_name, contact_phone, "
             "contact_username, created_at FROM tenants "
@@ -840,11 +856,15 @@ async def save_business_lead(**lead) -> int:
         await db.execute(
             "INSERT INTO business_leads (telegram_user_id, contact_name, contact_phone, "
             "contact_username, company_name, hiring_problem, current_process, desired_result, "
-            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "partner_id, partner_referral_code, partner_promo_code, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(telegram_user_id, contact_phone) DO UPDATE SET "
             "contact_name=excluded.contact_name, contact_username=excluded.contact_username, "
             "company_name=excluded.company_name, hiring_problem=excluded.hiring_problem, "
             "current_process=excluded.current_process, desired_result=excluded.desired_result, "
+            "partner_id=COALESCE(excluded.partner_id, business_leads.partner_id), "
+            "partner_referral_code=COALESCE(excluded.partner_referral_code, business_leads.partner_referral_code), "
+            "partner_promo_code=COALESCE(excluded.partner_promo_code, business_leads.partner_promo_code), "
             "updated_at=excluded.updated_at",
             (
                 lead["telegram_user_id"],
@@ -855,6 +875,9 @@ async def save_business_lead(**lead) -> int:
                 lead.get("hiring_problem", ""),
                 lead.get("current_process", ""),
                 lead.get("desired_result", ""),
+                lead.get("partner_id"),
+                lead.get("partner_referral_code"),
+                lead.get("partner_promo_code"),
                 now,
                 now,
             ),

@@ -19,7 +19,7 @@ from aiogram import BaseMiddleware
 from aiogram.filters import BaseFilter
 from aiogram.types import TelegramObject
 
-from config import FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
+from config import BOT_TOKEN, FOUNDER_BOT_TOKEN, FOUNDER_USER_IDS
 from services import database
 
 logger = logging.getLogger("janob_hr_bot")
@@ -48,6 +48,18 @@ class TenantMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         result = await database.get_tenant_by_role_token(bot.token)
+
+        # BOT_TOKEN is the public Janob HR business/onboarding bot, not a
+        # customer tenant bot. It must still reach /start and /create_bot so
+        # referral deep-links can create the first tenant. Use a virtual
+        # tenant context only for this bot; no customer data is attached to it.
+        if result is None and BOT_TOKEN and bot.token == BOT_TOKEN:
+            data["tenant_id"] = 0
+            data["tenant"] = {"id": 0, "status": "active", "admin_user_ids": []}
+            data["bot_role"] = "candidate"
+            data["is_admin"] = False
+            data["is_main_bot"] = True
+            return await handler(event, data)
 
         if result is None:
             logger.warning("Notanish token orqali so'rov keldi, e'tiborsiz qoldirildi.")

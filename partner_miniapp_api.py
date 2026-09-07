@@ -13,10 +13,10 @@ from urllib.parse import parse_qsl
 from aiohttp import web
 from services import partner_database as pdb
 from services import partner_payouts
+from services.partner_links import build_referral_link, configured_main_bot_username
 
 BASE_DIR = Path(__file__).resolve().parent
 PARTNER_MINIAPP_DIR = BASE_DIR / "partner_miniapp"
-JANOBHR_MAIN_BOT_USERNAME = os.getenv("JANOBHR_MAIN_BOT_USERNAME", "janobHR_bot").strip().lstrip("@")
 PARTNER_BOT_TOKEN = os.getenv("PARTNER_BOT_TOKEN", "").strip()
 INIT_DATA_MAX_AGE = 24 * 60 * 60
 
@@ -76,7 +76,9 @@ async def partner_stats(request: web.Request) -> web.Response:
         if balance.get("active_request")
         else partner_payouts.next_payout_date().isoformat()
     )
-    referral_link = f"https://t.me/{JANOBHR_MAIN_BOT_USERNAME}?start=ref_{partner['referral_code']}" if partner.get("referral_code") else ""
+    referral_link = build_referral_link(
+        configured_main_bot_username(), partner.get("referral_code")
+    )
 
     promo = None
     try:
@@ -104,6 +106,7 @@ async def partner_stats(request: web.Request) -> web.Response:
             "paid_label": pdb.format_uzs(balance.get("paid", 0)),
         },
         "activity": await pdb.get_partner_activity(partner["id"]),
+        "leads": await pdb.get_partner_leads(partner["id"]),
     })
 
 

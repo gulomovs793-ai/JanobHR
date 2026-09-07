@@ -241,6 +241,8 @@ async def receive_contact(message: Message, state: FSMContext):
         hiring_problem=data["hiring_problem"],
         current_process=data["current_process"],
         desired_result=data["desired_result"],
+        partner_id=data.get("partner_id"),
+        partner_referral_code=data.get("partner_referral_code"),
     )
     await state.update_data(business_lead_id=lead_id)
     await message.answer(

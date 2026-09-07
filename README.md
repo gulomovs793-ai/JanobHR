@@ -184,6 +184,32 @@ Kirish Telegram `initData` HMAC imzosi bilan serverda tekshiriladi. URLdagi
 `tenant_id`ning o'zi ruxsat bermaydi: Telegram user ID tenantning
 `admin_user_ids` ro'yxatida bo'lishi shart. Bot tokenlari frontendga berilmaydi.
 
+## Partner Bot — hamkor boshqaruv paneli
+
+Partner Bot alohida token bilan ishlaydi. Uning **📱 Boshqaruv paneli** tugmasi
+Telegram Mini App'ni `/partner` manzilida ochadi. Server `initData` imzosini
+`PARTNER_BOT_TOKEN` bilan tekshiradi va Telegram user ID orqali faqat shu
+hamkorning ma'lumotlarini qaytaradi.
+
+Render Environment'ga quyidagilarni kiriting:
+
+```text
+PARTNER_BOT_TOKEN=<alohida hamkor bot tokeni>
+JANOBHR_MAIN_BOT_USERNAME=<mijoz kiradigan asosiy Janob HR bot username'i>
+WEBHOOK_BASE_URL=https://<render-service>.onrender.com
+WEBHOOK_ROUTING_SECRET=<uzun tasodifiy secret>
+PARTNER_PAYOUT_HOLIDAYS=2026-03-21,2026-09-01
+```
+
+`JANOBHR_MAIN_BOT_USERNAME` hech qachon Partner Bot username'i bo'lmasligi
+kerak. `BOT_TOKEN` shu Web Service ichida webhookga ulanadi va referral
+`/start` oqimini asosiy biznes onboardingiga yetkazadi.
+
+Partner panelda referral link, lead holatlari, promo kod (foiz yoki summa),
+tarifga bog'lash, amal qilish muddati va komissiya balansi ko'rsatiladi.
+Promo chegirma komissiyadan ayriladi: masalan START 10% promo uchun
+`99 000 - (299 000 × 10%) = 69 100 UZS`.
+
 ## Admin bot — arizalarni ko'rib chiqish, vakansiyalarni boshqarish, statistika
 
 **Muhim: bu bot endi ixtiyoriy emas.** Nomzod arizalari (✅/❌ tugmalari bilan)

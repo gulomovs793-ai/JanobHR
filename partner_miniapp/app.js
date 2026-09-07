@@ -25,6 +25,15 @@
     }).join('');
   }
 
+  function renderLeads(items, id='leads') {
+    const root = $(id); if (!root) return;
+    if (!items?.length) { root.innerHTML = '<p class="empty">Leadlar hali yo‘q.</p>'; return; }
+    root.innerHTML = items.map(item => {
+      const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('uz-UZ', {day:'2-digit', month:'short'}) : '';
+      return `<div class="lead-row"><div><b>${item.company_name || 'Noma’lum kompaniya'}</b><small>${item.contact_name || 'Biznes egasi'}${date ? ` · ${date}` : ''}</small></div><span class="lead-status">${item.status_label || '🆕 Yangi'}</span></div>`;
+    }).join('');
+  }
+
   function show(name) {
     $$('.view').forEach(v => v.classList.toggle('active', v.id === name));
     $$('.bottom-nav [data-go]').forEach(b => b.classList.toggle('active', b.dataset.go === name));
@@ -74,6 +83,8 @@
       text('balanceNote', delay ? `Faol ariza · ${delay} kun kechikish` : 'Tasdiqlangan sotuvlardan.');
       text('earningsNote', delay ? `Kechikish bonusi: ${Number(balance.active_request?.bonus_amount || 0).toLocaleString('uz-UZ')} UZS` : 'Tasdiqlangan sotuvlardan.');
       renderActivity(data.activity || []);
+      renderLeads(data.leads || [], 'leads');
+      renderLeads(data.leads || [], 'leadsFull');
       text('referral_link', data.referral_link || 'Referral link topilmadi');
       if (data.promo?.code) {
         currentPromo = data.promo.code;

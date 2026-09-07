@@ -468,14 +468,25 @@ async def handle_payment_notification(
         return {"status": "no_match", "amount": amount}
 
     partner_sale = None
-    try:
-        from services import partner_database as pdb
-
-        partner_sale = await pdb.finalize_sale_for_order(order["id"], actual_amount=amount)
-    except Exception:
-        logger.exception(
-            "Partner komissiyasini yakunlashda xato (order=%s).",
-            order["order_code"],
+    from services import partner_database as pdb
+    for attempt in range(3):
+        try:
+            partner_sale = await pdb.finalize_sale_for_order(
+                order["id"], actual_amount=amount
+            )
+            break
+        except Exception:
+            logger.exception(
+                "Partner komissiyasini yakunlashda xato (order=%s, attempt=%s).",
+                order["order_code"],
+                attempt + 1,
+            )
+            if attempt < 2:
+                await asyncio.sleep(0.2)
+    if not partner_sale:
+        await notify_founders(
+            f"⚠️ {order['order_code']} uchun partner komissiyasi vaqtincha yozilmadi. "
+            "To'lov tasdiqlangan, reconcile avtomatik qayta urinadi."
         )
 
     partner_note = ""

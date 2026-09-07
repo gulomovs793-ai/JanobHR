@@ -5,6 +5,7 @@ mustaqil boshqaradi. Shu sabab asosiy tenant/application sxemasiga tegmaydi.
 """
 
 import json
+import logging
 import re
 import secrets
 from datetime import datetime, timezone
@@ -13,6 +14,8 @@ import aiosqlite
 
 from config import SQLITE_PATH
 from services.plans import get_plan
+
+logger = logging.getLogger("janob_hr_partner")
 
 
 PARTNER_COMMISSIONS = {
@@ -144,6 +147,7 @@ async def init_partner_db() -> None:
                 partner_id INTEGER NOT NULL,
                 source TEXT NOT NULL,
                 promo_code TEXT,
+                plan_code TEXT,
                 discount_percent INTEGER NOT NULL DEFAULT 0,
                 discount_type TEXT NOT NULL DEFAULT 'percent',
                 discount_value INTEGER NOT NULL DEFAULT 0,
@@ -193,6 +197,7 @@ async def init_partner_db() -> None:
         for name, definition in (
             ("discount_type", "TEXT NOT NULL DEFAULT 'percent'"),
             ("discount_value", "INTEGER NOT NULL DEFAULT 0"),
+            ("plan_code", "TEXT"),
         ):
             if name not in payment_columns:
                 await db.execute(f"ALTER TABLE partner_payment_attributions ADD COLUMN {name} {definition}")
@@ -417,6 +422,54 @@ async def get_tenant_attribution(tenant_id: int) -> dict | None:
         return dict(row) if row else None
 
 
+async def claim_tenant_attribution(
+    tenant_id: int,
+    partner_id: int,
+    *,
+    source: str,
+    promo_code: str = "",
+) -> dict | None:
+    """Atomically bind a tenant to its first partner.
+
+    A promo-only customer has no referral-link event to create this row. The
+    first valid promo therefore claims the tenant inside an immediate SQLite
+    transaction; a concurrent/different partner can never replace it later.
+    """
+    await init_partner_db()
+    now = _now()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        cur = await db.execute(
+            "SELECT * FROM partner_tenant_attributions WHERE tenant_id=? LIMIT 1",
+            (tenant_id,),
+        )
+        current = await cur.fetchone()
+        if current and int(current["partner_id"]) != int(partner_id):
+            await db.rollback()
+            return None
+        if not current:
+            await db.execute(
+                "INSERT INTO partner_tenant_attributions("
+                "tenant_id, partner_id, source, promo_code, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (tenant_id, partner_id, source, promo_code, now),
+            )
+        elif promo_code and not current["promo_code"]:
+            await db.execute(
+                "UPDATE partner_tenant_attributions SET promo_code=? WHERE tenant_id=?",
+                (promo_code, tenant_id),
+            )
+        await db.commit()
+        cur = await db.execute(
+            "SELECT * FROM partner_tenant_attributions WHERE tenant_id=? LIMIT 1",
+            (tenant_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
 async def create_or_update_promo_code(
     partner_id: int,
     discount_value: int,
@@ -540,6 +593,18 @@ async def prepare_payment_attribution(
                 "ok": False,
                 "error": "Bu hisob allaqachon boshqa hamkor orqali kelgan. Boshqa promo kod ishlamaydi.",
             }
+        if not tenant_attr:
+            tenant_attr = await claim_tenant_attribution(
+                tenant_id,
+                int(promo["partner_id"]),
+                source="promo_code",
+                promo_code=promo["code"],
+            )
+            if not tenant_attr:
+                return {
+                    "ok": False,
+                    "error": "Bu hisob boshqa hamkor bilan bog'langan. Boshqa promo kod ishlamaydi.",
+                }
         payout = calculate_partner_payout(
             plan_code,
             int(promo["discount_percent"] or 0),
@@ -554,6 +619,7 @@ async def prepare_payment_attribution(
                 "partner_name": promo.get("partner_name") or "Hamkor",
                 "promo_code": promo["code"],
                 "source": "promo_code",
+                "plan_code": plan_code,
             }
         )
         return payout
@@ -568,6 +634,7 @@ async def prepare_payment_attribution(
                 "partner_name": tenant_attr.get("partner_name") or "Hamkor",
                 "promo_code": "",
                 "source": tenant_attr.get("source") or "referral_link",
+                "plan_code": plan_code,
             }
         )
         return payout
@@ -605,10 +672,10 @@ async def attach_payment_attribution(
             """
             INSERT OR IGNORE INTO partner_payment_attributions(
                 payment_order_id, tenant_id, partner_id, source, promo_code,
-                discount_percent, discount_type, discount_value,
+                plan_code, discount_percent, discount_type, discount_value,
                 original_amount, discounted_base_amount, order_amount,
                 base_commission, discount_amount, commission_amount, status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_payment', ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_payment', ?)
             """,
             (
                 payment_order_id,
@@ -616,6 +683,7 @@ async def attach_payment_attribution(
                 int(attribution["partner_id"]),
                 attribution.get("source") or "referral_link",
                 attribution.get("promo_code") or "",
+                attribution.get("plan_code") or "",
                 int(attribution.get("discount_percent") or 0),
                 attribution.get("discount_type") or "percent",
                 int(attribution.get("discount_value") or attribution.get("discount_percent") or 0),
@@ -627,6 +695,11 @@ async def attach_payment_attribution(
                 int(attribution.get("commission_amount") or 0),
                 now,
             ),
+        )
+        await db.execute(
+            "UPDATE business_leads SET status='payment', updated_at=? "
+            "WHERE tenant_id=? AND status NOT IN ('lost', 'customer')",
+            (now, tenant_id),
         )
         await db.commit()
         cur = await db.execute(
@@ -645,6 +718,22 @@ async def finalize_sale_for_order(payment_order_id: int, *, actual_amount: int |
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA busy_timeout=5000")
         await db.execute("BEGIN IMMEDIATE")
+        try:
+            cur = await db.execute(
+                "SELECT status FROM payment_orders WHERE id=? LIMIT 1",
+                (payment_order_id,),
+            )
+        except aiosqlite.OperationalError as exc:
+            # A standalone partner-db migration/test can run before the core
+            # DB exists. It cannot finalize a sale, but must not crash startup.
+            if "no such table" in str(exc).lower():
+                await db.rollback()
+                return None
+            raise
+        payment = await cur.fetchone()
+        if not payment or payment[0] != "approved":
+            await db.rollback()
+            return None
         cur = await db.execute(
             "SELECT * FROM partner_payment_attributions WHERE payment_order_id=? LIMIT 1",
             (payment_order_id,),
@@ -694,12 +783,87 @@ async def finalize_sale_for_order(payment_order_id: int, *, actual_amount: int |
                 now,
             ),
         )
+        await db.execute(
+            "UPDATE business_leads SET status='customer', updated_at=? "
+            "WHERE tenant_id=? AND status NOT IN ('lost', 'customer')",
+            (now, attribution["tenant_id"]),
+        )
         await db.commit()
         attribution["status"] = "approved"
         attribution["finalized_at"] = now
         if actual_amount is not None:
             attribution["order_amount"] = actual_amount
         return attribution
+
+
+async def reconcile_approved_partner_sales(limit: int = 100) -> dict:
+    """Repair approved payments whose partner sale was not finalized.
+
+    Finalization is idempotent and protected by an immediate SQLite transaction,
+    so this recovery path is safe after transient errors or a process restart.
+    """
+    await init_partner_db()
+    limit = max(1, min(int(limit or 100), 500))
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT p.id, p.amount FROM payment_orders p "
+            "JOIN partner_payment_attributions a ON a.payment_order_id=p.id "
+            "WHERE p.status='approved' AND a.status!='approved' "
+            "ORDER BY p.id LIMIT ?",
+            (limit,),
+        )
+        orders = [dict(row) for row in await cur.fetchall()]
+    finalized = 0
+    failed = 0
+    for order in orders:
+        try:
+            if await finalize_sale_for_order(order["id"], actual_amount=order["amount"]):
+                finalized += 1
+        except Exception:
+            failed += 1
+            logger.exception("Partner sale reconcile failed: order=%s", order["id"])
+    return {"found": len(orders), "finalized": finalized, "failed": failed}
+
+
+async def get_partner_leads(partner_id: int, limit: int = 50) -> list[dict]:
+    """Return only business leads attributed to this partner."""
+    await init_partner_db()
+    limit = max(1, min(int(limit or 50), 100))
+    labels = {
+        "new": "🆕 Yangi",
+        "contacted": "💬 Bog'lanildi",
+        "demo": "🎯 Qiziqdi",
+        "payment": "💳 To'lov bosqichi",
+        "bot_created": "🤖 Bot yaratildi",
+        "customer": "✅ Mijoz bo'ldi",
+        "lost": "❌ Rad etdi",
+    }
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT bl.company_name, bl.contact_name, bl.status, bl.tenant_id, "
+            "bl.created_at, bl.updated_at, "
+            "COALESCE(bl.partner_id, pta.partner_id) AS attributed_partner_id "
+            "FROM business_leads bl "
+            "LEFT JOIN partner_tenant_attributions pta ON pta.tenant_id=bl.tenant_id "
+            "WHERE bl.partner_id=? OR pta.partner_id=? "
+            "ORDER BY bl.updated_at DESC, bl.id DESC LIMIT ?",
+            (partner_id, partner_id, limit),
+        )
+        rows = await cur.fetchall()
+    return [
+        {
+            "company_name": row["company_name"] or "Noma'lum kompaniya",
+            "contact_name": row["contact_name"] or "",
+            "status": row["status"] or "new",
+            "status_label": labels.get(row["status"], row["status"] or "Yangi"),
+            "tenant_id": row["tenant_id"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        for row in rows
+    ]
 
 
 async def get_partner_stats(partner_id: int) -> dict:

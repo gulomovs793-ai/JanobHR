@@ -24,6 +24,7 @@ from aiogram.webhook.aiohttp_server import BaseRequestHandler, setup_application
 from aiohttp import web
 
 from config import (
+    BOT_TOKEN,
     FOUNDER_BOT_TOKEN,
     MINI_APP_BASE_URL,
     PAYMENT_LISTENER_ENABLED,
@@ -271,6 +272,14 @@ async def configure_founder_miniapp() -> None:
 async def on_startup(app: web.Application):
     await database.init_db()
     await app["dispatcher"].storage.init()
+    try:
+        from services import partner_database as pdb
+
+        reconciliation = await pdb.reconcile_approved_partner_sales()
+        if reconciliation["found"]:
+            logger.info("Partner commission reconcile: %s", reconciliation)
+    except Exception:
+        logger.exception("Partner commission startup reconcile ishlamadi.")
     from services.backup import run_backups_forever
     from services.reminders import run_reminders_forever
     from services.tenant_activation import activate_tenant
@@ -307,6 +316,15 @@ async def on_startup(app: web.Application):
                 "Mijoz (id=%s) webhooklarini ornatib bolmadi.", tenant["id"]
             )
 
+    # Public Janob HR bot is not necessarily stored as a customer tenant.
+    # Register it explicitly so referral deep-links reach the business flow.
+    if BOT_TOKEN and not await database.get_tenant_by_role_token(BOT_TOKEN):
+        try:
+            await register_new_tenant_webhook(BOT_TOKEN)
+            logger.info("Asosiy Janob HR bot webhooki o'rnatildi.")
+        except Exception:
+            logger.exception("Asosiy Janob HR bot webhookini o'rnatib bo'lmadi.")
+
     if FOUNDER_BOT_TOKEN:
         try:
             await register_new_tenant_webhook(FOUNDER_BOT_TOKEN)
@@ -315,7 +333,8 @@ async def on_startup(app: web.Application):
         except Exception:
             logger.exception("Founder Bot webhookini ornatib bolmadi.")
 
-    # Partner bot boshqa runtime guard orqali shu service ichida start bo'lyapti.
+    # Partner bot founder_miniapp_api startup hook orqali shu service ichida
+    # bitta background task sifatida start bo'ladi.
     # Bu yerda qayta start qilish aiogram routerlarini ikkinchi marta ulab,
     # "Router is already attached" xatosini chiqaradi. Shuning uchun webhook
     # startup ichida partner pollingni takroran ishga tushirmaymiz.

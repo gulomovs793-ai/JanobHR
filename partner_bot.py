@@ -39,6 +39,7 @@ from config import BOT_TOKEN, FOUNDER_USER_IDS, SETUP_BOT_TOKEN, WEBHOOK_BASE_UR
 from partner_payout_bot import payout_router, run_payout_reminders
 from services import partner_database as pdb
 from services.partner_ai import generate_partner_advice
+from services.partner_links import build_referral_link
 
 logger = logging.getLogger("janob_hr_partner")
 router = Router(name="partner")
@@ -146,9 +147,9 @@ def partner_miniapp_url() -> str:
 
 
 def partner_panel_button() -> KeyboardButton:
-    url = partner_miniapp_url()
-    if url:
-        return KeyboardButton(text="📱 Boshqaruv paneli", web_app=WebAppInfo(url=url))
+    # Reply-keyboard WebApp buttons do not reliably carry signed initData.
+    # Keep the menu item as text and open the signed inline WebApp button from
+    # its handler below. The Telegram chat menu button is also configured.
     return KeyboardButton(text="📱 Boshqaruv paneli")
 
 
@@ -440,7 +441,7 @@ async def handle_referral_entry(message: Message, code: str) -> bool:
     target_username = await referral_target_username(message.bot)
 
     if target_username:
-        target_url = f"https://t.me/{target_username}?start=ref_{partner['referral_code']}"
+        target_url = build_referral_link(target_username, partner.get("referral_code"))
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="👔 Asosiy Janob HR botga o'tish", url=target_url)]
@@ -659,8 +660,23 @@ async def require_approved(message: Message) -> dict | None:
 
 @router.message(F.text == "📱 Hamkor paneli")
 async def partner_panel_fallback(message: Message) -> None:
-    if await require_approved(message):
-        await message.answer("📱 Hamkor panelini Telegram menyusidagi Mini App tugmasidan oching.")
+    if not await require_approved(message):
+        return
+    url = partner_miniapp_url()
+    if not url:
+        await message.answer(
+            "⚠️ Mini App manzili sozlanmagan. Admin WEBHOOK_BASE_URL ni tekshirishi kerak."
+        )
+        return
+    await message.answer(
+        "📱 <b>Hamkor boshqaruv paneli</b>\n\n"
+        "Shaxsiy referral, leadlar, promo va komissiya ma'lumotlaringizni oching.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📱 Panelni ochish", web_app=WebAppInfo(url=url))]
+            ]
+        ),
+    )
 
 
 @router.message(F.text.in_({"🔗 Referral link", "🔗 Mening referral linkim"}))
@@ -675,7 +691,7 @@ async def my_link(message: Message, bot: Bot) -> None:
             "Render envda <code>JANOBHR_MAIN_BOT_USERNAME=janobHR_bot</code> bo'lishi kerak."
         )
         return
-    link = f"https://t.me/{target_username}?start=ref_{partner['referral_code']}"
+    link = build_referral_link(target_username, partner.get("referral_code"))
     await message.answer(
         "🔗 <b>Sizning referral linkingiz</b>\n\n"
         f"<code>{link}</code>\n\n"

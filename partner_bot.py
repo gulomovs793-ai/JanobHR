@@ -35,7 +35,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from config import BOT_TOKEN, FOUNDER_USER_IDS, SETUP_BOT_TOKEN
+from config import BOT_TOKEN, FOUNDER_USER_IDS, SETUP_BOT_TOKEN, WEBHOOK_BASE_URL
 from partner_payout_bot import payout_router, run_payout_reminders
 from services import partner_database as pdb
 from services.partner_ai import generate_partner_advice
@@ -44,7 +44,7 @@ logger = logging.getLogger("janob_hr_partner")
 router = Router(name="partner")
 
 PARTNER_BOT_TOKEN = os.getenv("PARTNER_BOT_TOKEN", "").strip()
-WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
+WEBHOOK_BASE_URL = WEBHOOK_BASE_URL.rstrip("/")
 JANOBHR_MAIN_BOT_USERNAME = os.getenv("JANOBHR_MAIN_BOT_USERNAME", "").strip().lstrip("@")
 LEGACY_REFERRAL_TARGET_USERNAME = os.getenv(
     "PARTNER_REFERRAL_TARGET_USERNAME", ""
@@ -149,8 +149,8 @@ def partner_miniapp_url() -> str:
 def partner_panel_button() -> KeyboardButton:
     url = partner_miniapp_url()
     if url:
-        return KeyboardButton(text="📱 Hamkor paneli", web_app=WebAppInfo(url=url))
-    return KeyboardButton(text="📱 Hamkor paneli")
+        return KeyboardButton(text="📱 Boshqaruv paneli", web_app=WebAppInfo(url=url))
+    return KeyboardButton(text="📱 Boshqaruv paneli")
 
 
 def main_menu() -> ReplyKeyboardMarkup:
@@ -822,7 +822,7 @@ async def configure_partner_miniapp_menu(bot: Bot) -> None:
     try:
         await bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
-                text="Hamkor paneli",
+                text="Boshqaruv paneli",
                 web_app=WebAppInfo(url=url),
             )
         )

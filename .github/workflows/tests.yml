@@ -7,85 +7,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-partner-startup:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: multi-tenant
-      - name: Patch partner bot duplicate startup guard
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('partner_bot.py')
-          text = path.read_text(encoding='utf-8')
-          if 'Partner Bot routerlari allaqachon Dispatcherga ulangan' in text:
-              print('already patched')
-              raise SystemExit(0)
-          start = text.index('async def main() -> None:\n')
-          end = text.index('\n\nif __name__ == "__main__":', start)
-          replacement = '''_PARTNER_MAIN_RUNNING = False
-
-
-async def main() -> None:
-    global _PARTNER_MAIN_RUNNING
-
-    if _PARTNER_MAIN_RUNNING:
-        logger.warning("Partner Bot allaqachon ishlayapti — takroriy start o'tkazib yuborildi.")
-        return
-
-    if getattr(router, "parent_router", None) is not None or getattr(payout_router, "parent_router", None) is not None:
-        logger.warning("Partner Bot routerlari allaqachon Dispatcherga ulangan — takroriy start o'tkazib yuborildi.")
-        return
-
-    _PARTNER_MAIN_RUNNING = True
-    bot = None
-    reminder_task = None
-    try:
-        if not PARTNER_BOT_TOKEN:
-            raise RuntimeError("PARTNER_BOT_TOKEN sozlanmagan")
-        await pdb.init_partner_db()
-        bot = Bot(
-            token=PARTNER_BOT_TOKEN,
-            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-        )
-        target_username = await referral_target_username(bot)
-        if target_username:
-            logger.info("Partner referral target: @%s", target_username)
-        else:
-            logger.error("Partner referral target topilmadi")
-        dp = Dispatcher(storage=MemoryStorage())
-        dp.include_router(router)
-        dp.include_router(payout_router)
-        reminder_task = asyncio.create_task(run_payout_reminders(bot))
-        await bot.delete_webhook(drop_pending_updates=False)
-        logger.info("Janob HR Partner Bot ishga tushdi")
-        await dp.start_polling(bot)
-    finally:
-        if reminder_task is not None:
-            reminder_task.cancel()
-            await asyncio.gather(reminder_task, return_exceptions=True)
-        if bot is not None:
-            await bot.session.close()
-        _PARTNER_MAIN_RUNNING = False'''
-          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
-          print('patched')
-          PY
-      - name: Commit partner bot patch
-        run: |
-          if git diff --quiet; then
-            echo "No patch needed"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add partner_bot.py
-          git commit -m "Guard partner bot main against duplicate startup"
-          git push origin HEAD:multi-tenant
-
   test:
     runs-on: ubuntu-latest
     steps:

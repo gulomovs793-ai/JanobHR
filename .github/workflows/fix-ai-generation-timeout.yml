@@ -17,18 +17,16 @@ jobs:
         with:
           ref: multi-tenant
 
-      - name: Patch DeepSeek V4 structured output
+      - name: Patch AI generation and full question display
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
+          # Keep the DeepSeek structured-output production fix idempotent.
           p = Path("services/ai_scoring.py")
           s = p.read_text(encoding="utf-8")
 
-          # DeepSeek V4 has thinking mode enabled by default. Janob HR expects
-          # short structured JSON in message.content, so disable thinking for
-          # DeepSeek calls; otherwise max_tokens can be consumed by reasoning.
           deepseek_marker = 'payload["thinking"] = {"type": "disabled"}'
           if deepseek_marker not in s:
               request_pos = s.index("            async def request_once(token_budget: int)")
@@ -36,19 +34,30 @@ jobs:
               inject = '''                # DeepSeek V4 defaults to thinking mode. For structured HR JSON\n                # we need the final answer directly and quickly.\n                if "deepseek" in base.lower() or str(model).lower().startswith("deepseek"):\n                    payload["thinking"] = {"type": "disabled"}\n                    payload["stream"] = False\n\n'''
               s = s[:post_pos] + inject + s[post_pos:]
 
-          # Be tolerant if a provider wraps the requested JSON array in a
-          # {"questions": [...]} object or adds a short sentence around it.
           wrapper_marker = 'isinstance(parsed, dict) and isinstance(parsed.get("questions"), list)'
           if wrapper_marker not in s:
               fn_pos = s.index("async def generate_questions(")
               parse_pos = s.index("        parsed = json.loads(content)\n", fn_pos)
-              check_pos = s.index("        if not isinstance(parsed, list):\n", parse_pos)
               parse_end = parse_pos + len("        parsed = json.loads(content)\n")
               replacement = '''        try:\n            parsed = json.loads(content)\n        except json.JSONDecodeError:\n            start = content.find("[")\n            end = content.rfind("]")\n            if start < 0 or end <= start:\n                raise\n            parsed = json.loads(content[start : end + 1])\n\n        if isinstance(parsed, dict) and isinstance(parsed.get("questions"), list):\n            parsed = parsed["questions"]\n'''
               s = s[:parse_pos] + replacement + s[parse_end:]
 
           p.write_text(s, encoding="utf-8")
-          print("DeepSeek V4 vacancy generation patch applied")
+
+          # The admin preview used to cut every AI-generated question at 180
+          # characters and append an ellipsis. That made a complete generated
+          # question look broken even though the full text was already in state.
+          p = Path("admin_bot/handlers_vacancy_edit.py")
+          s = p.read_text(encoding="utf-8")
+          old = '        text = q["text"][:180] + ("…" if len(q["text"]) > 180 else "")\n'
+          new = '        text = str(q["text"]).strip()\n'
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif new not in s:
+              raise AssertionError("Question preview truncation anchor not found")
+          p.write_text(s, encoding="utf-8")
+
+          print("AI generation and full question display patch applied")
           PY
 
       - name: Verify patch
@@ -56,12 +65,20 @@ jobs:
           python -m py_compile services/ai_scoring.py admin_bot/handlers_vacancy_edit.py
           grep -Fq 'payload["thinking"] = {"type": "disabled"}' services/ai_scoring.py
           grep -Fq 'parsed.get("questions")' services/ai_scoring.py
-          grep -Fq 'callback_data="vacgen:retry"' admin_bot/handlers_vacancy_edit.py
+          grep -Fq 'text = str(q["text"]).strip()' admin_bot/handlers_vacancy_edit.py
+          python - <<'PY'
+          from admin_bot.handlers_vacancy_edit import format_questions_preview
+          full = "Savolning to'liq matni: " + ("A" * 240)
+          preview = format_questions_preview([{"text": full, "ai_score": True}])
+          assert full in preview
+          assert "…" not in preview
+          print("Full AI question preview verified")
+          PY
 
       - name: Commit production fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add services/ai_scoring.py
-          git commit -m "Fix DeepSeek AI vacancy question generation" || exit 0
+          git add services/ai_scoring.py admin_bot/handlers_vacancy_edit.py
+          git commit -m "Show full AI generated questions" || exit 0
           git push origin HEAD:multi-tenant

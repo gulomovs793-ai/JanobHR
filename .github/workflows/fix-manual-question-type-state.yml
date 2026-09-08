@@ -1,0 +1,63 @@
+name: Hotfix manual question type buttons
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/fix-manual-question-type-state.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+
+      - name: Fix aiogram FSM state filter for manual question type
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          states = Path("admin_bot/states.py")
+          s = states.read_text(encoding="utf-8")
+          marker = "    choosing_manual_type = State()\n"
+          if marker not in s:
+              anchor = "    editing_pending_question = State()\n"
+              if anchor not in s:
+                  raise AssertionError("states.py anchor not found")
+              s = s.replace(anchor, anchor + marker, 1)
+              states.write_text(s, encoding="utf-8")
+
+          p = Path("admin_bot/handlers_vacancy_edit.py")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace('\n_CHOOSING_TYPE = "AdminForm:choosing_manual_type"\n', '\n')
+          s = s.replace("await state.set_state(_CHOOSING_TYPE)", "await state.set_state(AdminForm.choosing_manual_type)")
+          s = s.replace('@router.callback_query(_CHOOSING_TYPE, F.data.startswith("manual:type:"))', '@router.callback_query(AdminForm.choosing_manual_type, F.data.startswith("manual:type:"))')
+          s = s.replace('@router.message(_CHOOSING_TYPE)', '@router.message(AdminForm.choosing_manual_type)')
+          if "_CHOOSING_TYPE" in s:
+              raise AssertionError("legacy string state filter still present")
+          p.write_text(s, encoding="utf-8")
+
+          print("Manual question type state hotfix applied")
+          PY
+
+      - name: Verify patch
+        run: |
+          python -m py_compile admin_bot/states.py admin_bot/handlers_vacancy_edit.py
+          grep -Fq 'choosing_manual_type = State()' admin_bot/states.py
+          grep -Fq '@router.callback_query(AdminForm.choosing_manual_type, F.data.startswith("manual:type:"))' admin_bot/handlers_vacancy_edit.py
+          grep -Fq 'await state.set_state(AdminForm.choosing_manual_type)' admin_bot/handlers_vacancy_edit.py
+          ! grep -Fq '_CHOOSING_TYPE' admin_bot/handlers_vacancy_edit.py
+
+      - name: Commit production fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add admin_bot/states.py admin_bot/handlers_vacancy_edit.py
+          git commit -m "Fix manual question type buttons" || exit 0
+          git push origin HEAD:multi-tenant

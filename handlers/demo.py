@@ -13,59 +13,58 @@ from services.ai_scoring import aggregate_scores, score_answer
 
 router = Router(name="candidate_demo")
 
-# Demo savollari real Janob HR saralash mantig'ini qisqa shaklda ko'rsatadi:
-# avval oson tanishuv/tajriba, keyin natija, amaliy vaziyat, reja, xato,
-# ish barqarorligi va oxirida Topgrading reference-check.
+# Public demo uchun tasdiqlangan 6 ta SAVOL QAT'IY RO'YXAT.
+# Ular AI orqali generatsiya qilinmaydi, almashtirilmaydi va o'tkazib yuborilmaydi.
+# Har bir javob Janob HR'ning haqiqiy AI scoring funksiyasi orqali baholanadi.
 _DEMO_QUESTIONS = [
     {
-        "key": "demo_experience",
+        "key": "demo_sales_experience",
+        "text": "Oldin sotuv sohasida ishlaganmisiz? (Ha/Yo'q)",
+        "locked": True,
+        "required": True,
+        "ai_score": True,
+    },
+    {
+        "key": "demo_sales_duration",
+        "text": "Qayerda va qancha muddat sotuv qilgansiz? Qisqacha yozing.",
+        "locked": True,
+        "required": True,
+        "ai_score": True,
+    },
+    {
+        "key": "demo_crm",
+        "text": "Qanday CRM tizimlarida ishlagansiz? (Bitrix24, amoCRM va h.k.)",
+        "locked": True,
+        "required": True,
+        "ai_score": True,
+    },
+    {
+        "key": "demo_scorecard_plan",
         "text": (
-            "Avval qisqacha tanishib olaylik. Sotuv bo'yicha qancha tajribangiz bor "
-            "va oxirgi marta nima sotgansiz?"
+            "Bizning kompaniya keyingi chorakda sotuvni kamida $20,000 ga oshirishi kerak. "
+            "Ishga kelganingizdan keyin birinchi 30 kun ichida bunga qanday hissa qo'shasiz? "
+            "Aniq rejangizni 3 ta qadamda yozing."
         ),
+        "locked": True,
+        "required": True,
+        "ai_score": True,
     },
     {
         "key": "demo_achievement",
         "text": (
-            "Oxirgi ish joyingizda sotuv bo'yicha eng yaxshi natijangiz qanday bo'lgan? "
-            "Iloji bo'lsa, aniq raqam yoki foiz bilan ayting."
+            "Oldingi ish joyingizda erishgan eng katta va aniq yutug'ingizni yozing "
+            "(iloji bo'lsa, raqamlar bilan)."
         ),
+        "locked": True,
+        "required": True,
+        "ai_score": True,
     },
     {
-        "key": "demo_objection",
-        "text": (
-            "Mijoz sizga: «Narxi qimmat ekan», dedi. Siz bunday e'tiroz bilan real ishda "
-            "qanday ishlagansiz? Bitta aniq misol ayting."
-        ),
-    },
-    {
-        "key": "demo_scorecard",
-        "text": (
-            "Tasavvur qiling: sizga oyiga 100 ta yangi lead beriladi va maqsad — kamida "
-            "25 ta sotuv. Shu natijaga erishish uchun birinchi haftada nimalar qilasiz?"
-        ),
-    },
-    {
-        "key": "demo_mistake",
-        "text": (
-            "Sotuvda qilgan eng jiddiy xatoyingiz nima bo'lgan? O'sha vaziyatda nima "
-            "qildingiz va undan nimani o'rgandingiz?"
-        ),
-    },
-    {
-        "key": "demo_stability",
-        "text": (
-            "Oxirgi 2–3 ish joyingizning har birida taxminan qancha vaqt ishlagansiz "
-            "va nima sababdan ketgansiz?"
-        ),
-    },
-    {
-        "key": "demo_reference_check",
-        "text": (
-            "So'nggi savol. Keyingi bosqichda oldingi rahbaringizga qo'ng'iroq qilishimiz "
-            "mumkin. Agar hozir undan siz haqingizda so'rasak, u sizni 10 balldan "
-            "nechchiga baholaydi va nima uchun?"
-        ),
+        "key": "demo_salary",
+        "text": "Kutayotgan oylik maoshingiz qancha? (taxminiy raqamda yozing)",
+        "locked": True,
+        "required": True,
+        "ai_score": True,
     },
 ]
 
@@ -181,8 +180,8 @@ async def begin_demo(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.answer(
         "💼 <b>Vakansiya: Sotuv menejeri</b>\n\n"
-        "Siz nomzodsiz. Janob HR esa sizni birinchi bosqichda saralaydi. "
-        "Savollarga odatdagidek, o'z so'zingiz bilan javob bering."
+        "Siz hozir nomzod sifatida 6 ta savoldan o'tasiz. Har bir javob Janob HR "
+        "tomonidan tahlil qilinadi."
     )
     await _ask_question(callback.message, state)
 
@@ -191,7 +190,7 @@ async def begin_demo(callback: CallbackQuery, state: FSMContext):
 async def demo_answer(message: Message, state: FSMContext):
     answer = (message.text or "").strip()
     if not answer:
-        await message.answer("Javobingizni qisqacha yozing.")
+        await message.answer("Bu savol majburiy. Javobingizni yozing.")
         return
     if len(answer) > MAX_ANSWER_CHARS:
         await message.answer("Javob juda uzun. Iltimos, qisqaroq yozing.")
@@ -208,6 +207,7 @@ async def demo_answer(message: Message, state: FSMContext):
     scores = dict(data.get("demo_ai_scores", {}))
     answers[item["key"]] = answer
 
+    # Demo ro'yxatidagi HAR BIR savol AI-scoringdan o'tadi.
     result = await score_answer(item["text"], answer)
     if isinstance(result, dict):
         scores[item["key"]] = result
@@ -222,4 +222,4 @@ async def demo_answer(message: Message, state: FSMContext):
 
 @router.message(DemoForm.answering)
 async def demo_wrong_type(message: Message):
-    await message.answer("Bu demoda javobni matn ko'rinishida yozing.")
+    await message.answer("Bu savol majburiy. Javobni matn ko'rinishida yozing.")

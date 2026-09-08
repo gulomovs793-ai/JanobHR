@@ -110,15 +110,10 @@ def _is_negative(value: object) -> bool:
 
 def _score_line(label: str, result: dict | None) -> str:
     if not isinstance(result, dict):
-        return f"• <b>{label}:</b> AI tahlili vaqtincha mavjud emas."
+        return f"<b>{label}</b>\n\nAI tahlili vaqtincha mavjud emas."
     score = int(result.get("score", 0))
-    izoh = _short(result.get("izoh") or "Izoh mavjud emas", 220)
-    evidence = _short(result.get("evidence") or "Dalil yetarli emas", 220)
-    return (
-        f"• <b>{label}: {score}/100</b>\n"
-        f"  {izoh}\n"
-        f"  <i>Dalil:</i> {evidence}"
-    )
+    izoh = _short(result.get("izoh") or "Izoh mavjud emas", 260)
+    return f"<b>{label} — {score}/100</b>\n\n{izoh}"
 
 
 def _interview_checks(aggregate: dict | None) -> list[str]:
@@ -163,16 +158,16 @@ async def _finish_demo(message: Message, state: FSMContext) -> None:
         elif score >= 75:
             recommendation = "🟢 <b>Suhbatga tavsiya qilinadi.</b>"
         elif score >= 55:
-            recommendation = "🟡 <b>Suhbatga chaqirish mumkin, lekin ayrim joylarni tekshirish kerak.</b>"
+            recommendation = "🟡 <b>Suhbatga chaqirish mumkin. Ayrim joylarni aniqlashtirish kerak.</b>"
         else:
             recommendation = "🔴 <b>Hozircha ehtiyotkorlik bilan yondashish kerak.</b>"
         score_intro = (
-            "Agar siz nomzod bo'lganingizda, Janob HR kompetensiya bo'yicha sizga "
+            "Agar siz nomzod bo'lganingizda, Janob HR sizga "
             f"<b>{score}/100</b> ball bergan bo'lardi."
         )
         metrics = (
             f"📈 Natijadorlik: <b>{aggregate['avg_natijadorlik']}</b>\n"
-            f"🧭 Mas'uliyat: <b>{aggregate['avg_masuliyat']}</b>\n"
+            f"🛠 Amaliylik: <b>{aggregate['avg_masuliyat']}</b>\n"
             f"🎯 Aniqlik: <b>{aggregate['avg_aniqlik']}</b>"
         )
     else:
@@ -212,25 +207,19 @@ async def _finish_demo(message: Message, state: FSMContext) -> None:
     result_text = (
         "📊 <b>Demo natijangiz tayyor</b>\n\n"
         f"{score_intro}\n\n"
-        "ℹ️ <i>1, 2, 3 va 6-savollar faktik ma'lumot. Ular to'g'ri qisqa javob uchun "
-        "AI ballni pasaytirmaydi. Yakuniy 0–100 ball 4- va 5-savoldagi kompetensiya "
-        "javoblari asosida hisoblanadi.</i>\n\n"
-        "👤 <b>Nomzod profili</b>\n"
-        f"Ism: <b>{escape(message.from_user.full_name)}</b>\n"
-        f"Sotuv tajribasi: {_short(answers.get('demo_sales_experience'))}\n"
-        f"Qayerda / qancha muddat: {_short(answers.get('demo_sales_duration'))}\n"
+        "👤 <b>Nomzod profili</b>\n\n"
+        f"Tajriba: {_short(answers.get('demo_sales_duration'))}\n"
         f"CRM: {_short(answers.get('demo_crm'))}\n"
         f"Kutilayotgan maosh: {_short(answers.get('demo_salary'))}\n\n"
-        "🧠 <b>AI kompetensiya tahlili</b>\n"
+        "🧠 <b>AI tahlili</b>\n\n"
         f"{_score_line('30 kunlik sotuv rejasi', plan_score)}\n\n"
-        f"{_score_line('Oldingi aniq yutuq', achievement_score)}"
+        f"{_score_line('Oldingi yutuq', achievement_score)}"
     )
     if metrics:
-        result_text += f"\n\n📐 <b>Umumiy mezonlar</b>\n{metrics}"
+        result_text += f"\n\n<b>Baholash</b>\n{metrics}"
     result_text += (
-        f"\n\n✅ <b>Kuchli tomon</b>\n{strength_text}"
-        f"\n\n⚠️ <b>Xavf / aniqlashtirish kerak</b>\n{risk_text}"
-        f"\n\n🔎 <b>Real suhbatda tekshiriladigan joylar</b>\n{checks_text}"
+        f"\n\n✅ <b>Kuchli tomon</b>\n\n{strength_text}"
+        f"\n\n⚠️ <b>Tekshirish kerak</b>\n\n{risk_text}"
         f"\n\n🏁 <b>Janob HR tavsiyasi</b>\n{recommendation}"
     )
     await message.answer(result_text)

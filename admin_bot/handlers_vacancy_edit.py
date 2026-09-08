@@ -31,7 +31,7 @@ def format_questions_preview(questions):
     lines = []
     for i, q in enumerate(questions[:12], 1):
         kind = "🔒" if q.get("hard_filter") else "🎙" if q.get("voice") else "🤖" if q.get("ai_score") else "💬"
-        text = q["text"][:180] + ("…" if len(q["text"]) > 180 else "")
+        text = str(q["text"]).strip()
         lines.append(f"{i}. {escape(text)} {kind}")
     if len(questions) > 12:
         lines.append(f"Yana {len(questions) - 12} ta savol bor.")

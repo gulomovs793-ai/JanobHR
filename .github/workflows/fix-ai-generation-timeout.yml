@@ -1,4 +1,4 @@
-name: Hotfix AI vacancy generation timeout
+name: Hotfix DeepSeek vacancy question generation
 
 on:
   push:
@@ -17,134 +17,104 @@ jobs:
         with:
           ref: multi-tenant
 
-      - name: Restore token-aware AI timeout and retry UX
+      - name: Fix DeepSeek V4 calls and resilient question JSON parsing
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          # 1) Keep fast hedged providers for short candidate scoring calls,
-          # but give long 2500-token vacancy generation enough time to finish.
           p = Path("services/ai_scoring.py")
           s = p.read_text(encoding="utf-8")
 
-          old_timeout = '''    timeout = aiohttp.ClientTimeout(total=8.0, connect=2.0, sock_read=7.5)
-              initial_budget = max(max_tokens, 384)
+          # DeepSeek V4 enables thinking mode by default. For Janob HR's short,
+          # structured JSON calls this can consume the max_tokens budget in
+          # reasoning_content and leave message.content empty/truncated. Force
+          # non-thinking mode so vacancy generation and scoring return the JSON
+          # payload directly and quickly.
+          anchor = '''                payload = {
+                      "model": model,
+                      "messages": [
+                          {"role": "system", "content": system_prompt},
+                          {"role": "user", "content": user_prompt},
+                      ],
+                      "temperature": 0,
+                      "max_tokens": token_budget,
+                  }
+                  async with session.post(
           '''
-          new_timeout = '''    # Short scoring calls must stay fast, while long structured generation
-              # (vacancy questions / translation) needs substantially more than 8 seconds.
-              # Historical production fix used ~90 output tokens/sec + a small buffer.
-              timeout_seconds = max(8.0, float(round(max_tokens / 90) + 5))
-              timeout = aiohttp.ClientTimeout(
-                  total=timeout_seconds,
-                  connect=2.0,
-                  sock_read=max(7.5, timeout_seconds - 0.5),
-              )
-              initial_budget = max(max_tokens, 384)
-          '''
-          if old_timeout in s:
-              s = s.replace(old_timeout, new_timeout, 1)
-          elif "timeout_seconds = max(8.0" not in s:
-              raise AssertionError("AI timeout anchor not found")
+          replacement = '''                payload = {
+                      "model": model,
+                      "messages": [
+                          {"role": "system", "content": system_prompt},
+                          {"role": "user", "content": user_prompt},
+                      ],
+                      "temperature": 0,
+                      "max_tokens": token_budget,
+                  }
+                  # DeepSeek V4 defaults to thinking=enabled. In this bot we need
+                  # deterministic structured output, not a long hidden reasoning pass.
+                  # Disabling thinking prevents the token budget from being consumed
+                  # before message.content is produced.
+                  if "deepseek" in base.lower() or str(model).lower().startswith("deepseek"):
+                      payload["thinking"] = {"type": "disabled"}
+                      payload["stream"] = False
 
-          old_timeout_log = '''            except asyncio.TimeoutError:
-                          logger.warning("AI provayder (%s) timeout bilan javob bermadi.", label)
-                          return None
-                      except Exception:
-                          logger.exception("AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi.", label)
-                          return None
+                  async with session.post(
           '''
-          new_timeout_log = '''            except asyncio.TimeoutError:
-                          logger.warning(
-                              "AI provayder (%s) timeout bilan javob bermadi "
-                              "(timeout=%ss, max_tokens=%s).",
-                              label,
-                              timeout_seconds,
-                              max_tokens,
-                          )
-                          return None
-                      except Exception:
-                          logger.exception(
-                              "AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi "
-                              "(timeout=%ss, max_tokens=%s).",
-                              label,
-                              timeout_seconds,
-                              max_tokens,
-                          )
-                          return None
+          if anchor in s:
+              s = s.replace(anchor, replacement, 1)
+          elif 'payload["thinking"] = {"type": "disabled"}' not in s:
+              raise AssertionError("DeepSeek payload anchor not found")
+
+          # Make question generation tolerant of harmless model formatting:
+          # markdown fences, explanatory text around the array, or a
+          # {"questions": [...]} wrapper. A valid generated list must not be
+          # discarded just because the provider wrapped it slightly differently.
+          old_parse = '''    try:
+                  content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
+                  parsed = json.loads(content)
+                  if not isinstance(parsed, list):
+                      raise TypeError("AI ro'yxat (list) qaytarishi kerak edi")
           '''
-          if old_timeout_log in s:
-              s = s.replace(old_timeout_log, new_timeout_log, 1)
-          elif "(timeout=%ss, max_tokens=%s)" not in s:
-              raise AssertionError("AI timeout log anchor not found")
+          new_parse = '''    try:
+                  content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
+                  try:
+                      parsed = json.loads(content)
+                  except json.JSONDecodeError:
+                      # Some OpenAI-compatible models add one short sentence before
+                      # or after the JSON despite the prompt. Recover the first full
+                      # array instead of treating the whole AI call as failed.
+                      start = content.find("[")
+                      end = content.rfind("]")
+                      if start < 0 or end <= start:
+                          raise
+                      parsed = json.loads(content[start : end + 1])
+
+                  if isinstance(parsed, dict) and isinstance(parsed.get("questions"), list):
+                      parsed = parsed["questions"]
+                  if not isinstance(parsed, list):
+                      raise TypeError("AI ro'yxat (list) qaytarishi kerak edi")
+          '''
+          if old_parse in s:
+              s = s.replace(old_parse, new_parse, 1)
+          elif 'isinstance(parsed, dict) and isinstance(parsed.get("questions"), list)' not in s:
+              raise AssertionError("Question JSON parser anchor not found")
 
           p.write_text(s, encoding="utf-8")
-
-          # 2) If every provider really is unavailable, do not trap the admin in
-          # manual mode. Keep the vacancy data/state and offer retry or manual entry.
-          p = Path("admin_bot/handlers_vacancy_edit.py")
-          s = p.read_text(encoding="utf-8")
-
-          old_failure = '''    if not questions:
-                  await wait_msg.edit_text(
-                      "⚠️ AI hozircha savol tuza olmadi (barcha provayderlar band yoki xato berdi). "
-                      "Savollarni qo'lda kiritamiz.\\n\\n" + MANUAL_FORMAT_HELP
-                  )
-                  await state.set_state(AdminForm.entering_manual_questions)
-                  return
-          '''
-          new_failure = '''    if not questions:
-                  builder = InlineKeyboardBuilder()
-                  builder.button(text="🔄 Qayta urinish", callback_data="vacgen:retry")
-                  builder.button(text="✍️ O'zim yozaman", callback_data="vacgen:manual")
-                  builder.adjust(1)
-                  await wait_msg.edit_text(
-                      "⚠️ AI hozircha savol tuza olmadi. Qayta urinib ko'rishingiz yoki "
-                      "savollarni o'zingiz yozishingiz mumkin:",
-                      reply_markup=builder.as_markup(),
-                  )
-                  return
-          '''
-          if old_failure in s:
-              s = s.replace(old_failure, new_failure, 1)
-          elif 'callback_data="vacgen:retry"' not in s:
-              raise AssertionError("Vacancy failure UX anchor not found")
-
-          if '@router.callback_query(F.data == "vacgen:retry")' not in s:
-              anchor = '''\n\nasync def _show_review(message: Message, questions: list[dict]):\n'''
-              callbacks = '''\n\n@router.callback_query(F.data == "vacgen:retry")
-          async def retry_generation(callback: CallbackQuery, state: FSMContext):
-              await callback.answer("Qayta urinilmoqda...")
-              await _generate_and_show(callback.message, state)
-
-
-          @router.callback_query(F.data == "vacgen:manual")
-          async def switch_to_manual_after_failure(callback: CallbackQuery, state: FSMContext):
-              await callback.message.edit_text(
-                  "✍️ Savollarni o'zingiz kiriting.\\n\\n" + MANUAL_FORMAT_HELP
-              )
-              await state.set_state(AdminForm.entering_manual_questions)
-              await callback.answer()
-          '''
-              if anchor not in s:
-                  raise AssertionError("Review handler anchor not found")
-              s = s.replace(anchor, callbacks + anchor, 1)
-
-          p.write_text(s, encoding="utf-8")
-
-          print("AI vacancy generation timeout hotfix applied")
+          print("DeepSeek vacancy generation hotfix applied")
           PY
 
       - name: Verify patch
         run: |
           python -m py_compile services/ai_scoring.py admin_bot/handlers_vacancy_edit.py
-          grep -q 'timeout_seconds = max(8.0' services/ai_scoring.py
-          grep -q 'vacgen:retry' admin_bot/handlers_vacancy_edit.py
+          grep -q 'payload\["thinking"\] = {"type": "disabled"}' services/ai_scoring.py
+          grep -q 'parsed.get("questions")' services/ai_scoring.py
+          grep -q 'callback_data="vacgen:retry"' admin_bot/handlers_vacancy_edit.py
 
       - name: Commit production fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add services/ai_scoring.py admin_bot/handlers_vacancy_edit.py
-          git commit -m "Fix AI vacancy generation timeout" || exit 0
+          git add services/ai_scoring.py
+          git commit -m "Fix DeepSeek AI vacancy question generation" || exit 0
           git push origin HEAD:multi-tenant

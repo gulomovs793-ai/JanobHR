@@ -119,7 +119,7 @@
       const salary = item.salary ? `${fmt(item.salary.amount)} ${esc(item.salary.currency)}` : 'Ko‘rsatilmagan';
       return `<article class="jh2-candidate-card" data-candidate="${item.id}">
         <span class="jh2-rank">${item.rank}-o‘rin</span><h3>${esc(item.full_name)}</h3><div class="jh2-big-score">${item.score==null?'—':esc(item.score)+'/100'}</div>
-        <div class="jh2-metrics"><span><b>${metrics.natijadorlik??'—'}</b>Natija</span><span><b>${metrics.masuliyat??'—'}</b>Mas’uliyat</span><span><b>${metrics.aniqlik??'—'}</b>Aniqlik</span></div>
+        <div class="jh2-metrics"><span><b>${metrics.natijadorlik??'—'}</b>Natija</span><span><b>${metrics.masuliyat??'—'}</b>Amaliylik</span><span><b>${metrics.aniqlik??'—'}</b>Aniqlik</span></div>
         <p class="jh2-strength"><b>Kuchli tomoni:</b> ${esc(item.strength?.summary||'—')}</p><p class="jh2-strength"><b>Kutilayotgan maosh:</b> ${salary}</p>${risks}
       </article>`;
     }).join('');
@@ -198,9 +198,12 @@
     detailEnhancing = true;
     try {
       const c = await api(`/candidates/${id}`);
-      const evidence = Object.values(c.ai_scores || {}).filter(x=>x && (x.evidence || x.dalil)).map(x=>`<div class="jh2-evidence"><b>AI bahosining dalili</b><p>${esc(x.evidence||x.dalil)}</p><small>${esc(x.izoh||'')} ${x.score!=null?'· '+esc(x.score)+'/100':''}</small></div>`).join('');
+      const a = c.analysis || {};
+      const insights = (a.insights || []).map(item => `<div class="jh2-evidence"><b>${esc(item.title)} · ${item.score==null?'—':esc(item.score)+'/100'}</b><p>${esc(item.summary||'')}</p></div>`).join('');
+      const metrics = a.metrics ? `<div class="jh2-metrics"><span><b>${esc(a.metrics.natijadorlik)}</b>Natijadorlik</span><span><b>${esc(a.metrics.amaliylik)}</b>Amaliylik</span><span><b>${esc(a.metrics.aniqlik)}</b>Aniqlik</span></div>` : '';
       const risks = (c.risk_signals || []).map(r=>`<span class="jh2-risk">${esc(r.label)}</span>`).join('');
-      if (evidence || risks) root.querySelector('.detail-card')?.insertAdjacentHTML('beforeend', `<section class="jh2-insights"><h3>Nega bunday baholandi?</h3>${evidence}${risks?`<div>${risks}</div>`:''}</section>`);
+      const html = `<section class="jh2-insights"><h3>Janob HR tahlili</h3>${insights}${metrics}<div class="jh2-evidence"><b>✅ Kuchli tomon</b><p>${esc(a.strength||'Javoblarni ko‘rib chiqing.')}</p></div><div class="jh2-evidence"><b>⚠️ Tekshirish kerak</b><p>${esc(a.risk||'Jiddiy xavf signali aniqlanmadi.')}</p>${risks?`<div>${risks}</div>`:''}</div><div class="jh2-recommend"><b>🏁 Janob HR tavsiyasi</b><br>${esc(a.recommendation||'AI xulosasi mavjud emas.')}</div></section>`;
+      root.querySelector('.detail-card')?.insertAdjacentHTML('beforeend', html);
     } catch {} finally { detailEnhancing = false; }
   }
 

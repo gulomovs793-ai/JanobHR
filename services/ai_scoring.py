@@ -2,7 +2,7 @@
 Janob HR Bot — AI orqali "A-Player" tahlili.
 
 Oddiy 0-100 baholashdan farqli o'laroq, bu modul nomzod javobini haqiqiy HR
-direktor kabi 3 mezon bo'yicha (Natijadorlik, Mas'uliyat, Aniqlik) baholaydi,
+direktor kabi 3 mezon bo'yicha (Natijadorlik, Amaliylik, Aniqlik) baholaydi,
 "qizil bayroqlarni" (qurbon sindromi, abstrakt javob, "Men/Biz" nomutanosibligi)
 aniqlaydi va 🟢/🟡/🔴 yakuniy verdikt chiqaradi.
 
@@ -194,7 +194,8 @@ class ScoreResult(TypedDict):
     score: int  # 0-100, uchala mezonning o'rtachasi
     verdict: str  # "yashil" | "sariq" | "qizil"
     natijadorlik: int
-    masuliyat: int
+    amaliylik: int
+    masuliyat: int  # legacy alias; mazmuni Amaliylik
     aniqlik: int
     relevant: bool  # javob savolga/kasbga umuman aloqadormi
     red_flags: list[str]
@@ -213,9 +214,13 @@ Qisqa lekin mazmunan to'g'ri javoblarni "relevant": false qilib belgilama — fa
 ham aloqasiz/bema'ni bo'lsa shunday qil.
 
 Javob relevant bo'lsa, uni 3 ta qat'iy mezon bo'yicha 0 dan 100 gacha bahola:
-1. natijadorlik — Matnda aniq raqamlar, foizlar, muddatlar bormi, yoki faqat quruq umumiy gaplarmi?
-2. masuliyat — Muammo haqida gapirganda, nomzod boshqalarni/vaziyatni ayblaydimi ("Biz",
-   "Bozor yomon edi", "Rahbarim ahmoq edi"), yoki o'z harakatiga mas'uliyat oladimi ("Men qildim")?
+1. natijadorlik — Javob natijaga yo'naltirilganmi? Savol natija/yutuq haqida bo'lsa raqam,
+   foiz, muddat va o'lchanadigan natijani qidir. Savol reja yoki vaziyat haqida bo'lsa,
+   muvaffaqiyatni qanday o'lchashi va natijaga olib boradigan mezonlarni bahola. Savolning
+   o'zi raqam talab qilmasa, raqam yo'qligi uchungina ballni sun'iy pasaytirma.
+2. amaliylik — Javob real ishda bajariladigan aniq harakat, ketma-ket qadam, vosita yoki
+   shaxsiy hissa bilan ochilganmi? Quruq nazariya va umumiy gapga past, real vaziyatda
+   bajarish mumkin bo'lgan yondashuvga yuqori ball ber.
 3. aniqlik — Savolga to'g'ridan-to'g'ri va tushunarli javob berdimi, yoki chalg'itib,
    umumiy gapirdimi?
 
@@ -257,7 +262,7 @@ Uchala mezon o'rtachasi asosida yakuniy "verdict" tanla:
 - "qizil" — o'rtacha ball 50 dan past, relevant=false, yoki jiddiy bayroq(lar) bor
 
 FAQAT quyidagi JSON formatida javob ber, boshqa hech qanday matn, izoh yoki markdown yozma:
-{"relevant": <true yoki false>, "natijadorlik": <son>, "masuliyat": <son>, "aniqlik": <son>, \
+{"relevant": <true yoki false>, "natijadorlik": <son>, "amaliylik": <son>, "aniqlik": <son>, \
 "verdict": "<yashil|sariq|qizil>", "red_flags": [<satrlar ro'yxati>], \
 "izoh": "<15 so'zdan oshmagan, o'zbek tilida qisqa xulosa>", \
 "evidence": "<nomzod javobidagi 25 so'zgacha aniq dalil>"}
@@ -279,9 +284,14 @@ async def score_answer(question: str, answer: str) -> ScoreResult | None:
         relevant = bool(parsed.get("relevant", True))
 
         natijadorlik = max(0, min(100, int(parsed.get("natijadorlik", 0))))
-        masuliyat = max(0, min(100, int(parsed.get("masuliyat", 0))))
+        amaliylik = max(
+            0,
+            min(100, int(parsed.get("amaliylik", parsed.get("masuliyat", 0)))),
+        )
+        # Eski yozuvlar va integratsiyalar buzilmasligi uchun legacy alias ham saqlanadi.
+        masuliyat = amaliylik
         aniqlik = max(0, min(100, int(parsed.get("aniqlik", 0))))
-        avg = round((natijadorlik + masuliyat + aniqlik) / 3)
+        avg = round((natijadorlik + amaliylik + aniqlik) / 3)
 
         verdict = str(parsed.get("verdict", "")).strip().lower()
         if verdict not in ("yashil", "sariq", "qizil"):
@@ -301,6 +311,7 @@ async def score_answer(question: str, answer: str) -> ScoreResult | None:
             score=avg,
             verdict=verdict,
             natijadorlik=natijadorlik,
+            amaliylik=amaliylik,
             masuliyat=masuliyat,
             aniqlik=aniqlik,
             relevant=relevant,
@@ -644,7 +655,8 @@ class AggregateResult(TypedDict):
     verdict: str  # "yashil" | "sariq" | "qizil"
     red_flags: list[str]
     avg_natijadorlik: int
-    avg_masuliyat: int
+    avg_amaliylik: int
+    avg_masuliyat: int  # legacy alias
     avg_aniqlik: int
 
 
@@ -660,7 +672,10 @@ def aggregate_scores(ai_scores: dict) -> AggregateResult | None:
 
     avg_score = round(sum(v["score"] for v in valid) / len(valid))
     avg_natijadorlik = round(sum(v.get("natijadorlik", 0) for v in valid) / len(valid))
-    avg_masuliyat = round(sum(v.get("masuliyat", 0) for v in valid) / len(valid))
+    avg_amaliylik = round(
+        sum(v.get("amaliylik", v.get("masuliyat", 0)) for v in valid) / len(valid)
+    )
+    avg_masuliyat = avg_amaliylik
     avg_aniqlik = round(sum(v.get("aniqlik", 0) for v in valid) / len(valid))
 
     all_flags: list[str] = []
@@ -669,8 +684,9 @@ def aggregate_scores(ai_scores: dict) -> AggregateResult | None:
             if flag not in all_flags:
                 all_flags.append(flag)
 
-    has_qizil = any(v.get("verdict") == "qizil" for v in valid)
-    if has_qizil or avg_score < 50:
+    # Bitta zaif savol butun nomzodni avtomatik qizilga tushirmaydi.
+    # Bayroqlar signal bo'lib qoladi; umumiy hukm kompetensiya o'rtachasiga tayanadi.
+    if avg_score < 50:
         verdict = "qizil"
     elif all_flags or avg_score < 75:
         verdict = "sariq"
@@ -682,6 +698,7 @@ def aggregate_scores(ai_scores: dict) -> AggregateResult | None:
         verdict=verdict,
         red_flags=all_flags,
         avg_natijadorlik=avg_natijadorlik,
+        avg_amaliylik=avg_amaliylik,
         avg_masuliyat=avg_masuliyat,
         avg_aniqlik=avg_aniqlik,
     )

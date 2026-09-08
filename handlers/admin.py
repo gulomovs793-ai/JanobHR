@@ -44,55 +44,172 @@ _RED_FLAG_LABELS = {
 _MAX_TEXT_LENGTH = 3800
 
 
-def format_candidate_card(app: dict, *, show_risks: bool = True) -> str:
+def _short(value: object, limit: int = 220) -> str:
+    text = str(value or "—").strip() or "—"
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _question_title(value: object, limit: int = 76) -> str:
+    text = " ".join(str(value or "Savol").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def build_candidate_analysis(
+    app: dict,
+    vacancy: dict | None = None,
+    *,
+    show_risks: bool = True,
+) -> dict:
+    """Admin bot va Mini App uchun bitta mantiqdagi qisqa HR xulosasi."""
     ai_scores = app.get("ai_scores") or {}
     aggregate = aggregate_scores(ai_scores)
     unavailable_keys = get_ai_unavailable_keys(ai_scores)
+
+    question_map: dict[str, str] = {}
+    if vacancy:
+        try:
+            question_map = {
+                q["key"]: q["text"]
+                for q in build_questions(vacancy, app.get("lang") or "uz")
+            }
+        except Exception:
+            logger.exception("Tahlil uchun vakansiya savollarini o'qib bo'lmadi")
+
     scored = [
-        value
-        for value in ai_scores.values()
+        (key, value)
+        for key, value in ai_scores.items()
         if isinstance(value, dict) and isinstance(value.get("score"), (int, float))
     ]
-    strongest = max(scored, key=lambda value: value["score"], default=None)
-    weakest = min(scored, key=lambda value: value["score"], default=None)
-    strength = (strongest or {}).get("evidence") or (strongest or {}).get("izoh") or "Javoblarini to'liq ko'rib chiqing."
-    risk = "Risk signallari GROWTH tarifida mavjud."
-    if show_risks:
-        risk = "Aniq xavf aniqlanmadi."
-        if aggregate and aggregate.get("red_flags"):
-            risk = _RED_FLAG_LABELS.get(
-                aggregate["red_flags"][0], aggregate["red_flags"][0]
-            )
-        elif weakest and weakest.get("score", 100) < 70:
-            risk = weakest.get("izoh") or "Ayrim javoblari yetarlicha aniq emas."
+    strongest = max(scored, key=lambda item: item[1]["score"], default=None)
+    weakest = min(scored, key=lambda item: item[1]["score"], default=None)
 
-    if unavailable_keys:
-        ai_note = f"⚠️ AI tahlili {len(unavailable_keys)} ta savolda ishlamadi."
-        risk = f"{ai_note} {risk}"
-        if aggregate:
-            score = f"{aggregate['avg_score']}/100 ⚠️ qisman"
-        else:
-            score = "⚠️ AI ishlamadi"
-            strength = "AI tahlili mavjud emas — javoblarni qo'lda ko'ring."
+    selected = []
+    if weakest:
+        selected.append(weakest)
+    if strongest and (not weakest or strongest[0] != weakest[0]):
+        selected.append(strongest)
+    insights = [
+        {
+            "key": key,
+            "title": _question_title(question_map.get(key) or key.replace("_", " ")),
+            "score": int(result.get("score", 0)),
+            "summary": _short(result.get("izoh") or "AI izohi mavjud emas.", 260),
+        }
+        for key, result in selected
+    ]
+
+    strength = "Javoblarini to'liq ko'rib chiqing."
+    if strongest:
+        strength = _short(
+            strongest[1].get("evidence") or strongest[1].get("izoh") or strength,
+            300,
+        )
+
+    if not show_risks:
+        risk = "Risk signallari GROWTH tarifida mavjud."
+    elif aggregate and aggregate.get("red_flags"):
+        labels = [
+            _RED_FLAG_LABELS.get(flag, str(flag).replace("_", " "))
+            for flag in aggregate["red_flags"][:2]
+        ]
+        risk = "; ".join(labels)
+    elif weakest and int(weakest[1].get("score", 100)) < 70:
+        risk = _short(weakest[1].get("izoh") or "Ayrim javoblarni aniqlashtirish kerak.", 300)
     else:
-        score = f"{aggregate['avg_score']}/100" if aggregate else "Baholanmagan"
-    return (
-        f"👤 <b>{escape(str(app['full_name']))}</b>\n"
-        f"💼 {escape(str(app['vacancy_title']))}\n"
-        f"🎯 Moslik: <b>{score}</b>\n"
-        f"📱 <code>{escape(str(app.get('phone_number') or '—'))}</code>\n\n"
-        f"<b>Kuchli tomoni:</b> {escape(str(strength))}\n"
-        f"<b>Xavf:</b> {escape(str(risk))}"
+        risk = "Jiddiy xavf signali aniqlanmadi."
+
+    if aggregate:
+        score = int(aggregate["avg_score"])
+        if score >= 75:
+            recommendation = "🟢 Suhbatga tavsiya qilinadi."
+        elif score >= 55:
+            recommendation = "🟡 Suhbatga chaqirish mumkin. Ayrim joylarni aniqlashtirish kerak."
+        else:
+            recommendation = "🔴 Hozircha ehtiyotkorlik bilan yondashish kerak."
+        metrics = {
+            "natijadorlik": int(aggregate["avg_natijadorlik"]),
+            "amaliylik": int(aggregate.get("avg_amaliylik", aggregate["avg_masuliyat"])),
+            "aniqlik": int(aggregate["avg_aniqlik"]),
+        }
+    else:
+        score = None
+        metrics = None
+        recommendation = "⚪ AI tahlili vaqtincha to'liq chiqmagan."
+        strength = "AI tahlili mavjud emas — javoblarni qo'lda ko'ring."
+        if show_risks:
+            risk = "AI tahlili mavjud emas — xavfni qo'lda tekshiring."
+
+    return {
+        "score": score,
+        "metrics": metrics,
+        "insights": insights,
+        "strength": strength,
+        "risk": risk,
+        "recommendation": recommendation,
+        "partial_ai": bool(unavailable_keys),
+        "missing_ai_count": len(unavailable_keys),
+    }
+
+
+def format_candidate_card(
+    app: dict,
+    *,
+    vacancy: dict | None = None,
+    show_risks: bool = True,
+) -> str:
+    analysis = build_candidate_analysis(app, vacancy, show_risks=show_risks)
+    score_text = (
+        f"<b>{analysis['score']}/100</b>"
+        if analysis["score"] is not None
+        else "<b>Baholanmagan</b>"
     )
+    lines = [
+        "📊 <b>Nomzod tahlili</b>",
+        "",
+        f"Janob HR bahosi: {score_text}",
+        "",
+        "👤 <b>Nomzod profili</b>",
+        f"Ism: <b>{escape(str(app['full_name']))}</b>",
+        f"Vakansiya: {escape(str(app['vacancy_title']))}",
+        f"Telefon: <code>{escape(str(app.get('phone_number') or '—'))}</code>",
+    ]
+    if analysis["insights"]:
+        lines += ["", "🧠 <b>AI tahlili</b>"]
+        for item in analysis["insights"]:
+            lines += [
+                "",
+                f"<b>{escape(item['title'])} — {item['score']}/100</b>",
+                escape(item["summary"]),
+            ]
+    if analysis["metrics"]:
+        m = analysis["metrics"]
+        lines += [
+            "",
+            "<b>Baholash</b>",
+            f"📈 Natijadorlik: <b>{m['natijadorlik']}</b>",
+            f"🛠 Amaliylik: <b>{m['amaliylik']}</b>",
+            f"🎯 Aniqlik: <b>{m['aniqlik']}</b>",
+        ]
+    lines += [
+        "",
+        "✅ <b>Kuchli tomon</b>",
+        escape(analysis["strength"]),
+        "",
+        "⚠️ <b>Tekshirish kerak</b>",
+        escape(analysis["risk"]),
+        "",
+        "🏁 <b>Janob HR tavsiyasi</b>",
+        escape(analysis["recommendation"]),
+    ]
+    if analysis["partial_ai"]:
+        lines += ["", f"⚠️ AI tahlili {analysis['missing_ai_count']} ta savolda ishlamadi."]
+    return "\n".join(lines)
 
 
 async def format_application_full_text(app: dict) -> str:
     lines = [
         f"🆕 <b>Yangi anketa</b> — {escape(str(app['vacancy_title']))}",
-        (
-            f"👤 {escape(str(app['full_name']))} "
-            f"(@{escape(str(app['username'] or '—'))}, id: {app['user_id']})"
-        ),
+        f"👤 <b>{escape(str(app['full_name']))}</b>",
     ]
     if app.get("phone_number"):
         lines.append(f"📞 {escape(str(app['phone_number']))}")
@@ -108,7 +225,16 @@ async def format_application_full_text(app: dict) -> str:
         usage["plan"].code, FEATURE_RISK_SIGNALS
     )
 
+    vacancy = await database.get_vacancy(tenant_id, app["vacancy_key"])
+    question_texts = (
+        {q["key"]: q["text"] for q in build_questions(vacancy, app.get("lang") or "uz")}
+        if vacancy
+        else {}
+    )
+
     for key, value in app["answers"].items():
+        if question_texts.get(key):
+            lines.append(f"❓ <b>{escape(_short(question_texts[key], 350))}</b>")
         text = escape(str(value))
         if len(text) > 500:
             text = text[:500] + "…"
@@ -128,7 +254,6 @@ async def format_application_full_text(app: dict) -> str:
 
     aggregate = aggregate_scores(ai_scores)
 
-    vacancy = await database.get_vacancy(tenant_id, app["vacancy_key"])
     expected_keys = (
         [q["key"] for q in build_questions(vacancy) if q.get("ai_score")]
         if vacancy
@@ -164,7 +289,7 @@ async def format_application_full_text(app: dict) -> str:
             )
         lines.append(
             f"📊 Natijadorlik: {aggregate['avg_natijadorlik']} | "
-            f"Mas'uliyat: {aggregate['avg_masuliyat']} | "
+            f"Amaliylik: {aggregate.get('avg_amaliylik', aggregate['avg_masuliyat'])} | "
             f"Aniqlik: {aggregate['avg_aniqlik']}"
         )
 
@@ -173,6 +298,12 @@ async def format_application_full_text(app: dict) -> str:
             lines.append("🚩 Bayroqlar: " + "; ".join(flag_labels))
         elif aggregate["red_flags"]:
             lines.append("🔒 Red flag tahlili GROWTH tarifidan boshlab ochiladi.")
+
+    analysis = build_candidate_analysis(app, vacancy, show_risks=show_risks)
+    lines.append("")
+    lines.append(f"✅ <b>Kuchli tomon:</b> {escape(analysis['strength'])}")
+    lines.append(f"⚠️ <b>Tekshirish kerak:</b> {escape(analysis['risk'])}")
+    lines.append(f"🏁 <b>Janob HR tavsiyasi:</b> {escape(analysis['recommendation'])}")
 
     suspect_keys = app.get("ai_suspect_flags") or []
     if suspect_keys and vacancy and show_risks:
@@ -228,8 +359,10 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
         return
 
     usage = await database.get_subscription_usage(tenant_id)
+    vacancy = await database.get_vacancy(tenant_id, app["vacancy_key"])
     text = format_candidate_card(
         app,
+        vacancy=vacancy,
         show_risks=not usage["expired"]
         and has_feature(usage["plan"].code, FEATURE_RISK_SIGNALS),
     )
@@ -245,7 +378,6 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
     voice_answers = app.get("voice_answers") or {}
     voice_key_to_text: dict = {}
     if voice_answers:
-        vacancy = await database.get_vacancy(tenant_id, app["vacancy_key"])
         if vacancy:
             voice_key_to_text = {q["key"]: q["text"] for q in build_questions(vacancy)}
 

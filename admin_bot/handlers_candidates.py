@@ -128,8 +128,10 @@ async def view_candidate(callback: CallbackQuery, tenant_id: int):
         await callback.answer("Nomzod topilmadi.", show_alert=True)
         return
     usage = await database.get_subscription_usage(tenant_id)
+    vacancy = await database.get_vacancy(tenant_id, app["vacancy_key"])
     text = format_candidate_card(
         app,
+        vacancy=vacancy,
         show_risks=not usage["expired"]
         and has_feature(usage["plan"].code, FEATURE_RISK_SIGNALS),
     )

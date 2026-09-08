@@ -25,6 +25,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 
 from config import PAYMENT_CARD_HOLDER, PAYMENT_CARD_NUMBER, WEBHOOK_BASE_URL
+from handlers.admin import build_candidate_analysis
 from handlers.sell import send_slot_offer
 from i18n import DEFAULT_LANG, t
 from services import database
@@ -168,7 +169,6 @@ def _candidate_summary(app: dict) -> dict:
     return {
         "id": app["id"],
         "full_name": app["full_name"],
-        "username": app.get("username"),
         "phone_number": app.get("phone_number"),
         "vacancy_key": app["vacancy_key"],
         "vacancy_title": app["vacancy_title"],
@@ -434,18 +434,16 @@ async def candidate_detail(request: web.Request):
         raise web.HTTPNotFound(text="Nomzod topilmadi.")
     result = _candidate_summary(app)
     vacancy = await database.get_vacancy(tenant["id"], app["vacancy_key"])
+    show_risks = await _feature_enabled_for_tenant(tenant["id"], FEATURE_RISK_SIGNALS)
     result.update(
         {
             "answers": app.get("answers") or {},
             "ai_scores": app.get("ai_scores") or {},
+            "analysis": build_candidate_analysis(app, vacancy, show_risks=show_risks),
             "suspect_flags": app.get("ai_suspect_flags") or [],
             "has_resume": bool(app.get("resume_file_id")),
             "has_voice": bool(app.get("voice_answers")),
-            "risk_signals": (
-                candidate_risks(app, vacancy)
-                if await _feature_enabled_for_tenant(tenant["id"], FEATURE_RISK_SIGNALS)
-                else []
-            ),
+            "risk_signals": candidate_risks(app, vacancy) if show_risks else [],
         }
     )
     return web.json_response(result)
@@ -661,7 +659,7 @@ async def quick_setup(request: web.Request):
     description = (
         f"Biznes sohasi: {industry}. Ideal xodim: {ideal}. "
         + (f"Oylik budjeti {salary_budget:,} so'mgacha. " if salary_budget else "")
-        + "Savollar real amaliy tajriba, natijadorlik, barqarorlik va mas'uliyatni ajratsin."
+        + "Savollar real amaliy tajriba, natijadorlik, barqarorlik va amaliylikni ajratsin."
     )
     questions = await generate_questions(role, description, count=question_count)
     if not questions:

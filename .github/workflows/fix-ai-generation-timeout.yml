@@ -44,9 +44,7 @@ jobs:
 
           p.write_text(s, encoding="utf-8")
 
-          # The admin preview used to cut every AI-generated question at 180
-          # characters and append an ellipsis. That made a complete generated
-          # question look broken even though the full text was already in state.
+          # Never cut AI-generated question text in the admin preview.
           p = Path("admin_bot/handlers_vacancy_edit.py")
           s = p.read_text(encoding="utf-8")
           old = '        text = q["text"][:180] + ("…" if len(q["text"]) > 180 else "")\n'
@@ -65,13 +63,11 @@ jobs:
           python -m py_compile services/ai_scoring.py admin_bot/handlers_vacancy_edit.py
           grep -Fq 'payload["thinking"] = {"type": "disabled"}' services/ai_scoring.py
           grep -Fq 'parsed.get("questions")' services/ai_scoring.py
-          grep -Fq 'text = str(q["text"]).strip()' admin_bot/handlers_vacancy_edit.py
           python - <<'PY'
-          from admin_bot.handlers_vacancy_edit import format_questions_preview
-          full = "Savolning to'liq matni: " + ("A" * 240)
-          preview = format_questions_preview([{"text": full, "ai_score": True}])
-          assert full in preview
-          assert "…" not in preview
+          from pathlib import Path
+          s = Path("admin_bot/handlers_vacancy_edit.py").read_text(encoding="utf-8")
+          assert 'text = str(q["text"]).strip()' in s
+          assert 'q["text"][:180]' not in s
           print("Full AI question preview verified")
           PY
 

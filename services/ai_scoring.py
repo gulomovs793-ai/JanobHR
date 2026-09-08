@@ -80,6 +80,12 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str
                     "temperature": 0,
                     "max_tokens": token_budget,
                 }
+                # DeepSeek V4 defaults to thinking mode. For structured HR JSON
+                # we need the final answer directly and quickly.
+                if "deepseek" in base.lower() or str(model).lower().startswith("deepseek"):
+                    payload["thinking"] = {"type": "disabled"}
+                    payload["stream"] = False
+
                 async with session.post(
                     f"{base.rstrip('/')}/chat/completions",
                     json=payload,
@@ -402,7 +408,17 @@ async def generate_questions(
 
     try:
         content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
-        parsed = json.loads(content)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            start = content.find("[")
+            end = content.rfind("]")
+            if start < 0 or end <= start:
+                raise
+            parsed = json.loads(content[start : end + 1])
+
+        if isinstance(parsed, dict) and isinstance(parsed.get("questions"), list):
+            parsed = parsed["questions"]
         if not isinstance(parsed, list):
             raise TypeError("AI ro'yxat (list) qaytarishi kerak edi")
 

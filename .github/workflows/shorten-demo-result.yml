@@ -1,0 +1,75 @@
+name: Shorten demo result card
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/shorten-demo-result.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+          fetch-depth: 20
+
+      - name: Patch demo result output
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('handlers/demo.py')
+          s = p.read_text(encoding='utf-8')
+
+          old = '''def _score_line(label: str, result: dict | None) -> str:\n    if not isinstance(result, dict):\n        return f"• <b>{label}:</b> AI tahlili vaqtincha mavjud emas."\n    score = int(result.get("score", 0))\n    izoh = _short(result.get("izoh") or "Izoh mavjud emas", 220)\n    evidence = _short(result.get("evidence") or "Dalil yetarli emas", 220)\n    return (\n        f"• <b>{label}: {score}/100</b>\\n"\n        f"  {izoh}\\n"\n        f"  <i>Dalil:</i> {evidence}"\n    )\n'''
+          new = '''def _score_line(label: str, result: dict | None) -> str:\n    if not isinstance(result, dict):\n        return f"<b>{label}</b>\\n\\nAI tahlili vaqtincha mavjud emas."\n    score = int(result.get("score", 0))\n    izoh = _short(result.get("izoh") or "Izoh mavjud emas", 260)\n    return f"<b>{label} — {score}/100</b>\\n\\n{izoh}"\n'''
+          if old not in s:
+              raise AssertionError('score helper block not found')
+          s = s.replace(old, new, 1)
+
+          s = s.replace(
+              'recommendation = "🟡 <b>Suhbatga chaqirish mumkin, lekin ayrim joylarni tekshirish kerak.</b>"',
+              'recommendation = "🟡 <b>Suhbatga chaqirish mumkin. Ayrim joylarni aniqlashtirish kerak.</b>"',
+              1,
+          )
+          s = s.replace(
+              '"Agar siz nomzod bo\'lganingizda, Janob HR kompetensiya bo\'yicha sizga "',
+              '"Agar siz nomzod bo\'lganingizda, Janob HR sizga "',
+              1,
+          )
+          s = s.replace(
+              'f"🧭 Mas\'uliyat: <b>{aggregate[\'avg_masuliyat\']}</b>\\n"',
+              'f"🛠 Amaliylik: <b>{aggregate[\'avg_masuliyat\']}</b>\\n"',
+              1,
+          )
+
+          start = s.index('    result_text = (\n        "📊 <b>Demo natijangiz tayyor</b>')
+          end = s.index('    await message.answer(result_text)', start)
+          replacement = '''    result_text = (\n        "📊 <b>Demo natijangiz tayyor</b>\\n\\n"\n        f"{score_intro}\\n\\n"\n        "👤 <b>Nomzod profili</b>\\n\\n"\n        f"Tajriba: {_short(answers.get('demo_sales_duration'))}\\n"\n        f"CRM: {_short(answers.get('demo_crm'))}\\n"\n        f"Kutilayotgan maosh: {_short(answers.get('demo_salary'))}\\n\\n"\n        "🧠 <b>AI tahlili</b>\\n\\n"\n        f"{_score_line('30 kunlik sotuv rejasi', plan_score)}\\n\\n"\n        f"{_score_line('Oldingi yutuq', achievement_score)}"\n    )\n    if metrics:\n        result_text += f"\\n\\n<b>Baholash</b>\\n{metrics}"\n    result_text += (\n        f"\\n\\n✅ <b>Kuchli tomon</b>\\n\\n{strength_text}"\n        f"\\n\\n⚠️ <b>Tekshirish kerak</b>\\n\\n{risk_text}"\n        f"\\n\\n🏁 <b>Janob HR tavsiyasi</b>\\n{recommendation}"\n    )\n'''
+          s = s[:start] + replacement + s[end:]
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Verify
+        run: |
+          python -m py_compile handlers/demo.py
+          grep -Fq '🛠 Amaliylik' handlers/demo.py
+          grep -Fq '<b>Baholash</b>' handlers/demo.py
+          grep -Fq '⚠️ <b>Tekshirish kerak</b>' handlers/demo.py
+          ! grep -Fq '1, 2, 3 va 6-savollar faktik' handlers/demo.py
+          ! grep -Fq 'Real suhbatda tekshiriladigan joylar' handlers/demo.py
+
+      - name: Commit production change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add handlers/demo.py
+          git commit -m "Simplify candidate demo result" || exit 0
+          git push origin HEAD:multi-tenant

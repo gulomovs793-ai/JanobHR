@@ -17,7 +17,11 @@ from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from services import database
-from services.ai_scoring import aggregate_scores, get_ai_unavailable_keys, candidate_recommendation
+from services.ai_scoring import (
+    aggregate_scores,
+    candidate_recommendation,
+    get_ai_unavailable_keys,
+)
 from services.plans import FEATURE_RISK_SIGNALS, has_feature
 from vacancies import build_questions
 
@@ -380,9 +384,8 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
 
     voice_answers = app.get("voice_answers") or {}
     voice_key_to_text: dict = {}
-    if voice_answers:
-        if vacancy:
-            voice_key_to_text = {q["key"]: q["text"] for q in build_questions(vacancy)}
+    if voice_answers and vacancy:
+        voice_key_to_text = {q["key"]: q["text"] for q in build_questions(vacancy)}
 
     async def copy_file(file_id: str, filename: str) -> BufferedInputFile:
         downloaded: BytesIO = await bot.download(file_id)
@@ -393,6 +396,16 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
     try:
         for admin_id in tenant["admin_user_ids"]:
             try:
+                sent = await admin_bot.send_message(
+                    chat_id=admin_id,
+                    text=text,
+                    reply_markup=builder.as_markup(),
+                    parse_mode=ParseMode.HTML,
+                )
+                await database.add_admin_message(
+                    tenant_id, app_id, admin_id, sent.message_id
+                )
+
                 if app.get("resume_file_id"):
                     await admin_bot.send_document(
                         chat_id=admin_id,
@@ -432,15 +445,6 @@ async def notify_admins(tenant_id: int, app_id: int, bot: Bot):
                                 key,
                             )
 
-                sent = await admin_bot.send_message(
-                    chat_id=admin_id,
-                    text=text,
-                    reply_markup=builder.as_markup(),
-                    parse_mode=ParseMode.HTML,
-                )
-                await database.add_admin_message(
-                    tenant_id, app_id, admin_id, sent.message_id
-                )
             except Exception:
                 logger.exception(
                     "Admin (id=%s) ga anketa yuborib bo'lmadi (app_id=%s, tenant=%s).",

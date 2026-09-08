@@ -1,5 +1,6 @@
 """Demo experience shown only in the public Janob HR candidate bot."""
 
+import logging
 from html import escape
 
 from aiogram import F, Router
@@ -10,7 +11,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import BOT_TOKEN, MAX_ANSWER_CHARS
-from services.ai_scoring import aggregate_scores, score_answer, candidate_recommendation
+from services.ai_scoring import aggregate_scores, candidate_recommendation, score_answer
 
 router = Router(name="candidate_demo")
 
@@ -204,8 +205,6 @@ async def _finish_demo(message: Message, state: FSMContext) -> None:
     if experience_failed:
         recommendation = "🔴 <b>Minimal tajriba filtri o‘tmadi.</b>"
 
-    checks = _interview_checks(aggregate)
-    checks_text = "\n".join(f"• {_short(item, 240)}" for item in checks)
 
     result_text = (
         "📊 <b>Demo natijangiz tayyor</b>\n\n"
@@ -265,7 +264,7 @@ async def begin_demo(callback: CallbackQuery, state: FSMContext):
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("Demo message markup could not be removed", exc_info=True)
     await callback.answer()
     await callback.message.answer(
         "🎭 <b>Demo boshlandi</b>\n\n"

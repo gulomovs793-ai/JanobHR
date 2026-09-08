@@ -673,7 +673,7 @@ async def _activate_order(message: Message, code: str, state: FSMContext | None 
         + (
             f"\nPartner komissiyasi: <b>{pdb.format_uzs(partner_sale['commission_amount'])}</b>"
             if partner_sale
-            else "\nPartner komissiyasi keyingi reconcile orqali yoziladi."
+            else ""
         )
     )
     if state:

@@ -9,8 +9,8 @@ from services.ai_scoring import candidate_recommendation, mark_ai_unavailable
 
 
 def score(value=82, flags=None):
-    return dict(score=value, natijadorlik=value, amaliylik=value,
-                masuliyat=value, aniqlik=value, red_flags=flags or [], relevant=True)
+    return {'score': value, 'natijadorlik': value, 'amaliylik': value,
+                'masuliyat': value, 'aniqlik': value, 'red_flags': flags or [], 'relevant': True}
 
 
 class CandidateAnalysisTests(unittest.TestCase):
@@ -32,8 +32,8 @@ class CandidateAnalysisTests(unittest.TestCase):
 
 class CandidateFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_followup_preserves_original_answer_and_scores_both(self):
-        data = dict(question_index=0, vacancy_questions=[{'key': 'q', 'text': 'Plan?', 'ai_score': True}],
-                    awaiting_followup_for=0, answers={'q': 'Original plan'}, ai_scores={})
+        data = {'question_index': 0, 'vacancy_questions': [{'key': 'q', 'text': 'Plan?', 'ai_score': True}],
+                    'awaiting_followup_for': 0, 'answers': {'q': 'Original plan'}, 'ai_scores': {}}
         state = SimpleNamespace(get_data=AsyncMock(return_value=data), update_data=AsyncMock())
         message = SimpleNamespace(answer=AsyncMock())
         with patch('handlers.questions.score_answer', AsyncMock(return_value=score())) as scoring, patch('handlers.questions.ask_current_question', AsyncMock()):

@@ -633,6 +633,23 @@ async def healthcheck() -> bool:
 # ============================= MIJOZLAR (tenants) =============================
 
 
+def _bot_identity(token: str) -> str:
+    token = (token or "").strip()
+    prefix, separator, _ = token.partition(":")
+    return prefix if separator and prefix.isdigit() else token
+
+
+def is_reserved_bot_token(token: str) -> bool:
+    import config
+
+    identity = _bot_identity(token)
+    return bool(identity) and any(
+        value and _bot_identity(value) == identity
+        for value in (config.BOT_TOKEN, config.ADMIN_BOT_TOKEN,
+                      config.FOUNDER_BOT_TOKEN, config.PARTNER_BOT_TOKEN, config.SETUP_BOT_TOKEN)
+    )
+
+
 async def create_tenant(
     company_name: str,
     bot_token: str,
@@ -649,8 +666,20 @@ async def create_tenant(
     oshirib qo'yardi va mijoz o'z vakansiyasini yaratolmasdi. Endi tenant bo'sh
     boshlanadi; birinchi vakansiyani Admin bot yoki Mini App onboarding yaratadi.
     """
+    bot_token = (bot_token or "").strip()
+    admin_bot_token = (admin_bot_token or "").strip()
+    if not bot_token or not admin_bot_token or _bot_identity(bot_token) == _bot_identity(admin_bot_token):
+        raise ValueError("Nomzod va admin botlari alohida bo'lishi kerak")
+    if is_reserved_bot_token(bot_token) or is_reserved_bot_token(admin_bot_token):
+        raise ValueError("Tizim botini mijoz boti sifatida ulab bo'lmaydi")
     created_at = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(SQLITE_PATH) as db:
+    async with aiosqlite.connect(SQLITE_PATH, timeout=10) as db:
+        await db.execute("PRAGMA busy_timeout=10000")
+        await db.execute("BEGIN IMMEDIATE")
+        existing = await (await db.execute("SELECT bot_token, admin_bot_token FROM tenants")).fetchall()
+        identities = {_bot_identity(token) for row in existing for token in row if token}
+        if identities.intersection({_bot_identity(bot_token), _bot_identity(admin_bot_token)}):
+            raise ValueError("Bu bot allaqachon ro'yxatdan o'tgan")
         cursor = await db.execute(
             "INSERT INTO tenants (company_name, bot_token, admin_bot_token, admin_user_ids, "
             "contact_name, contact_phone, contact_username, status, created_at) "
@@ -919,9 +948,11 @@ async def save_business_lead(**lead) -> int:
             "contact_name=excluded.contact_name, contact_username=excluded.contact_username, "
             "company_name=excluded.company_name, hiring_problem=excluded.hiring_problem, "
             "current_process=excluded.current_process, desired_result=excluded.desired_result, "
-            "partner_id=COALESCE(excluded.partner_id, business_leads.partner_id), "
-            "partner_referral_code=COALESCE(excluded.partner_referral_code, business_leads.partner_referral_code), "
-            "partner_promo_code=COALESCE(excluded.partner_promo_code, business_leads.partner_promo_code), "
+            "partner_id=COALESCE(business_leads.partner_id, excluded.partner_id), "
+            "partner_referral_code=CASE WHEN business_leads.partner_id IS NULL THEN excluded.partner_referral_code "
+            "ELSE business_leads.partner_referral_code END, "
+            "partner_promo_code=CASE WHEN business_leads.partner_id IS NULL THEN excluded.partner_promo_code "
+            "ELSE business_leads.partner_promo_code END, "
             "updated_at=excluded.updated_at",
             (
                 lead["telegram_user_id"],
@@ -1301,6 +1332,10 @@ async def activate_subscription_for_order(order_id: int) -> dict:
             )
             if tenant_update.rowcount != 1:
                 raise ValueError("Mijoz topilmadi")
+            await db.execute(
+                "UPDATE business_leads SET status='customer', updated_at=? WHERE tenant_id=?",
+                (now_iso, order["tenant_id"]),
+            )
             marker_update = await db.execute(
                 "UPDATE payment_orders SET subscription_activated_at=? WHERE id=? "
                 "AND subscription_activated_at IS NULL",
@@ -2692,12 +2727,14 @@ async def mark_payment_order_needs_review(
         await db.commit()
 
 
-async def list_unnotified_approved_orders(hours: int = 24) -> list[dict]:
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+async def list_unnotified_approved_orders(hours: int | None = None) -> list[dict]:
+    cutoff = ((datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+              if hours is not None else "")
     async with aiosqlite.connect(SQLITE_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "SELECT * FROM payment_orders WHERE status = 'approved' "
+            "AND subscription_activated_at IS NOT NULL "
             "AND customer_notified_at IS NULL AND decided_at >= ? ORDER BY decided_at",
             (cutoff,),
         )

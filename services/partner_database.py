@@ -449,6 +449,13 @@ async def record_referral_trial(
     now = _now()
     async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
         await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("BEGIN IMMEDIATE")
+        existing = await (await db.execute(
+            "SELECT partner_id FROM partner_tenant_attributions WHERE tenant_id=?", (tenant_id,)
+        )).fetchone()
+        if existing and int(existing[0]) != int(partner_id):
+            await db.rollback()
+            return False
         await db.execute(
             """
             INSERT OR IGNORE INTO partner_tenant_attributions(
@@ -1068,12 +1075,12 @@ async def get_partner_leads(partner_id: int, limit: int = 50) -> list[dict]:
         cur = await db.execute(
             "SELECT bl.company_name, bl.contact_name, bl.status, bl.tenant_id, "
             "bl.created_at, bl.updated_at, "
-            "COALESCE(bl.partner_id, pta.partner_id) AS attributed_partner_id "
+            "COALESCE(pta.partner_id, bl.partner_id) AS attributed_partner_id "
             "FROM business_leads bl "
             "LEFT JOIN partner_tenant_attributions pta ON pta.tenant_id=bl.tenant_id "
-            "WHERE bl.partner_id=? OR pta.partner_id=? "
+            "WHERE COALESCE(pta.partner_id, bl.partner_id)=? "
             "ORDER BY bl.updated_at DESC, bl.id DESC LIMIT ?",
-            (partner_id, partner_id, limit),
+            (partner_id, limit),
         )
         rows = await cur.fetchall()
     return [

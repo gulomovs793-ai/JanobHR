@@ -193,6 +193,11 @@ async def _notify_tenant_payment_approved(result: dict) -> bool:
     """To'lov tasdiqlanganda mijozga aynan o'z Admin botidan chek yuboradi."""
     from aiogram import Bot
 
+    order = await database.get_payment_order_for_tenant(result["tenant_id"], result["order_code"])
+    if not order or order["status"] != "approved" or not order.get("subscription_activated_at"):
+        return False
+    if order.get("customer_notified_at"):
+        return True
     tenant = await database.get_tenant(result["tenant_id"])
     if not tenant or not tenant.get("admin_bot_token"):
         logger.error("[to'lov] Mijozga tasdiq yuborilmadi: admin bot topilmadi.")

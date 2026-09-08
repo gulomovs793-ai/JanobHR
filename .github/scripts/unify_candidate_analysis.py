@@ -109,7 +109,8 @@ s = replace_once(
     elif all_flags or avg_score < 75:
         verdict = "sariq"
     else:
-        verdict = "yashil"""",
+        verdict = "yashil"
+""",
     """    # Bitta zaif savol butun nomzodni avtomatik qizilga tushirmaydi.
     # Bayroqlar signal bo'lib qoladi; umumiy hukm kompetensiya o'rtachasiga tayanadi.
     if avg_score < 50:
@@ -117,7 +118,8 @@ s = replace_once(
     elif all_flags or avg_score < 75:
         verdict = "sariq"
     else:
-        verdict = "yashil"""",
+        verdict = "yashil"
+""",
     "aggregate verdict",
 )
 s = replace_once(
@@ -488,3 +490,4 @@ s = s[:fn_start] + new_fn + s[fn_end:]
 p.write_text(s, encoding="utf-8")
 
 print("tenant candidate analysis patch applied")
+

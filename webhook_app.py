@@ -20,6 +20,7 @@ import os
 from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import SimpleEventIsolation
 from aiogram.webhook.aiohttp_server import BaseRequestHandler, setup_application
 from aiohttp import web
 
@@ -171,7 +172,7 @@ def _build_dispatcher() -> Dispatcher:
     )
 
     fsm_storage = SQLiteStorage(db_path=database.SQLITE_PATH)
-    dp = Dispatcher(storage=fsm_storage)
+    dp = Dispatcher(storage=fsm_storage, events_isolation=SimpleEventIsolation())
     dp.update.outer_middleware(TenantMiddleware())
 
     candidate_root = Router(name="candidate_root")

@@ -368,6 +368,11 @@ async def create_payment_order(
                         attribution,
                         order_amount=amount,
                     )
+                await db.execute(
+                    "UPDATE business_leads SET status='payment', updated_at=? "
+                    "WHERE tenant_id=? AND status NOT IN ('lost', 'customer')",
+                    (now_iso, tenant_id),
+                )
                 await db.commit()
                 return {
                     "id": cursor.lastrowid,
@@ -477,6 +482,18 @@ async def run_approved_order_recovery_forever(
             raise
         except Exception:
             logger.exception("Partner sale recovery loop ishlamadi")
+        try:
+            from userbot import _notify_tenant_payment_approved
+
+            for order in await database.list_unnotified_approved_orders():
+                try:
+                    await _notify_tenant_payment_approved(order)
+                except Exception:
+                    logger.exception("Customer payment receipt recovery failed: order=%s", order["order_code"])
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Customer payment receipt recovery loop failed")
         await asyncio.sleep(max(30, int(interval_seconds)))
 
 
@@ -597,14 +614,17 @@ async def handle_payment_notification(
         return {"status": "needs_review", "amount": amount}
 
     partner_sale = None
+    partner_failed = False
     from services import partner_database as pdb
     for attempt in range(3):
         try:
             partner_sale = await pdb.finalize_sale_for_order(
                 order["id"], actual_amount=amount
             )
+            partner_failed = False
             break
         except Exception:
+            partner_failed = True
             logger.exception(
                 "Partner komissiyasini yakunlashda xato (order=%s, attempt=%s).",
                 order["order_code"],
@@ -612,7 +632,7 @@ async def handle_payment_notification(
             )
             if attempt < 2:
                 await asyncio.sleep(0.2)
-    if not partner_sale:
+    if partner_failed:
         await notify_founders(
             f"⚠️ {order['order_code']} uchun partner komissiyasi vaqtincha yozilmadi. "
             "To'lov tasdiqlangan, reconcile avtomatik qayta urinadi."

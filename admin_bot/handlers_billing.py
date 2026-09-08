@@ -132,8 +132,8 @@ async def _create_order_payload(tenant_id: int, code: str, promo_code: str | Non
         "",
         "Muhim: aynan ko'rsatilgan summani yuboring. To'lov aniqlangach tarif avtomatik yoqiladi.",
         "",
-        "To'lovdan keyin tarif yoqilmasa yoki tushunarsiz holat bo'lsa, "
-        f"<b>@F45746</b> ga buyurtma raqamini yuboring: <code>{order['order_code']}</code>",
+        ("To'lovdan keyin tarif yoqilmasa yoki tushunarsiz holat bo'lsa, "
+         f"<b>@F45746</b> ga buyurtma raqamini yuboring: <code>{order['order_code']}</code>"),
     ])
     return True, "\n".join(lines), _order_keyboard(order["order_code"])
 

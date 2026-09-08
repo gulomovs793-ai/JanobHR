@@ -262,6 +262,13 @@ async def receive_contact(message: Message, state: FSMContext):
         partner_id=data.get("partner_id"),
         partner_referral_code=data.get("partner_referral_code"),
     )
+    saved_lead = await database.get_business_lead(lead_id)
+    canonical_partner = await pdb.get_partner(saved_lead["partner_id"]) if saved_lead and saved_lead.get("partner_id") else None
+    if canonical_partner:
+        data.update(partner_id=canonical_partner["id"],
+                    partner_referral_code=canonical_partner.get("referral_code") or "",
+                    partner_name=canonical_partner.get("full_name") or "Hamkor")
+        await state.update_data(**{key: data[key] for key in ("partner_id", "partner_referral_code", "partner_name")})
     await state.update_data(business_lead_id=lead_id)
     await message.answer(
         "✅ <b>Rahmat, ma'lumotlar qabul qilindi.</b>\n\n"
@@ -300,6 +307,9 @@ async def wrong_contact_type(message: Message):
 @router.message(CreateBotForm.waiting_candidate_token, F.text)
 async def receive_candidate_token(message: Message, state: FSMContext):
     token = message.text.strip()
+    if database.is_reserved_bot_token(token):
+        await message.answer("Bu tizim boti. @BotFather orqali yaratilgan alohida bot tokenini yuboring.")
+        return
 
     try:
         existing = await database.get_tenant_by_token(token)
@@ -338,6 +348,9 @@ async def receive_candidate_token(message: Message, state: FSMContext):
 @router.message(CreateBotForm.waiting_admin_token, F.text)
 async def receive_admin_token(message: Message, state: FSMContext):
     token = message.text.strip()
+    if database.is_reserved_bot_token(token):
+        await message.answer("Bu tizim boti. @BotFather orqali yaratilgan alohida bot tokenini yuboring.")
+        return
     data = await state.get_data()
 
     if token == data.get("candidate_bot_token"):

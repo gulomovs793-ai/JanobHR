@@ -65,6 +65,10 @@ _COPY = {
 
 _APPLICATION_STATUS = {
     "pending": ("⏳", "Ko'rib chiqilmoqda", "На рассмотрении"),
+    "saved": ("⏳", "Ko'rib chiqilmoqda", "На рассмотрении"),
+    "hired": ("🎉", "Ishga qabul qilindingiz", "Вы приняты на работу"),
+    "not_hired": ("—", "Suhbatdan keyin tanlanmadingiz", "По итогам собеседования выбран другой кандидат"),
+    "no_show": ("—", "Suhbatga kelmadingiz", "Вы не пришли на собеседование"),
     "accepted": ("✅", "Suhbatga chaqirildi", "Приглашение на собеседование"),
     "declined": ("—", "Hozircha davom etmadi", "Заявка не прошла дальше"),
     "rejected_hard_filter": (

@@ -1,0 +1,149 @@
+from pathlib import Path
+
+p = Path("miniapp_api.py")
+s = p.read_text(encoding="utf-8")
+
+start = s.index("def _clean_questions(raw_questions) -> list[dict]:")
+end = s.index("\n\nasync def vacancy_detail", start)
+new = '''def _normalise_question_text(value: object) -> str:
+    return (
+        " ".join(str(value or "").strip().lower().split())
+        .replace("’", "'")
+        .replace("ʼ", "'")
+    )
+
+
+def _infer_question_metadata(text: str) -> tuple[bool, bool]:
+    """Mini App'da qo'lda yozilgan savol uchun xavfsiz scoring metadata.
+
+    Fakt/filtr savollari umumiy kompetensiya ballini sun'iy pasaytirmaydi.
+    Reja, natija, vaziyat va real ish usulini ochadigan savollar AI score qilinadi.
+    """
+    value = _normalise_question_text(text)
+
+    hard_filter_markers = (
+        "ha/yo'q",
+        "ha / yo'q",
+        "ha yoki yo'q",
+        "да/нет",
+        "да / нет",
+    )
+    hard_filter = any(marker in value for marker in hard_filter_markers)
+    if hard_filter:
+        return True, False
+
+    competence_markers = (
+        "reja", "qadam", "natija", "yutuq", "erish", "misol", "vaziyat",
+        "muammo", "xato", "qanday hissa", "nima qil", "qanday qil",
+        "qanday hal", "qanday yech", "strateg", "maqsad", "kpi", "funnel",
+        "konvers", "oshirish", "bajargan", "amalda", "jarayon",
+    )
+    if any(marker in value for marker in competence_markers):
+        return False, True
+
+    factual_markers = (
+        "qayerda", "qancha muddat", "necha yil", "necha oy", "qaysi crm",
+        "crm tizim", "qaysi dastur", "qaysi platform", "maosh", "oylik",
+        "salary", "telefon", "manzil", "yoshingiz", "yosh nech", "universitet",
+        "diplom", "sertifikat", "guvohnoma", "tajribangiz bormi",
+        "ishlaganmisiz", "bilasizmi",
+    )
+    if any(marker in value for marker in factual_markers):
+        return False, False
+
+    # Noma'lum ochiq savolni score qilamiz. Faktik savollar yuqorida ajratilgan.
+    return False, True
+
+
+def _clean_questions(raw_questions, previous_questions=None) -> list[dict]:
+    if not isinstance(raw_questions, list):
+        raise web.HTTPBadRequest(text="Savollar ro'yxati noto'g'ri.")
+
+    previous_questions = previous_questions if isinstance(previous_questions, list) else []
+    result = []
+    for index, raw in enumerate(raw_questions, 1):
+        raw_dict = raw if isinstance(raw, dict) else {}
+        text = str(raw_dict.get("text") if raw_dict else raw).strip()
+        if not 3 <= len(text) <= 500:
+            raise web.HTTPBadRequest(text=f"{index}-savol noto'g'ri yoki juda uzun.")
+
+        previous = (
+            previous_questions[index - 1]
+            if index - 1 < len(previous_questions)
+            and isinstance(previous_questions[index - 1], dict)
+            else None
+        )
+        same_question = bool(
+            previous
+            and _normalise_question_text(previous.get("text"))
+            == _normalise_question_text(text)
+        )
+
+        if "hard_filter" in raw_dict or "ai_score" in raw_dict:
+            hard_filter = bool(raw_dict.get("hard_filter"))
+            ai_score = bool(raw_dict.get("ai_score")) and not hard_filter
+        elif same_question:
+            hard_filter = bool(previous.get("hard_filter"))
+            ai_score = bool(previous.get("ai_score")) and not hard_filter
+        else:
+            hard_filter, ai_score = _infer_question_metadata(text)
+
+        item = {
+            "key": (
+                str(previous.get("key"))
+                if previous and previous.get("key")
+                else str(raw_dict.get("key") or f"q{index}")
+            ),
+            "text": text,
+            "type": str(
+                (previous or {}).get("type")
+                or raw_dict.get("type")
+                or ("hard_filter" if hard_filter else "score")
+            ),
+            "required": True,
+            "hard_filter": hard_filter,
+            "ai_score": ai_score,
+        }
+        if same_question and previous and previous.get("voice"):
+            item["voice"] = True
+        elif raw_dict.get("voice"):
+            item["voice"] = True
+        result.append(item)
+
+    if not 3 <= len(result) <= 20:
+        raise web.HTTPBadRequest(text="3 tadan 20 tagacha savol kiriting.")
+    return result
+'''
+s = s[:start] + new + s[end:]
+
+old = '''async def edit_vacancy(request: web.Request):
+    tenant, _ = await _authorize(request)
+    key = request.match_info["vacancy_key"]
+    if not await database.get_vacancy(tenant["id"], key):
+        raise web.HTTPNotFound(text="Vakansiya topilmadi.")'''
+new_edit = '''async def edit_vacancy(request: web.Request):
+    tenant, _ = await _authorize(request)
+    key = request.match_info["vacancy_key"]
+    existing_vacancy = await database.get_vacancy(tenant["id"], key)
+    if not existing_vacancy:
+        raise web.HTTPNotFound(text="Vakansiya topilmadi.")'''
+if old not in s:
+    raise AssertionError("edit vacancy lookup anchor not found")
+s = s.replace(old, new_edit, 1)
+
+# There are two _clean_questions calls: create first, edit second. Only edit needs prior metadata.
+needle = '''        questions=_clean_questions(body.get("questions")),
+        resume_required=bool(body.get("resume_required")),'''
+pos1 = s.find(needle)
+pos2 = s.find(needle, pos1 + 1) if pos1 >= 0 else -1
+if pos2 < 0:
+    raise AssertionError("second/edit clean_questions call not found")
+replacement = '''        questions=_clean_questions(
+            body.get("questions"),
+            previous_questions=existing_vacancy.get("questions") or [],
+        ),
+        resume_required=bool(body.get("resume_required")),'''
+s = s[:pos2] + s[pos2:].replace(needle, replacement, 1)
+
+p.write_text(s, encoding="utf-8")
+print("Mini App question metadata patch applied")

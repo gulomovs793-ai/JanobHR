@@ -3,6 +3,8 @@ Admin bot — suhbat vaqtlari (sana+soat), uchrashuv manzili, intervyuchi
 kontakti va eslatma matnini boshqarish. Har biri shu MIJOZGA (tenant_id) xos.
 """
 
+import re
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -13,6 +15,54 @@ from services import database
 from services.candidate_followup import notify_candidate_outcome
 
 router = Router(name="admin_interview")
+
+
+_UZ_MOBILE_PREFIXES = {
+    "33", "50", "77", "88", "90", "91",
+    "93", "94", "95", "97", "98", "99",
+}
+_UZ_MOBILE_PREFIXES_TEXT = ", ".join(sorted(_UZ_MOBILE_PREFIXES))
+
+
+def _normalize_uz_mobile_phone(raw: str) -> tuple[str | None, str | None]:
+    """Validate and normalize an Uzbekistan mobile number to +998XXXXXXXXX."""
+    text = (raw or "").strip()
+    if not text:
+        return None, "Telefon raqamini kiriting."
+
+    if not re.fullmatch(r"[+\d\s().-]+", text):
+        return None, (
+            "Faqat raqamlar va odatiy ajratgichlardan foydalaning. "
+            "Masalan: +998 90 123 45 67."
+        )
+    if text.count("+") > 1 or ("+" in text and not text.startswith("+")):
+        return None, "'+' belgisi faqat raqam boshida bo'lishi mumkin."
+
+    digits = re.sub(r"\D", "", text)
+    if text.startswith("+"):
+        if not digits.startswith("998"):
+            return None, "Faqat O'zbekiston mobil raqami qabul qilinadi (+998)."
+        national = digits[3:]
+    elif digits.startswith("998") and len(digits) >= 12:
+        national = digits[3:]
+    else:
+        national = digits
+
+    if len(national) != 9:
+        return None, (
+            f"Raqam uzunligi noto'g'ri: {len(national)} ta raqam kiritildi. "
+            "+998 dan keyin aynan 9 ta raqam bo'lishi kerak. "
+            "Masalan: +998 90 123 45 67."
+        )
+
+    prefix = national[:2]
+    if prefix not in _UZ_MOBILE_PREFIXES:
+        return None, (
+            f"'{prefix}' O'zbekiston mobil kodi sifatida qabul qilinmaydi. "
+            f"Mavjud mobil kodlar: {_UZ_MOBILE_PREFIXES_TEXT}."
+        )
+
+    return "+998" + national, None
 
 
 class InterviewForm(StatesGroup):
@@ -211,7 +261,11 @@ async def receive_interviewer_name(message: Message, state: FSMContext, tenant_i
 @router.callback_query(F.data == "ivset:phone")
 async def start_set_phone(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "Suhbatni o'tkazadigan insonning telefon raqamini yozing:"
+        "📱 <b>Suhbatni o'tkazadigan insonning mobil raqamini yozing.</b>\n\n"
+        "To'g'ri format: <code>+998 90 123 45 67</code>\n"
+        "Yoki: <code>90 123 45 67</code>\n\n"
+        "+998 dan keyin aynan <b>9 ta raqam</b> bo'lishi kerak.\n"
+        "Mobil kodlar: <code>33, 50, 77, 88, 90, 91, 93, 94, 95, 97, 98, 99</code>"
     )
     await state.set_state(InterviewForm.setting_interviewer_phone)
     await callback.answer()
@@ -221,10 +275,19 @@ async def start_set_phone(callback: CallbackQuery, state: FSMContext):
 async def receive_interviewer_phone(
     message: Message, state: FSMContext, tenant_id: int
 ):
+    normalized_phone, error = _normalize_uz_mobile_phone(message.text)
+    if error:
+        await message.answer(
+            "❌ <b>Telefon raqami noto'g'ri.</b>\n\n"
+            f"{error}\n\n"
+            "Qayta kiriting. Masalan: <code>+998 90 123 45 67</code>"
+        )
+        return
+
     await database.update_interview_settings(
-        tenant_id, interviewer_phone=message.text.strip()
+        tenant_id, interviewer_phone=normalized_phone
     )
-    await message.answer("✅ Saqlandi.")
+    await message.answer(f"✅ Telefon saqlandi: <code>{normalized_phone}</code>")
     await _show_menu(message, state, tenant_id)
 
 

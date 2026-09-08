@@ -17,7 +17,7 @@ jobs:
         with:
           ref: multi-tenant
 
-      - name: Fix DeepSeek V4 calls and resilient question JSON parsing
+      - name: Patch DeepSeek V4 structured output
         shell: bash
         run: |
           python - <<'PY'
@@ -26,90 +26,37 @@ jobs:
           p = Path("services/ai_scoring.py")
           s = p.read_text(encoding="utf-8")
 
-          # DeepSeek V4 enables thinking mode by default. For Janob HR's short,
-          # structured JSON calls this can consume the max_tokens budget in
-          # reasoning_content and leave message.content empty/truncated. Force
-          # non-thinking mode so vacancy generation and scoring return the JSON
-          # payload directly and quickly.
-          anchor = '''                payload = {
-                      "model": model,
-                      "messages": [
-                          {"role": "system", "content": system_prompt},
-                          {"role": "user", "content": user_prompt},
-                      ],
-                      "temperature": 0,
-                      "max_tokens": token_budget,
-                  }
-                  async with session.post(
-          '''
-          replacement = '''                payload = {
-                      "model": model,
-                      "messages": [
-                          {"role": "system", "content": system_prompt},
-                          {"role": "user", "content": user_prompt},
-                      ],
-                      "temperature": 0,
-                      "max_tokens": token_budget,
-                  }
-                  # DeepSeek V4 defaults to thinking=enabled. In this bot we need
-                  # deterministic structured output, not a long hidden reasoning pass.
-                  # Disabling thinking prevents the token budget from being consumed
-                  # before message.content is produced.
-                  if "deepseek" in base.lower() or str(model).lower().startswith("deepseek"):
-                      payload["thinking"] = {"type": "disabled"}
-                      payload["stream"] = False
+          # DeepSeek V4 has thinking mode enabled by default. Janob HR expects
+          # short structured JSON in message.content, so disable thinking for
+          # DeepSeek calls; otherwise max_tokens can be consumed by reasoning.
+          deepseek_marker = 'payload["thinking"] = {"type": "disabled"}'
+          if deepseek_marker not in s:
+              request_pos = s.index("            async def request_once(token_budget: int)")
+              post_pos = s.index("                async with session.post(\n", request_pos)
+              inject = '''                # DeepSeek V4 defaults to thinking mode. For structured HR JSON\n                # we need the final answer directly and quickly.\n                if "deepseek" in base.lower() or str(model).lower().startswith("deepseek"):\n                    payload["thinking"] = {"type": "disabled"}\n                    payload["stream"] = False\n\n'''
+              s = s[:post_pos] + inject + s[post_pos:]
 
-                  async with session.post(
-          '''
-          if anchor in s:
-              s = s.replace(anchor, replacement, 1)
-          elif 'payload["thinking"] = {"type": "disabled"}' not in s:
-              raise AssertionError("DeepSeek payload anchor not found")
-
-          # Make question generation tolerant of harmless model formatting:
-          # markdown fences, explanatory text around the array, or a
-          # {"questions": [...]} wrapper. A valid generated list must not be
-          # discarded just because the provider wrapped it slightly differently.
-          old_parse = '''    try:
-                  content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
-                  parsed = json.loads(content)
-                  if not isinstance(parsed, list):
-                      raise TypeError("AI ro'yxat (list) qaytarishi kerak edi")
-          '''
-          new_parse = '''    try:
-                  content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.MULTILINE).strip()
-                  try:
-                      parsed = json.loads(content)
-                  except json.JSONDecodeError:
-                      # Some OpenAI-compatible models add one short sentence before
-                      # or after the JSON despite the prompt. Recover the first full
-                      # array instead of treating the whole AI call as failed.
-                      start = content.find("[")
-                      end = content.rfind("]")
-                      if start < 0 or end <= start:
-                          raise
-                      parsed = json.loads(content[start : end + 1])
-
-                  if isinstance(parsed, dict) and isinstance(parsed.get("questions"), list):
-                      parsed = parsed["questions"]
-                  if not isinstance(parsed, list):
-                      raise TypeError("AI ro'yxat (list) qaytarishi kerak edi")
-          '''
-          if old_parse in s:
-              s = s.replace(old_parse, new_parse, 1)
-          elif 'isinstance(parsed, dict) and isinstance(parsed.get("questions"), list)' not in s:
-              raise AssertionError("Question JSON parser anchor not found")
+          # Be tolerant if a provider wraps the requested JSON array in a
+          # {"questions": [...]} object or adds a short sentence around it.
+          wrapper_marker = 'isinstance(parsed, dict) and isinstance(parsed.get("questions"), list)'
+          if wrapper_marker not in s:
+              fn_pos = s.index("async def generate_questions(")
+              parse_pos = s.index("        parsed = json.loads(content)\n", fn_pos)
+              check_pos = s.index("        if not isinstance(parsed, list):\n", parse_pos)
+              parse_end = parse_pos + len("        parsed = json.loads(content)\n")
+              replacement = '''        try:\n            parsed = json.loads(content)\n        except json.JSONDecodeError:\n            start = content.find("[")\n            end = content.rfind("]")\n            if start < 0 or end <= start:\n                raise\n            parsed = json.loads(content[start : end + 1])\n\n        if isinstance(parsed, dict) and isinstance(parsed.get("questions"), list):\n            parsed = parsed["questions"]\n'''
+              s = s[:parse_pos] + replacement + s[parse_end:]
 
           p.write_text(s, encoding="utf-8")
-          print("DeepSeek vacancy generation hotfix applied")
+          print("DeepSeek V4 vacancy generation patch applied")
           PY
 
       - name: Verify patch
         run: |
           python -m py_compile services/ai_scoring.py admin_bot/handlers_vacancy_edit.py
-          grep -q 'payload\["thinking"\] = {"type": "disabled"}' services/ai_scoring.py
-          grep -q 'parsed.get("questions")' services/ai_scoring.py
-          grep -q 'callback_data="vacgen:retry"' admin_bot/handlers_vacancy_edit.py
+          grep -Fq 'payload["thinking"] = {"type": "disabled"}' services/ai_scoring.py
+          grep -Fq 'parsed.get("questions")' services/ai_scoring.py
+          grep -Fq 'callback_data="vacgen:retry"' admin_bot/handlers_vacancy_edit.py
 
       - name: Commit production fix
         run: |

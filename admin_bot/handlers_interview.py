@@ -21,7 +21,6 @@ _UZ_MOBILE_PREFIXES = {
     "33", "50", "77", "88", "90", "91",
     "93", "94", "95", "97", "98", "99",
 }
-_UZ_MOBILE_PREFIXES_TEXT = ", ".join(sorted(_UZ_MOBILE_PREFIXES))
 
 
 def _normalize_uz_mobile_phone(raw: str) -> tuple[str | None, str | None]:
@@ -31,10 +30,7 @@ def _normalize_uz_mobile_phone(raw: str) -> tuple[str | None, str | None]:
         return None, "Telefon raqamini kiriting."
 
     if not re.fullmatch(r"[+\d\s().-]+", text):
-        return None, (
-            "Faqat raqamlar va odatiy ajratgichlardan foydalaning. "
-            "Masalan: +998 90 123 45 67."
-        )
+        return None, "Faqat raqamlar va telefon raqamidagi odatiy belgilarni kiriting."
     if text.count("+") > 1 or ("+" in text and not text.startswith("+")):
         return None, "'+' belgisi faqat raqam boshida bo'lishi mumkin."
 
@@ -49,18 +45,11 @@ def _normalize_uz_mobile_phone(raw: str) -> tuple[str | None, str | None]:
         national = digits
 
     if len(national) != 9:
-        return None, (
-            f"Raqam uzunligi noto'g'ri: {len(national)} ta raqam kiritildi. "
-            "+998 dan keyin aynan 9 ta raqam bo'lishi kerak. "
-            "Masalan: +998 90 123 45 67."
-        )
+        return None, "Raqam uzunligi noto'g'ri. O'zbekiston mobil raqamini to'liq kiriting."
 
     prefix = national[:2]
     if prefix not in _UZ_MOBILE_PREFIXES:
-        return None, (
-            f"'{prefix}' O'zbekiston mobil kodi sifatida qabul qilinmaydi. "
-            f"Mavjud mobil kodlar: {_UZ_MOBILE_PREFIXES_TEXT}."
-        )
+        return None, "Operator kodi noto'g'ri yoki qo'llab-quvvatlanmaydi."
 
     return "+998" + national, None
 
@@ -261,11 +250,7 @@ async def receive_interviewer_name(message: Message, state: FSMContext, tenant_i
 @router.callback_query(F.data == "ivset:phone")
 async def start_set_phone(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "📱 <b>Suhbatni o'tkazadigan insonning mobil raqamini yozing.</b>\n\n"
-        "To'g'ri format: <code>+998 90 123 45 67</code>\n"
-        "Yoki: <code>90 123 45 67</code>\n\n"
-        "+998 dan keyin aynan <b>9 ta raqam</b> bo'lishi kerak.\n"
-        "Mobil kodlar: <code>33, 50, 77, 88, 90, 91, 93, 94, 95, 97, 98, 99</code>"
+        "Suhbatni o'tkazadigan insonning telefon raqamini yozing:"
     )
     await state.set_state(InterviewForm.setting_interviewer_phone)
     await callback.answer()
@@ -280,7 +265,7 @@ async def receive_interviewer_phone(
         await message.answer(
             "❌ <b>Telefon raqami noto'g'ri.</b>\n\n"
             f"{error}\n\n"
-            "Qayta kiriting. Masalan: <code>+998 90 123 45 67</code>"
+            "Qayta kiriting."
         )
         return
 

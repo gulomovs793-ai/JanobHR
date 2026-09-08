@@ -1,0 +1,56 @@
+name: Polish demo intro and start CTA
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/fix-demo-intro-start.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+          fetch-depth: 20
+
+      - name: Patch demo intro
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('handlers/demo.py')
+          s = p.read_text(encoding='utf-8')
+
+          old = '''    builder = InlineKeyboardBuilder()\n    builder.button(text="Boshlash", callback_data="demo:start")\n    await message.answer(\n        "👋 <b>Assalomu alaykum</b>\\n\\n"\n        "Tasavvur qiling, siz hozir ishga topshirayotgan nomzodsiz.\\n\\n"\n        "Janob HR siz bilan qanday gaplashadi, qanday savol beradi va "\n        "ma'lumotni qanday yig'adi — hozir o'zingiz ko'rasiz.",\n        reply_markup=builder.as_markup(),\n    )\n'''
+          new = '''    builder = InlineKeyboardBuilder()\n    builder.button(text="▶️ Boshlash", callback_data="demo:start")\n    await message.answer(\n        "👋 <b>Assalomu alaykum</b>\\n\\n"\n        "Bu — <b>Janob HR nomzod botining qisqa demosi</b>.\\n\\n"\n        "Tasavvur qiling, siz hozir ishga topshirayotgan nomzodsiz.\\n\\n"\n        "Janob HR siz bilan qanday gaplashadi, qanday savol beradi va "\n        "ma'lumotni qanday yig'adi — hozir o'zingiz ko'rasiz.\\n\\n"\n        "Oxirida javoblaringiz asosida Janob HR qanday tahlil chiqarishini ham ko'rsatamiz.",\n        reply_markup=builder.as_markup(),\n    )\n'''
+          if old not in s:
+              raise AssertionError('demo_start block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''    await callback.message.answer(\n        "💼 <b>Vakansiya: Sotuv menejeri</b>\\n\\n"\n        "Siz hozir nomzod sifatida 6 ta majburiy savoldan o'tasiz. "\n        "Faktik savollar ma'lumot sifatida saqlanadi, kompetensiya savollari esa AI orqali baholanadi."\n    )\n'''
+          new = '''    await callback.message.answer(\n        "🎭 <b>Demo boshlandi</b>\\n\\n"\n        "💼 Vakansiya: <b>Sotuv menejeri</b>\\n\\n"\n        "Siz hozir nomzod sifatida 6 ta savolga javob berasiz. "\n        "Javoblaringizdan keyin Janob HR siz haqingizda qanday tahlil chiqarishini ko'rasiz."\n    )\n'''
+          if old not in s:
+              raise AssertionError('begin_demo intro block not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Verify
+        run: |
+          python -m py_compile handlers/demo.py
+          grep -Fq 'Janob HR nomzod botining qisqa demosi' handlers/demo.py
+          grep -Fq 'builder.button(text="▶️ Boshlash"' handlers/demo.py
+
+      - name: Commit production change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add handlers/demo.py
+          git commit -m "Clarify candidate demo intro and start button" || exit 0
+          git push origin HEAD:multi-tenant

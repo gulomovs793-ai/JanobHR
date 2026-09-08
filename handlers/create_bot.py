@@ -129,12 +129,8 @@ async def _start_business_flow(
             partner_referral_code=partner_referral_code or "",
             partner_name=partner_name or "Hamkor",
         )
-    prefix = ""
-    if partner_id:
-        prefix = "Siz hamkor tavsiyasi orqali keldingiz. Endi sizdagi yollash muammosini tushunib olamiz.\n\n"
     await message.answer(
-        prefix
-        + "Har bir kompaniyada xodim yollashdagi asosiy muammo har xil bo'ladi: "
+        "Har bir kompaniyada xodim yollashdagi asosiy muammo har xil bo'ladi: "
         "ba'zilarida mos nomzod topish, ba'zilarida saralashga ketadigan vaqt, "
         "boshqalarida esa ishga olingan xodimning uzoq ishlamasligi muammo bo'ladi.\n\n"
         "<b>Hozir orzuyingizdagi xodimni yollashda sizni eng ko'p qiynayotgan "

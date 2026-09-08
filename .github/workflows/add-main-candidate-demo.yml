@@ -16,21 +16,248 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: multi-tenant
-      - name: Patch main candidate demo
+
+      - name: Create isolated demo router
         shell: bash
         run: |
-          python -c "import base64; exec(base64.b64decode('ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwID0gUGF0aCgiaGFuZGxlcnMvc3RhcnQucHkiKQpzID0gcC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikKaWYgImZyb20gY29uZmlnIGltcG9ydCBCT1RfVE9LRU5cbiIgbm90IGluIHM6CiAgICBhbmNob3IgPSAiZnJvbSBhaW9ncmFtLnV0aWxzLmtleWJvYXJkIGltcG9ydCBJbmxpbmVLZXlib2FyZEJ1aWxkZXJcblxuIgogICAgaWYgYW5jaG9yIG5vdCBpbiBzOgogICAgICAgIHJhaXNlIEFzc2VydGlvbkVycm9yKCJzdGFydC5weSBpbXBvcnQgYW5jaG9yIG5vdCBmb3VuZCIpCiAgICBzID0gcy5yZXBsYWNlKGFuY2hvciwgYW5jaG9yICsgImZyb20gY29uZmlnIGltcG9ydCBCT1RfVE9LRU5cbiIsIDEpCgppZiAiX0RFTU9fUVVFU1RJT05TID0gWyIgbm90IGluIHM6CiAgICBhbmNob3IgPSAncm91dGVyID0gUm91dGVyKG5hbWU9InN0YXJ0IilcblxuJwogICAgZGVtb19jb25zdCA9ICIiIl9ERU1PX1FVRVNUSU9OUyA9IFsKICAgIHsKICAgICAgICAia2V5IjogImRlbW9fYWNoaWV2ZW1lbnQiLAogICAgICAgICJ0ZXh0IjogIk9sZGluZ2kgaXNoIGpveWluZ2l6ZGEgZXJpc2hnYW4gZW5nIHlheHNoaSBuYXRpamFuZ2l6bmkgYXl0aW5nLiBJbG9qaSBibydsc2EsIHJhcWFtIGJpbGFuIHlvemluZy4iLAogICAgICAgICJhaV9zY29yZSI6IFRydWUsCiAgICB9LAogICAgewogICAgICAgICJrZXkiOiAiZGVtb19jbGllbnQiLAogICAgICAgICJ0ZXh0IjogIlFpeWluIG1pam96IHlva2kgbXVhbW1vbGkgdmF6aXlhdG5pIHFhbmRheSBoYWwgcWlsZ2Fuc2l6PyBCaXR0YSByZWFsIG1pc29sIGtlbHRpcmluZy4iLAogICAgICAgICJhaV9zY29yZSI6IFRydWUsCiAgICB9LAogICAgewogICAgICAgICJrZXkiOiAiZGVtb19taXN0YWtlIiwKICAgICAgICAidGV4dCI6ICJJc2hkYSBxaWxnYW4gYmlyIHhhdG95aW5naXogdmEgdW5kYW4gb2xnYW4gc2Fib2cnaW5naXpuaSBheXRpbmcuIiwKICAgICAgICAiYWlfc2NvcmUiOiBUcnVlLAogICAgfSwKICAgIHsKICAgICAgICAia2V5IjogImRlbW9fcGxhbiIsCiAgICAgICAgInRleHQiOiAiWWFuZ2kgaXNoZ2Ega2lyc2FuZ2l6LCBiaXJpbmNoaSAzMCBrdW5uaSBxYW5kYXkgcmVqYWxhc2h0aXJhc2l6PyBBbmlxIHFhZGFtbGFyIGJpbGFuIHlvemluZy4iLAogICAgICAgICJhaV9zY29yZSI6IFRydWUsCiAgICB9LApdCgoiIiIKICAgIGlmIGFuY2hvciBub3QgaW4gczoKICAgICAgICByYWlzZSBBc3NlcnRpb25FcnJvcigic3RhcnQucHkgcm91dGVyIGFuY2hvciBub3QgZm91bmQiKQogICAgcyA9IHMucmVwbGFjZShhbmNob3IsIGFuY2hvciArIGRlbW9fY29uc3QsIDEpCgpvbGRfcGxhaW5fc3RhcnQgPSAiIiIgICAgYXdhaXQgc3RhdGUuY2xlYXIoKQoKICAgIGJ1aWxkZXIgPSBJbmxpbmVLZXlib2FyZEJ1aWxkZXIoKQogICAgZm9yIGNvZGUsIGxhYmVsIGluIExBTkdVQUdFUy5pdGVtcygpOgogICAgICAgIGJ1aWxkZXIuYnV0dG9uKHRleHQ9bGFiZWwsIGNhbGxiYWNrX2RhdGE9ZiJsYW5nOntjb2RlfSIpCiAgICBidWlsZGVyLmFkanVzdCgxKQoKICAgIGF3YWl0IG1lc3NhZ2UuYW5zd2VyKAogICAgICAgICLwn5GUIDxiPkphbm9iIEhSPC9iPlxcblxcbiIgKyBDSE9PU0VfTEFOR1VBR0VfUFJPTVBULAogICAgICAgIHJlcGx5X21hcmt1cD1idWlsZGVyLmFzX21hcmt1cCgpLAogICAgKQogICAgYXdhaXQgc3RhdGUuc2V0X3N0YXRlKEFwcGx5Rm9ybS5jaG9vc2luZ19sYW5ndWFnZSkKIiIiCm5ld19wbGFpbl9zdGFydCA9ICIiIiAgICBhd2FpdCBzdGF0ZS5jbGVhcigpCgogICAgIyBGYXFhdCBKYW5vYiBIUiduaW5nIG8neiBhc29zaXkgbm9tem9kIGJvdGlkYSBxaXNxYSBkZW1vIGtvJ3JzYXRpbGFkaS4KICAgICMgTWlqb3psYXIgeWFyYXRnYW4gbm9tem9kIGJvdGxhcmluaW5nIC9zdGFydCBvcWltaSBvJ3pnYXJtYXlkaS4KICAgIGlmIEJPVF9UT0tFTiBhbmQgbWVzc2FnZS5ib3QudG9rZW4gPT0gQk9UX1RPS0VOOgogICAgICAgIGJ1aWxkZXIgPSBJbmxpbmVLZXlib2FyZEJ1aWxkZXIoKQogICAgICAgIGJ1aWxkZXIuYnV0dG9uKHRleHQ9IuKWtu+4jyBCb3NobGFzaCIsIGNhbGxiYWNrX2RhdGE9ImRlbW86c3RhcnQiKQogICAgICAgIGF3YWl0IG1lc3NhZ2UuYW5zd2VyKAogICAgICAgICAgICAi8J+RiyA8Yj5Bc3NhbG9tdSBhbGF5a3VtPC9iPlxcblxcbiIKICAgICAgICAgICAgIlRhc2F2dnVyIHFpbGluZywgc2l6IGhvemlyIGlzaGdhIHRvcHNoaXJheW90Z2FuIG5vbXpvZHNpei5cXG5cXG4iCiAgICAgICAgICAgICJKYW5vYiBIUiBzaXogYmlsYW4gcWFuZGF5IGdhcGxhc2hhZGksIHFhbmRheSBzYXZvbCBiZXJhZGkgdmEgIgogICAgICAgICAgICAibWEnbHVtb3RuaSBxYW5kYXkgeWlnJ2FkaSDigJQgaG96aXIgbyd6aW5naXoga28ncmFzaXouIiwKICAgICAgICAgICAgcmVwbHlfbWFya3VwPWJ1aWxkZXIuYXNfbWFya3VwKCksCiAgICAgICAgKQogICAgICAgIHJldHVybgoKICAgIGJ1aWxkZXIgPSBJbmxpbmVLZXlib2FyZEJ1aWxkZXIoKQogICAgZm9yIGNvZGUsIGxhYmVsIGluIExBTkdVQUdFUy5pdGVtcygpOgogICAgICAgIGJ1aWxkZXIuYnV0dG9uKHRleHQ9bGFiZWwsIGNhbGxiYWNrX2RhdGE9ZiJsYW5nOntjb2RlfSIpCiAgICBidWlsZGVyLmFkanVzdCgxKQoKICAgIGF3YWl0IG1lc3NhZ2UuYW5zd2VyKAogICAgICAgICLwn5GUIDxiPkphbm9iIEhSPC9iPlxcblxcbiIgKyBDSE9PU0VfTEFOR1VBR0VfUFJPTVBULAogICAgICAgIHJlcGx5X21hcmt1cD1idWlsZGVyLmFzX21hcmt1cCgpLAogICAgKQogICAgYXdhaXQgc3RhdGUuc2V0X3N0YXRlKEFwcGx5Rm9ybS5jaG9vc2luZ19sYW5ndWFnZSkKIiIiCmlmIG9sZF9wbGFpbl9zdGFydCBub3QgaW4gczoKICAgIHJhaXNlIEFzc2VydGlvbkVycm9yKCJwbGFpbiAvc3RhcnQgYmxvY2sgbm90IGZvdW5kIikKcyA9IHMucmVwbGFjZShvbGRfcGxhaW5fc3RhcnQsIG5ld19wbGFpbl9zdGFydCwgMSkKCmlmICJhc3luYyBkZWYgc3RhcnRfY2FuZGlkYXRlX2RlbW8oIiBub3QgaW4gczoKICAgIGFuY2hvciA9ICdAcm91dGVyLmNhbGxiYWNrX3F1ZXJ5KEYuZGF0YSA9PSAiY2FuZGlkYXRlOmxhbmd1YWdlIilcbicKICAgIGRlbW9faGFuZGxlciA9ICIiIkByb3V0ZXIuY2FsbGJhY2tfcXVlcnkoRi5kYXRhID09ICJkZW1vOnN0YXJ0IikKYXN5bmMgZGVmIHN0YXJ0X2NhbmRpZGF0ZV9kZW1vKAogICAgY2FsbGJhY2s6IENhbGxiYWNrUXVlcnksIHN0YXRlOiBGU01Db250ZXh0LCB0ZW5hbnRfaWQ6IGludAopOgogICAgaWYgbm90IEJPVF9UT0tFTiBvciBjYWxsYmFjay5ib3QudG9rZW4gIT0gQk9UX1RPS0VOOgogICAgICAgIGF3YWl0IGNhbGxiYWNrLmFuc3dlcigiQnUgZGVtbyBmYXFhdCBKYW5vYiBIUiBhc29zaXkgYm90aWRhIG1hdmp1ZC4iLCBzaG93X2FsZXJ0PVRydWUpCiAgICAgICAgcmV0dXJuCgogICAgYXdhaXQgc3RhdGUuY2xlYXIoKQogICAgYXdhaXQgc3RhdGUudXBkYXRlX2RhdGEoCiAgICAgICAgZGVtb19tb2RlPVRydWUsCiAgICAgICAgbGFuZz0idXoiLAogICAgICAgIHRlbmFudF9pZD10ZW5hbnRfaWQsCiAgICAgICAgdmFjYW5jeV9rZXk9Imphbm9iaHJfZGVtbyIsCiAgICAgICAgdmFjYW5jeV90aXRsZT0iU290dXYgbWVuZWplcmkgwrcgZGVtbyIsCiAgICAgICAgdmFjYW5jeV9yZWplY3RfbWVzc2FnZT0iRGVtbyBkYXZvbSBldGFkaS4iLAogICAgICAgIHZhY2FuY3lfcXVlc3Rpb25zPV9ERU1PX1FVRVNUSU9OUywKICAgICAgICBxdWVzdGlvbl9pbmRleD0wLAogICAgICAgIGFuc3dlcnM9e30sCiAgICAgICAgYWlfc2NvcmVzPXt9LAogICAgICAgIHZvaWNlX2Fuc3dlcnM9e30sCiAgICAgICAgYWlfc3VzcGVjdF9mbGFnZ2VkX2tleXM9W10sCiAgICAgICAgaXJyZWxldmFudF9yZXRyeV9jb3VudD0wLAogICAgICAgIGFpX3N1c3BlY3RfcmV0cnlfY291bnQ9MCwKICAgICAgICBmb2xsb3d1cF9hc2tlZF9pbmRpY2VzPWxpc3QocmFuZ2UobGVuKF9ERU1PX1FVRVNUSU9OUykpKSwKICAgICkKICAgIHRyeToKICAgICAgICBhd2FpdCBjYWxsYmFjay5tZXNzYWdlLmVkaXRfcmVwbHlfbWFya3VwKHJlcGx5X21hcmt1cD1Ob25lKQogICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICBwYXNzCiAgICBhd2FpdCBjYWxsYmFjay5hbnN3ZXIoKQogICAgYXdhaXQgY2FsbGJhY2subWVzc2FnZS5hbnN3ZXIoCiAgICAgICAgIvCfjq0gPGI+RGVtbyBib3NobGFuZGkuPC9iPiBTaXogaG96aXIgU290dXYgbWVuZWplcmkgbGF2b3ppbWlnYSBhcml6YSB0b3BzaGlyYXlvdGdhbiBub216b2RzaXouIgogICAgKQoKICAgIGZyb20gaGFuZGxlcnMucXVlc3Rpb25zIGltcG9ydCBhc2tfY3VycmVudF9xdWVzdGlvbgogICAgYXdhaXQgYXNrX2N1cnJlbnRfcXVlc3Rpb24oY2FsbGJhY2subWVzc2FnZSwgc3RhdGUpCgoKIiIiCiAgICBpZiBhbmNob3Igbm90IGluIHM6CiAgICAgICAgcmFpc2UgQXNzZXJ0aW9uRXJyb3IoImNhbmRpZGF0ZSBsYW5ndWFnZSBjYWxsYmFjayBhbmNob3Igbm90IGZvdW5kIikKICAgIHMgPSBzLnJlcGxhY2UoYW5jaG9yLCBkZW1vX2hhbmRsZXIgKyBhbmNob3IsIDEpCnAud3JpdGVfdGV4dChzLCBlbmNvZGluZz0idXRmLTgiKQoKcCA9IFBhdGgoImhhbmRsZXJzL3F1ZXN0aW9ucy5weSIpCnEgPSBwLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQpxID0gcS5yZXBsYWNlKCJmcm9tIGNvbmZpZyBpbXBvcnQgTUFYX0FOU1dFUl9DSEFSU1xuIiwgImZyb20gY29uZmlnIGltcG9ydCBCT1RfVE9LRU4sIE1BWF9BTlNXRVJfQ0hBUlNcbiIsIDEpCgppZiAiYXN5bmMgZGVmIGZpbmlzaF9kZW1vX2FwcGxpY2F0aW9uKCIgbm90IGluIHE6CiAgICBhbmNob3IgPSAiYXN5bmMgZGVmIGNvbXBsZXRlX2FwcGxpY2F0aW9uKG1lc3NhZ2U6IE1lc3NhZ2UsIHN0YXRlOiBGU01Db250ZXh0KTpcbiIKICAgIGRlbW9fZmluaXNoID0gIiIiYXN5bmMgZGVmIGZpbmlzaF9kZW1vX2FwcGxpY2F0aW9uKAogICAgbWVzc2FnZTogTWVzc2FnZSwgc3RhdGU6IEZTTUNvbnRleHQsIGRhdGE6IGRpY3QKKToKICAgIGZyb20gaGFuZGxlcnMuYWRtaW4gaW1wb3J0IGZvcm1hdF9jYW5kaWRhdGVfY2FyZAogICAgZnJvbSBzZXJ2aWNlcy5haV9zY29yaW5nIGltcG9ydCBhZ2dyZWdhdGVfc2NvcmVzCgogICAgYWlfc2NvcmVzID0gZGF0YS5nZXQoImFpX3Njb3JlcyIsIHt9KQogICAgYWdncmVnYXRlID0gYWdncmVnYXRlX3Njb3JlcyhhaV9zY29yZXMpCiAgICBpZiBhZ2dyZWdhdGU6CiAgICAgICAgc2NvcmVfaW50cm8gPSAoCiAgICAgICAgICAgIGYiQWdhciBzaXogaGFxaXFpeSBub216b2QgYm8nbGdhbmluZ2l6ZGEsIEphbm9iIEhSIHNpemdhICIKICAgICAgICAgICAgZiI8Yj57YWdncmVnYXRlWydhdmdfc2NvcmUnXX0vMTAwPC9iPiBiYWxsIGJlcmdhbiBibydsYXJkaS4iCiAgICAgICAgKQogICAgZWxzZToKICAgICAgICBzY29yZV9pbnRybyA9ICgKICAgICAgICAgICAgIkFJIHRhaGxpbGkgaG96aXIgdG8nbGlxIGNoaXFtYWdhbiBibydsc2EgaGFtLCBhZG1pbiBqYXZvYmxhcmluZ2l6bmkgIgogICAgICAgICAgICAic2h1IGZvcm1hdGRhIGtvJ3JhZGkuIgogICAgICAgICkKCiAgICBwcmV2aWV3ID0gZm9ybWF0X2NhbmRpZGF0ZV9jYXJkKAogICAgICAgIHsKICAgICAgICAgICAgImZ1bGxfbmFtZSI6IG1lc3NhZ2UuZnJvbV91c2VyLmZ1bGxfbmFtZSwKICAgICAgICAgICAgInZhY2FuY3lfdGl0bGUiOiBkYXRhLmdldCgidmFjYW5jeV90aXRsZSIpIG9yICJEZW1vIHZha2Fuc2l5YSIsCiAgICAgICAgICAgICJwaG9uZV9udW1iZXIiOiAi4oCUIiwKICAgICAgICAgICAgImFpX3Njb3JlcyI6IGFpX3Njb3JlcywKICAgICAgICB9LAogICAgICAgIHNob3dfcmlza3M9VHJ1ZSwKICAgICkKCiAgICBhd2FpdCBtZXNzYWdlLmFuc3dlcigKICAgICAgICAi8J+TiiA8Yj5EZW1vIG5hdGlqYW5naXogdGF5eW9yPC9iPlxcblxcbiIKICAgICAgICBmIntzY29yZV9pbnRyb31cXG5cXG4iCiAgICAgICAgIjxiPkFkbWluIGJvdGRhIHNpeiB0YXhtaW5hbiBzaHVuZGF5IGtvJ3JpbmFyZGluZ2l6OjwvYj5cXG5cXG4iCiAgICAgICAgZiJ7cHJldmlld31cXG5cXG4iCiAgICAgICAgIllhJ25pIHNpeiAyMOKAkzUwIHRhIG5vbXpvZCBiaWxhbiBhbG9oaWRhIHlvemlzaGliIG8ndGlybWF5c2l6IOKAlCAiCiAgICAgICAgIkphbm9iIEhSIGphdm9ibGFybmkgeWlnJ2liLCBiYWhvbGFiLCBzaXpnYSB0YXl5b3IgdGFobGlsIHl1Ym9yYWRpLiIKICAgICkKCiAgICBidWlsZGVyID0gSW5saW5lS2V5Ym9hcmRCdWlsZGVyKCkKICAgIGJ1aWxkZXIuYnV0dG9uKHRleHQ9IvCfmoAgSFIgYm90aW1uaSB5YXJhdGlzaCIsIGNhbGxiYWNrX2RhdGE9ImJ1c2luZXNzOnN0YXJ0IikKICAgIGJ1aWxkZXIuYnV0dG9uKHRleHQ9IkhvemlyIGVtYXMiLCBjYWxsYmFja19kYXRhPSJidXNpbmVzczpza2lwIikKICAgIGJ1aWxkZXIuYWRqdXN0KDEpCiAgICBhd2FpdCBtZXNzYWdlLmFuc3dlcigKICAgICAgICAi8J+PoiA8Yj5FbmRpIG8nemluZ2l6bmluZyBIUiBib3Rpbmdpem5pIHlhcmF0aWIga28ncmFzaXptaT88L2I+XFxuXFxuIgogICAgICAgICJTaXpuaW5nIHZha2Fuc2l5YWxhcmluZ2l6LCBzYXZvbGxhcmluZ2l6IHZhIHRhbGFibGFyaW5naXogYXNvc2lkYSBpc2hsYXlkaS4iLAogICAgICAgIHJlcGx5X21hcmt1cD1idWlsZGVyLmFzX21hcmt1cCgpLAogICAgKQogICAgYXdhaXQgc3RhdGUuY2xlYXIoKQoKCiIiIgogICAgaWYgYW5jaG9yIG5vdCBpbiBxOgogICAgICAgIHJhaXNlIEFzc2VydGlvbkVycm9yKCJjb21wbGV0ZV9hcHBsaWNhdGlvbiBhbmNob3Igbm90IGZvdW5kIikKICAgIHEgPSBxLnJlcGxhY2UoYW5jaG9yLCBkZW1vX2ZpbmlzaCArIGFuY2hvciwgMSkKCm9sZF9maW5pc2hfaGVhZCA9ICIiImFzeW5jIGRlZiBmaW5pc2hfcXVlc3Rpb25zKG1lc3NhZ2U6IE1lc3NhZ2UsIHN0YXRlOiBGU01Db250ZXh0KToKICAgIFwiXCJcIkJhcmNoYSBzYXZvbGxhciB0dWdhZ2FjaCBjaGFxaXJpbGFkaSDigJQgcmV6eXVtZS9wb3J0Zm9saW8gc28ncmFsYWRpIChpeHRpeW9yaXkpLlwiXCJcIgogICAgZGF0YSA9IGF3YWl0IHN0YXRlLmdldF9kYXRhKCkKICAgIGxhbmcgPSBkYXRhLmdldCgibGFuZyIsIERFRkFVTFRfTEFORykKCiIiIgpuZXdfZmluaXNoX2hlYWQgPSAiIiJhc3luYyBkZWYgZmluaXNoX3F1ZXN0aW9ucyhtZXNzYWdlOiBNZXNzYWdlLCBzdGF0ZTogRlNNQ29udGV4dCk6CiAgICBcIlwiXCJCYXJjaGEgc2F2b2xsYXIgdHVnYWdhY2ggY2hhcWlyaWxhZGkg4oCUIHJlenl1bWUvcG9ydGZvbGlvIHNvJ3JhbGFkaSAoaXh0aXlvcml5KS5cIlwiXCIKICAgIGRhdGEgPSBhd2FpdCBzdGF0ZS5nZXRfZGF0YSgpCiAgICBsYW5nID0gZGF0YS5nZXQoImxhbmciLCBERUZBVUxUX0xBTkcpCgogICAgaWYgZGF0YS5nZXQoImRlbW9fbW9kZSIpOgogICAgICAgIGF3YWl0IGZpbmlzaF9kZW1vX2FwcGxpY2F0aW9uKG1lc3NhZ2UsIHN0YXRlLCBkYXRhKQogICAgICAgIHJldHVybgoKIiIiCmlmIG9sZF9maW5pc2hfaGVhZCBub3QgaW4gcToKICAgIHJhaXNlIEFzc2VydGlvbkVycm9yKCJmaW5pc2hfcXVlc3Rpb25zIGhlYWRlciBub3QgZm91bmQiKQpxID0gcS5yZXBsYWNlKG9sZF9maW5pc2hfaGVhZCwgbmV3X2ZpbmlzaF9oZWFkLCAxKQoKbWFya2VyID0gIiAgICAjIEJvdG5pbmcgbyd6aSBCMkIgbWFoc3Vsb3RuaSBzb3RhZGk6IGFua2V0YSB0b3BzaGlyZ2FuIGJpem5lcyBlZ2FzaWdhXG4iCmlmIG1hcmtlciBub3QgaW4gcToKICAgIHJhaXNlIEFzc2VydGlvbkVycm9yKCJleGlzdGluZyBCMkIgQ1RBIG1hcmtlciBub3QgZm91bmQiKQpzdGFydCA9IHEuaW5kZXgobWFya2VyKQp0YWlsID0gcVtzdGFydDpdCmlmICJpZiBCT1RfVE9LRU4gYW5kIG1lc3NhZ2UuYm90LnRva2VuID09IEJPVF9UT0tFTjoiIG5vdCBpbiB0YWlsOgogICAgaW5kZW50ZWQgPSAiIi5qb2luKCgiICAgICIgKyBsaW5lKSBpZiBsaW5lLnN0cmlwKCkgZWxzZSBsaW5lIGZvciBsaW5lIGluIHRhaWwuc3BsaXRsaW5lcyhUcnVlKSkKICAgIHEgPSBxWzpzdGFydXSAKyAiICAgIGlmIEJPVF9UT0tFTiBhbmQgbWVzc2FnZS5ib3QudG9rZW4gPT0gQk9UX1RPS0VOOlxuIiArIGluZGVudGVkCgpwLndyaXRlX3RleHQocSwgZW5jb2Rpbmc9InV0Zi04IikK'))"
-      - name: Verify syntax and isolation
+          cat > handlers/demo.py <<'PY'
+          """Demo experience shown only in the public Janob HR candidate bot."""
+
+          from aiogram import F, Router
+          from aiogram.filters import BaseFilter, CommandStart
+          from aiogram.fsm.context import FSMContext
+          from aiogram.fsm.state import State, StatesGroup
+          from aiogram.types import CallbackQuery, Message
+          from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+          from config import BOT_TOKEN, MAX_ANSWER_CHARS
+          from handlers.admin import format_candidate_card
+          from services.ai_scoring import aggregate_scores, score_answer
+
+          router = Router(name="candidate_demo")
+
+          _DEMO_QUESTIONS = [
+              {
+                  "key": "demo_achievement",
+                  "text": "Oldingi ish joyingizda erishgan eng yaxshi natijangizni ayting. Iloji bo'lsa, raqam bilan yozing.",
+              },
+              {
+                  "key": "demo_client",
+                  "text": "Qiyin mijoz yoki muammoli vaziyatni qanday hal qilgansiz? Bitta real misol keltiring.",
+              },
+              {
+                  "key": "demo_mistake",
+                  "text": "Ishda qilgan bir xatoyingiz va undan olgan sabog'ingizni ayting.",
+              },
+              {
+                  "key": "demo_plan",
+                  "text": "Yangi ishga kirsangiz, birinchi 30 kunni qanday rejalashtirasiz? Aniq qadamlar bilan yozing.",
+              },
+          ]
+
+
+          class DemoForm(StatesGroup):
+              answering = State()
+
+
+          class PlainMainStart(BaseFilter):
+              async def __call__(self, message: Message) -> bool:
+                  if not BOT_TOKEN or message.bot.token != BOT_TOKEN:
+                      return False
+                  parts = (message.text or "").split(maxsplit=1)
+                  return len(parts) == 1
+
+
+          async def _ask_question(message: Message, state: FSMContext) -> None:
+              data = await state.get_data()
+              index = int(data.get("demo_index", 0))
+              if index >= len(_DEMO_QUESTIONS):
+                  await _finish_demo(message, state)
+                  return
+              item = _DEMO_QUESTIONS[index]
+              await message.answer(
+                  f"<b>{index + 1}/{len(_DEMO_QUESTIONS)}</b>\n\n{item['text']}"
+              )
+              await state.set_state(DemoForm.answering)
+
+
+          async def _finish_demo(message: Message, state: FSMContext) -> None:
+              data = await state.get_data()
+              ai_scores = data.get("demo_ai_scores", {})
+              aggregate = aggregate_scores(ai_scores)
+
+              if aggregate:
+                  score_intro = (
+                      "Agar siz nomzod bo'lganingizda, Janob HR sizga "
+                      f"<b>{aggregate['avg_score']}/100</b> ball bergan bo'lardi."
+                  )
+                  metrics = (
+                      f"📈 Natijadorlik: <b>{aggregate['avg_natijadorlik']}</b>\n"
+                      f"🧭 Mas'uliyat: <b>{aggregate['avg_masuliyat']}</b>\n"
+                      f"🎯 Aniqlik: <b>{aggregate['avg_aniqlik']}</b>"
+                  )
+              else:
+                  score_intro = (
+                      "AI tahlili hozir to'liq chiqmagan bo'lsa ham, Janob HR "
+                      "javoblarni admin uchun shu ko'rinishda jamlaydi."
+                  )
+                  metrics = ""
+
+              preview = format_candidate_card(
+                  {
+                      "full_name": message.from_user.full_name,
+                      "vacancy_title": "Sotuv menejeri · demo",
+                      "phone_number": "—",
+                      "ai_scores": ai_scores,
+                  },
+                  show_risks=True,
+              )
+
+              result_text = (
+                  "📊 <b>Demo natijangiz tayyor</b>\n\n"
+                  f"{score_intro}"
+              )
+              if metrics:
+                  result_text += f"\n\n{metrics}"
+              result_text += (
+                  "\n\n<b>Admin botga yuboriladigan qisqa tahlil:</b>\n\n"
+                  f"{preview}\n\n"
+                  "Janob HR nomzodlarning javoblarini yig'adi, tahlil qiladi va "
+                  "ish beruvchiga tayyor natija qilib beradi."
+              )
+              await message.answer(result_text)
+
+              builder = InlineKeyboardBuilder()
+              builder.button(text="🚀 HR botimni yaratish", callback_data="business:start")
+              builder.button(text="Hozir emas", callback_data="business:skip")
+              builder.adjust(1)
+              await message.answer(
+                  "🏢 <b>O'zingizning HR botingizni yaratib ko'rasizmi?</b>\n\n"
+                  "U sizning vakansiyalaringiz, savollaringiz va talablaringiz asosida ishlaydi.",
+                  reply_markup=builder.as_markup(),
+              )
+              await state.clear()
+
+
+          @router.message(CommandStart(), PlainMainStart())
+          async def demo_start(message: Message, state: FSMContext):
+              await state.clear()
+              builder = InlineKeyboardBuilder()
+              builder.button(text="Boshlash", callback_data="demo:start")
+              await message.answer(
+                  "👋 <b>Assalomu alaykum</b>\n\n"
+                  "Tasavvur qiling, siz hozir ishga topshirayotgan nomzodsiz.\n\n"
+                  "Janob HR siz bilan qanday gaplashadi, qanday savol beradi va "
+                  "ma'lumotni qanday yig'adi — hozir o'zingiz ko'rasiz.",
+                  reply_markup=builder.as_markup(),
+              )
+
+
+          @router.callback_query(F.data == "demo:start")
+          async def begin_demo(callback: CallbackQuery, state: FSMContext):
+              if not BOT_TOKEN or callback.bot.token != BOT_TOKEN:
+                  await callback.answer("Bu demo faqat Janob HR asosiy botida mavjud.", show_alert=True)
+                  return
+              await state.clear()
+              await state.update_data(demo_index=0, demo_answers={}, demo_ai_scores={})
+              try:
+                  await callback.message.edit_reply_markup(reply_markup=None)
+              except Exception:
+                  pass
+              await callback.answer()
+              await callback.message.answer(
+                  "🎭 <b>Demo boshlandi.</b> Siz hozir Sotuv menejeri lavozimiga nomzodsiz."
+              )
+              await _ask_question(callback.message, state)
+
+
+          @router.message(DemoForm.answering, F.text)
+          async def demo_answer(message: Message, state: FSMContext):
+              answer = (message.text or "").strip()
+              if not answer:
+                  await message.answer("Javobingizni qisqacha yozing.")
+                  return
+              if len(answer) > MAX_ANSWER_CHARS:
+                  await message.answer("Javob juda uzun. Iltimos, qisqaroq yozing.")
+                  return
+
+              data = await state.get_data()
+              index = int(data.get("demo_index", 0))
+              if index >= len(_DEMO_QUESTIONS):
+                  await _finish_demo(message, state)
+                  return
+
+              item = _DEMO_QUESTIONS[index]
+              answers = dict(data.get("demo_answers", {}))
+              scores = dict(data.get("demo_ai_scores", {}))
+              answers[item["key"]] = answer
+
+              result = await score_answer(item["text"], answer)
+              if isinstance(result, dict):
+                  scores[item["key"]] = result
+
+              await state.update_data(
+                  demo_index=index + 1,
+                  demo_answers=answers,
+                  demo_ai_scores=scores,
+              )
+              await _ask_question(message, state)
+
+
+          @router.message(DemoForm.answering)
+          async def demo_wrong_type(message: Message):
+              await message.answer("Bu demoda javobni matn ko'rinishida yozing.")
+          PY
+
+      - name: Register demo and remove customer upsell
+        shell: bash
         run: |
-          python -m py_compile handlers/start.py handlers/questions.py
-          grep -Fq 'callback_data="demo:start"' handlers/start.py
-          grep -Fq 'demo_mode=True' handlers/start.py
-          grep -Fq 'Admin botda siz taxminan shunday' handlers/questions.py
-          grep -Fq 'if BOT_TOKEN and message.bot.token == BOT_TOKEN:' handlers/questions.py
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path("webhook_app.py")
+          s = p.read_text(encoding="utf-8")
+          if "        demo,\n" not in s:
+              s = s.replace("        create_bot,\n        files,", "        create_bot,\n        demo,\n        files,", 1)
+          if "        demo.router,\n        start.router," not in s:
+              s = s.replace("        create_bot.router,\n        start.router,", "        create_bot.router,\n        demo.router,\n        start.router,", 1)
+          p.write_text(s, encoding="utf-8")
+
+          p = Path("bot.py")
+          s = p.read_text(encoding="utf-8")
+          if "    demo,\n" not in s:
+              s = s.replace("    create_bot,\n    files,", "    create_bot,\n    demo,\n    files,", 1)
+          if "    dp.include_router(demo.router)\n" not in s:
+              s = s.replace(
+                  "    dp.include_router(create_bot.router)\n    dp.include_router(start.router)",
+                  "    dp.include_router(create_bot.router)\n    dp.include_router(demo.router)\n    dp.include_router(start.router)",
+                  1,
+              )
+          p.write_text(s, encoding="utf-8")
+
+          p = Path("handlers/questions.py")
+          s = p.read_text(encoding="utf-8")
+          marker = "    # Botning o'zi B2B mahsulotni sotadi: anketa topshirgan biznes egasiga\n"
+          if marker in s:
+              s = s[:s.index(marker)].rstrip() + "\n"
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Verify demo isolation
+        run: |
+          python -m py_compile handlers/demo.py handlers/questions.py bot.py webhook_app.py
+          grep -Fq 'class PlainMainStart' handlers/demo.py
+          grep -Fq 'message.bot.token != BOT_TOKEN' handlers/demo.py
+          grep -Fq 'Admin botga yuboriladigan qisqa tahlil' handlers/demo.py
+          grep -Fq 'callback_data="business:start"' handlers/demo.py
+          grep -Fq 'demo.router' webhook_app.py
+          grep -Fq 'demo.router' bot.py
+          ! grep -Fq "Botning o'zi B2B mahsulotni sotadi" handlers/questions.py
+
       - name: Commit production changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add handlers/start.py handlers/questions.py
-          git commit -m "Add demo experience to main candidate bot" || exit 0
+          git add handlers/demo.py handlers/questions.py bot.py webhook_app.py
+          git commit -m "Add isolated candidate demo experience" || exit 0
           git push origin HEAD:multi-tenant

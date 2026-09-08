@@ -251,12 +251,14 @@ async def _finish_demo(message: Message, state: FSMContext) -> None:
 async def demo_start(message: Message, state: FSMContext):
     await state.clear()
     builder = InlineKeyboardBuilder()
-    builder.button(text="Boshlash", callback_data="demo:start")
+    builder.button(text="▶️ Boshlash", callback_data="demo:start")
     await message.answer(
         "👋 <b>Assalomu alaykum</b>\n\n"
+        "Bu — <b>Janob HR nomzod botining qisqa demosi</b>.\n\n"
         "Tasavvur qiling, siz hozir ishga topshirayotgan nomzodsiz.\n\n"
         "Janob HR siz bilan qanday gaplashadi, qanday savol beradi va "
-        "ma'lumotni qanday yig'adi — hozir o'zingiz ko'rasiz.",
+        "ma'lumotni qanday yig'adi — hozir o'zingiz ko'rasiz.\n\n"
+        "Oxirida javoblaringiz asosida Janob HR qanday tahlil chiqarishini ham ko'rsatamiz.",
         reply_markup=builder.as_markup(),
     )
 
@@ -274,9 +276,10 @@ async def begin_demo(callback: CallbackQuery, state: FSMContext):
         pass
     await callback.answer()
     await callback.message.answer(
-        "💼 <b>Vakansiya: Sotuv menejeri</b>\n\n"
-        "Siz hozir nomzod sifatida 6 ta majburiy savoldan o'tasiz. "
-        "Faktik savollar ma'lumot sifatida saqlanadi, kompetensiya savollari esa AI orqali baholanadi."
+        "🎭 <b>Demo boshlandi</b>\n\n"
+        "💼 Vakansiya: <b>Sotuv menejeri</b>\n\n"
+        "Siz hozir nomzod sifatida 6 ta savolga javob berasiz. "
+        "Javoblaringizdan keyin Janob HR siz haqingizda qanday tahlil chiqarishini ko'rasiz."
     )
     await _ask_question(callback.message, state)
 

@@ -53,7 +53,15 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str
     if not active:
         return None
 
-    timeout = aiohttp.ClientTimeout(total=8.0, connect=2.0, sock_read=7.5)
+    # Short scoring calls must stay fast, while long structured generation
+    # (vacancy questions / translation) needs substantially more than 8 seconds.
+    # Historical production fix used ~90 output tokens/sec + a small buffer.
+    timeout_seconds = max(8.0, float(round(max_tokens / 90) + 5))
+    timeout = aiohttp.ClientTimeout(
+        total=timeout_seconds,
+        connect=2.0,
+        sock_read=max(7.5, timeout_seconds - 0.5),
+    )
     initial_budget = max(max_tokens, 384)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -118,10 +126,22 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str
             except asyncio.CancelledError:
                 raise
             except asyncio.TimeoutError:
-                logger.warning("AI provayder (%s) timeout bilan javob bermadi.", label)
+                logger.warning(
+                    "AI provayder (%s) timeout bilan javob bermadi "
+                    "(timeout=%ss, max_tokens=%s).",
+                    label,
+                    timeout_seconds,
+                    max_tokens,
+                )
                 return None
             except Exception:
-                logger.exception("AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi.", label)
+                logger.exception(
+                    "AI provayder (%s) so'rovi muvaffaqiyatsiz tugadi "
+                    "(timeout=%ss, max_tokens=%s).",
+                    label,
+                    timeout_seconds,
+                    max_tokens,
+                )
                 return None
 
         tasks = [

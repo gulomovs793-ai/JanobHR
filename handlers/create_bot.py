@@ -130,9 +130,10 @@ async def _start_business_flow(
             partner_name=partner_name or "Hamkor",
         )
     await message.answer(
-        "Sizga mos HR bot yaratishdan oldin <b>3 ta qisqa savol</b>. "
-        "Javoblaringiz Janob HR'ni sizning yollash jarayoningizga moslash uchun kerak.\n\n"
-        "<b>1/3 · Hozir orzuingizdagi xodimni yollashda sizni eng ko'p qiynayotgan "
+        "Har bir kompaniyada xodim yollashdagi asosiy muammo har xil bo'ladi: "
+        "ba'zilarida mos nomzod topish, ba'zilarida saralashga ketadigan vaqt, "
+        "boshqalarida esa ishga olingan xodimning uzoq ishlamasligi muammo bo'ladi.\n\n"
+        "<b>Hozir orzuyingizdagi xodimni yollashda sizni eng ko'p qiynayotgan "
         "narsa nima?</b>"
     )
     await state.set_state(CreateBotForm.waiting_hiring_problem)
@@ -162,9 +163,7 @@ async def receive_hiring_problem(message: Message, state: FSMContext):
         await message.answer("Muammoni qisqacha yozib bering.")
         return
     await state.update_data(hiring_problem=value)
-    await message.answer(
-        "<b>2/3 · Odatda ishingizga qiziqqan nomzodlarni qanday saralaysiz?</b>"
-    )
+    await message.answer("Odatda ishingizga qiziqqan nomzodlarni qanday saralaysiz?")
     await state.set_state(CreateBotForm.waiting_current_process)
 
 
@@ -176,8 +175,8 @@ async def receive_current_process(message: Message, state: FSMContext):
         return
     await state.update_data(current_process=value)
     await message.answer(
-        "<b>3/3 · Qaysi muammoyingizni hal qilib bersak, Janob HR bilan muntazam "
-        "ishlagan bo'lardingiz?</b>"
+        "Qaysi muammoyingizni hal qilib bersak, Janob HR bilan muntazam "
+        "ishlagan bo'lardingiz?"
     )
     await state.set_state(CreateBotForm.waiting_desired_result)
 
@@ -201,14 +200,12 @@ async def receive_desired_result(message: Message, state: FSMContext):
         ]
     )
     await message.answer(
-        "✅ <b>Tushundim.</b>\n\n"
-        f"Asosiy muammo: <b>{escape(data['hiring_problem'])}</b>\n"
-        f"Hozirgi saralash: <b>{escape(data['current_process'])}</b>\n"
-        f"Siz kutayotgan natija: <b>{escape(data['desired_result'])}</b>\n\n"
-        "Janob HR nomzodlarni bir xil mezon asosida tekshiradi, javoblarini tahlil qiladi "
-        "va sizga eng moslarini ajratib beradi.\n\n"
-        "🎁 Birinchi <b>5 ta ariza bepul</b>.\n\n"
-        "O'zingizning HR botingizni yaratishni boshlaymizmi?",
+        f"Siz aytgan asosiy muammo — <b>{escape(data['hiring_problem'])}</b>.\n\n"
+        f"Hozir nomzodlarni <b>{escape(data['current_process'])}</b>, shu sabab "
+        "saralashda vaqt va kuch yo'qotyapsiz. Janob HR nomzodlarni bir xil "
+        "mezon asosida tekshiradi va sizga eng moslarini ajratib beradi.\n\n"
+        "🎁 Buni o'zingiz ko'rish uchun birinchi <b>5 ta ariza BUTUNLAY BEPUL</b>.\n\n"
+        "Davom etasizmi?",
         reply_markup=keyboard,
     )
     await state.set_state(None)

@@ -176,7 +176,6 @@ async def _finish_demo(message: Message, state: FSMContext) -> None:
             f"🎯 Aniqlik: <b>{aggregate['avg_aniqlik']}</b>"
         )
     else:
-        score = None
         recommendation = "⚪ <b>AI tahlili vaqtincha to'liq chiqmagan.</b>"
         score_intro = "Kompetensiya savollari bo'yicha AI tahlili hozir to'liq chiqmagan."
         metrics = ""
@@ -233,7 +232,6 @@ async def _finish_demo(message: Message, state: FSMContext) -> None:
         f"\n\n⚠️ <b>Xavf / aniqlashtirish kerak</b>\n{risk_text}"
         f"\n\n🔎 <b>Real suhbatda tekshiriladigan joylar</b>\n{checks_text}"
         f"\n\n🏁 <b>Janob HR tavsiyasi</b>\n{recommendation}"
-        "\n\n<i>Bu mijoz ko'radigan demo tahlil. Telegram username va user ID ko'rsatilmaydi.</i>"
     )
     await message.answer(result_text)
 

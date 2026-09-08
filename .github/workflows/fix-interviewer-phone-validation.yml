@@ -1,0 +1,166 @@
+name: Hotfix Uzbekistan interviewer phone validation
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/fix-interviewer-phone-validation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+
+      - name: Add strict Uzbekistan mobile validation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path("admin_bot/handlers_interview.py")
+          s = p.read_text(encoding="utf-8")
+
+          if "import re\n" not in s:
+              marker = '"""\n\nfrom aiogram import F, Router\n'
+              if marker not in s:
+                  raise AssertionError("import anchor not found")
+              s = s.replace(marker, '"""\n\nimport re\n\nfrom aiogram import F, Router\n', 1)
+
+          helper_anchor = 'router = Router(name="admin_interview")\n\n\n'
+          helper = '''_UZ_MOBILE_PREFIXES = {
+              "33", "50", "77", "88", "90", "91",
+              "93", "94", "95", "97", "98", "99",
+          }
+          _UZ_MOBILE_PREFIXES_TEXT = ", ".join(sorted(_UZ_MOBILE_PREFIXES))
+
+
+          def _normalize_uz_mobile_phone(raw: str) -> tuple[str | None, str | None]:
+              """Validate and normalize an Uzbekistan mobile number to +998XXXXXXXXX."""
+              text = (raw or "").strip()
+              if not text:
+                  return None, "Telefon raqamini kiriting."
+
+              if not re.fullmatch(r"[+\\d\\s().-]+", text):
+                  return None, (
+                      "Faqat raqamlar va odatiy ajratgichlardan foydalaning. "
+                      "Masalan: +998 90 123 45 67."
+                  )
+              if text.count("+") > 1 or ("+" in text and not text.startswith("+")):
+                  return None, "'+' belgisi faqat raqam boshida bo'lishi mumkin."
+
+              digits = re.sub(r"\\D", "", text)
+              if text.startswith("+"):
+                  if not digits.startswith("998"):
+                      return None, "Faqat O'zbekiston mobil raqami qabul qilinadi (+998)."
+                  national = digits[3:]
+              elif digits.startswith("998") and len(digits) >= 12:
+                  national = digits[3:]
+              else:
+                  national = digits
+
+              if len(national) != 9:
+                  return None, (
+                      f"Raqam uzunligi noto'g'ri: {len(national)} ta raqam kiritildi. "
+                      "+998 dan keyin aynan 9 ta raqam bo'lishi kerak. "
+                      "Masalan: +998 90 123 45 67."
+                  )
+
+              prefix = national[:2]
+              if prefix not in _UZ_MOBILE_PREFIXES:
+                  return None, (
+                      f"'{prefix}' O'zbekiston mobil kodi sifatida qabul qilinmaydi. "
+                      f"Mavjud mobil kodlar: {_UZ_MOBILE_PREFIXES_TEXT}."
+                  )
+
+              return "+998" + national, None
+
+
+          '''
+          if "_UZ_MOBILE_PREFIXES =" not in s:
+              if helper_anchor not in s:
+                  raise AssertionError("helper anchor not found")
+              s = s.replace(helper_anchor, helper_anchor + helper, 1)
+
+          old = '''@router.callback_query(F.data == "ivset:phone")
+          async def start_set_phone(callback: CallbackQuery, state: FSMContext):
+              await callback.message.edit_text(
+                  "Suhbatni o'tkazadigan insonning telefon raqamini yozing:"
+              )
+              await state.set_state(InterviewForm.setting_interviewer_phone)
+              await callback.answer()
+
+
+          @router.message(InterviewForm.setting_interviewer_phone, F.text)
+          async def receive_interviewer_phone(
+              message: Message, state: FSMContext, tenant_id: int
+          ):
+              await database.update_interview_settings(
+                  tenant_id, interviewer_phone=message.text.strip()
+              )
+              await message.answer("✅ Saqlandi.")
+              await _show_menu(message, state, tenant_id)
+          '''
+
+          new = '''@router.callback_query(F.data == "ivset:phone")
+          async def start_set_phone(callback: CallbackQuery, state: FSMContext):
+              await callback.message.edit_text(
+                  "📱 <b>Suhbatni o'tkazadigan insonning mobil raqamini yozing.</b>\\n\\n"
+                  "To'g'ri format: <code>+998 90 123 45 67</code>\\n"
+                  "Yoki: <code>90 123 45 67</code>\\n\\n"
+                  "+998 dan keyin aynan <b>9 ta raqam</b> bo'lishi kerak.\\n"
+                  "Mobil kodlar: <code>33, 50, 77, 88, 90, 91, 93, 94, 95, 97, 98, 99</code>"
+              )
+              await state.set_state(InterviewForm.setting_interviewer_phone)
+              await callback.answer()
+
+
+          @router.message(InterviewForm.setting_interviewer_phone, F.text)
+          async def receive_interviewer_phone(
+              message: Message, state: FSMContext, tenant_id: int
+          ):
+              normalized_phone, error = _normalize_uz_mobile_phone(message.text)
+              if error:
+                  await message.answer(
+                      "❌ <b>Telefon raqami noto'g'ri.</b>\\n\\n"
+                      f"{error}\\n\\n"
+                      "Qayta kiriting. Masalan: <code>+998 90 123 45 67</code>"
+                  )
+                  return
+
+              await database.update_interview_settings(
+                  tenant_id, interviewer_phone=normalized_phone
+              )
+              await message.answer(f"✅ Telefon saqlandi: <code>{normalized_phone}</code>")
+              await _show_menu(message, state, tenant_id)
+          '''
+
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif "normalized_phone, error = _normalize_uz_mobile_phone(message.text)" not in s:
+              raise AssertionError("phone handler block not found")
+
+          p.write_text(s, encoding="utf-8")
+          print("Uzbekistan interviewer phone validation applied")
+          PY
+
+      - name: Verify patch
+        run: |
+          python -m py_compile admin_bot/handlers_interview.py
+          grep -Fq '_UZ_MOBILE_PREFIXES =' admin_bot/handlers_interview.py
+          grep -Fq 'normalized_phone, error = _normalize_uz_mobile_phone(message.text)' admin_bot/handlers_interview.py
+          grep -Fq '33, 50, 77, 88, 90, 91, 93, 94, 95, 97, 98, 99' admin_bot/handlers_interview.py
+          ! grep -Fq 'interviewer_phone=message.text.strip()' admin_bot/handlers_interview.py
+
+      - name: Commit production fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add admin_bot/handlers_interview.py
+          git commit -m "Validate Uzbekistan interviewer phone numbers" || exit 0
+          git push origin HEAD:multi-tenant

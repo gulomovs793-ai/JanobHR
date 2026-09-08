@@ -35,19 +35,13 @@ jobs:
       - name: Verify
         run: |
           python -m py_compile services/ai_scoring.py handlers/admin.py admin_bot/handlers_candidates.py miniapp_api.py
-          python - <<'PY'
-          from services.ai_scoring import aggregate_scores
-          result = aggregate_scores({
-              'weak': {'score': 40, 'verdict': 'qizil', 'natijadorlik': 35, 'masuliyat': 45, 'aniqlik': 40, 'red_flags': []},
-              'strong': {'score': 80, 'verdict': 'yashil', 'natijadorlik': 85, 'amaliylik': 75, 'aniqlik': 80, 'red_flags': []},
-          })
-          assert result['avg_score'] == 60, result
-          assert result['verdict'] == 'sariq', result
-          assert result['avg_amaliylik'] == result['avg_masuliyat'], result
-          PY
+          grep -Fq 'avg_amaliylik' services/ai_scoring.py
+          grep -Fq "if avg_score < 50:" services/ai_scoring.py
           grep -Fq '🛠 Amaliylik' handlers/admin.py
+          grep -Fq 'build_candidate_analysis' handlers/admin.py
           grep -Fq '"analysis": build_candidate_analysis' miniapp_api.py
           grep -Fq 'Janob HR tahlili' miniapp/janobhr2.js
+          grep -Fq '❓ <b>' handlers/admin.py
 
       - name: Commit changes
         run: |

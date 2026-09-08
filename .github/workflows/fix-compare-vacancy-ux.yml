@@ -26,43 +26,47 @@ jobs:
           js = Path('miniapp/janobhr2.js')
           s = js.read_text(encoding='utf-8')
 
-          old_ui = '''      tools.innerHTML = '<select id="jh2-compare-vacancy" aria-label="Taqqoslash uchun vakansiya"><option value="">Vakansiyani tanlang</option></select><button id="jh2-compare-top" type="button">Top 3 ni taqqoslash</button>';'''
-          new_ui = '''      tools.innerHTML = '<div class="jh2-compare-select-wrap"><span class="jh2-step-label">1-qadam · Vakansiyani tanlang</span><select id="jh2-compare-vacancy" aria-label="Taqqoslash uchun vakansiya"><option value="">Vakansiyani tanlang ↓</option></select><small>Qaysi lavozim nomzodlarini taqqoslamoqchisiz?</small></div><button id="jh2-compare-top" type="button">2-qadam · Top 3 ni taqqoslash</button>';'''
+          old_ui = '      tools.innerHTML = \'<select id="jh2-compare-vacancy" aria-label="Taqqoslash uchun vakansiya"><option value="">Vakansiyani tanlang</option></select><button id="jh2-compare-top" type="button">Top 3 ni taqqoslash</button>\';'
+          new_ui = '      tools.innerHTML = \'<div class="jh2-compare-select-wrap"><span class="jh2-step-label">1-qadam · Vakansiyani tanlang</span><select id="jh2-compare-vacancy" aria-label="Taqqoslash uchun vakansiya"><option value="">Vakansiyani tanlang ↓</option></select><small>Qaysi lavozim nomzodlarini taqqoslamoqchisiz?</small></div><button id="jh2-compare-top" type="button">2-qadam · Top 3 ni taqqoslash</button>\';'
           if old_ui not in s:
               raise AssertionError('compare tools UI block not found')
           s = s.replace(old_ui, new_ui, 1)
 
-          old_options = '''      select.innerHTML = '<option value="">Vakansiyani tanlang</option>' + (data.items || []).filter(v=>v.active!==false).map(v=>`<option value="${esc(v.key)}">${esc(v.title)}</option>`).join('');'''
-          new_options = '''      select.innerHTML = '<option value="">Vakansiyani tanlang ↓</option>' + (data.items || []).filter(v=>v.active!==false).map(v=>`<option value="${esc(v.key)}">${esc(v.title)}</option>`).join('');'''
+          old_options = '      select.innerHTML = \'<option value="">Vakansiyani tanlang</option>\' + (data.items || []).filter(v=>v.active!==false).map(v=>`<option value="${esc(v.key)}">${esc(v.title)}</option>`).join(\'\');'
+          new_options = '      select.innerHTML = \'<option value="">Vakansiyani tanlang ↓</option>\' + (data.items || []).filter(v=>v.active!==false).map(v=>`<option value="${esc(v.key)}">${esc(v.title)}</option>`).join(\'\');'
           if old_options not in s:
               raise AssertionError('vacancy options placeholder not found')
           s = s.replace(old_options, new_options, 1)
 
-          old_compare = '''    if (!key) { tg?.showAlert?.('Avval vakansiyani tanlang.'); return; }'''
-          new_compare = '''    if (!key) {
-      if (select) {
-        select.classList.add('jh2-needs-selection');
-        select.scrollIntoView({behavior:'smooth', block:'center'});
-        select.focus({preventScroll:true});
-        setTimeout(()=>select.classList.remove('jh2-needs-selection'), 2600);
-      }
-      tg?.HapticFeedback?.notificationOccurred?.('error');
-      tg?.showAlert?.('Yuqoridagi “1-qadam · Vakansiyani tanlang” maydonini bosing va vakansiyani tanlang. Keyin Top 3 ni taqqoslash tugmasini bosing.');
-      return;
-    }
-    select?.classList.remove('jh2-needs-selection');'''
+          old_compare = "    if (!key) { tg?.showAlert?.('Avval vakansiyani tanlang.'); return; }"
+          new_compare = (
+              "    if (!key) {\n"
+              "      if (select) {\n"
+              "        select.classList.add('jh2-needs-selection');\n"
+              "        select.scrollIntoView({behavior:'smooth', block:'center'});\n"
+              "        select.focus({preventScroll:true});\n"
+              "        setTimeout(()=>select.classList.remove('jh2-needs-selection'), 2600);\n"
+              "      }\n"
+              "      tg?.HapticFeedback?.notificationOccurred?.('error');\n"
+              "      tg?.showAlert?.('Yuqoridagi “1-qadam · Vakansiyani tanlang” maydonini bosing va vakansiyani tanlang. Keyin Top 3 ni taqqoslash tugmasini bosing.');\n"
+              "      return;\n"
+              "    }\n"
+              "    select?.classList.remove('jh2-needs-selection');"
+          )
           if old_compare not in s:
               raise AssertionError('compare empty-selection block not found')
           s = s.replace(old_compare, new_compare, 1)
 
-          old_submit_listener = '''  document.addEventListener('submit', event => { if (event.target.id === 'jh2-onboarding-form') submitOnboarding(event); });'''
-          new_submit_listener = '''  document.addEventListener('change', event => {
-    if (event.target.id === 'jh2-compare-vacancy') event.target.classList.remove('jh2-needs-selection');
-  });
-  document.addEventListener('submit', event => { if (event.target.id === 'jh2-onboarding-form') submitOnboarding(event); });'''
-          if old_submit_listener not in s:
+          old_listener = "  document.addEventListener('submit', event => { if (event.target.id === 'jh2-onboarding-form') submitOnboarding(event); });"
+          new_listener = (
+              "  document.addEventListener('change', event => {\n"
+              "    if (event.target.id === 'jh2-compare-vacancy') event.target.classList.remove('jh2-needs-selection');\n"
+              "  });\n"
+              "  document.addEventListener('submit', event => { if (event.target.id === 'jh2-onboarding-form') submitOnboarding(event); });"
+          )
+          if old_listener not in s:
               raise AssertionError('submit listener anchor not found')
-          s = s.replace(old_submit_listener, new_submit_listener, 1)
+          s = s.replace(old_listener, new_listener, 1)
           js.write_text(s, encoding='utf-8')
 
           css = Path('miniapp/janobhr2.css')

@@ -35,10 +35,7 @@ def _checkout_keyboard(plan_code: str):
 def _order_keyboard(order_code: str):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔄 Boshqa tarif", callback_data="menu:billing")
-    builder.button(
-        text="🔎 To'lovni tekshirish",
-        callback_data=f"billing:check:{order_code}",
-    )
+    builder.button(text="🔎 To'lovni tekshirish", callback_data=f"billing:check:{order_code}")
     builder.button(text="🏠 Bosh menyu", callback_data="menu:main")
     builder.adjust(1)
     return builder.as_markup()
@@ -51,10 +48,7 @@ async def show_billing_message(message: Message, tenant_id: int) -> None:
     builder = InlineKeyboardBuilder()
     for code in PUBLIC_PLAN_CODES:
         item = get_plan(code)
-        builder.button(
-            text=f"{item.name} — {format_som(item.price)}",
-            callback_data=f"billing:buy:{code}",
-        )
+        builder.button(text=f"{item.name} — {format_som(item.price)}", callback_data=f"billing:buy:{code}")
     builder.adjust(1)
     await message.answer(
         "💳 <b>Tarif va to'lov</b>\n\n"
@@ -82,10 +76,7 @@ async def _show(callback: CallbackQuery, tenant_id: int) -> None:
     for code in PUBLIC_PLAN_CODES:
         item = get_plan(code)
         suffix = " · ommabop" if code == "growth" else ""
-        builder.button(
-            text=f"{item.name} — {format_som(item.price)}{suffix}",
-            callback_data=f"billing:buy:{code}",
-        )
+        builder.button(text=f"{item.name} — {format_som(item.price)}{suffix}", callback_data=f"billing:buy:{code}")
     builder.button(text="⬅️ Bosh menyu", callback_data="menu:main")
     builder.adjust(1)
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
@@ -99,85 +90,51 @@ async def _validate_plan_or_alert(callback: CallbackQuery, tenant_id: int, code:
         await callback.answer("To'lov rekvizitlari hali sozlanmagan.", show_alert=True)
         return False
     usage = await database.get_subscription_usage(tenant_id)
-    transition = get_plan_transition(
-        usage["plan"].code, code, current_expired=usage["expired"]
-    )
+    transition = get_plan_transition(usage["plan"].code, code, current_expired=usage["expired"])
     if transition == "blocked":
         expiry = (usage.get("expires_at") or "")[:10]
         suffix = f" ({expiry} gacha)" if expiry else ""
-        await callback.answer(
-            f"{usage['plan'].name} tarifi{suffix} faol. Past tarifni muddat tugagach tanlang.",
-            show_alert=True,
-        )
+        await callback.answer(f"{usage['plan'].name} tarifi{suffix} faol. Past tarifni muddat tugagach tanlang.", show_alert=True)
         return False
     return True
 
 
 async def _create_order_payload(tenant_id: int, code: str, promo_code: str | None = None) -> tuple[bool, str, object | None]:
     plan = get_plan(code)
-    attribution = await pdb.prepare_payment_attribution(
-        tenant_id, code, promo_code=promo_code
-    )
+    attribution = await pdb.prepare_payment_attribution(tenant_id, code, promo_code=promo_code)
     if not attribution.get("ok"):
         return False, attribution.get("error") or "Promo kod ishlamadi.", None
 
     order_kwargs = {}
     if attribution.get("has_partner"):
         order_kwargs["attribution"] = attribution
-    order = await create_payment_order(
-        tenant_id,
-        attribution["discounted_base_amount"],
-        plan_code=code,
-        **order_kwargs,
-    )
+    order = await create_payment_order(tenant_id, attribution["discounted_base_amount"], plan_code=code, **order_kwargs)
 
-    holder = (
-        f"\nKarta egasi: <b>{PAYMENT_CARD_HOLDER}</b>" if PAYMENT_CARD_HOLDER else ""
-    )
+    holder = f"\nKarta egasi: <b>{PAYMENT_CARD_HOLDER}</b>" if PAYMENT_CARD_HOLDER else ""
     lines = [f"✅ <b>{plan.name} tarifi</b>", ""]
-    if attribution.get("has_partner"):
+    if attribution.get("promo_code"):
+        discount_label = (
+            f"{format_som(attribution['discount_value'])}"
+            if attribution.get("discount_type") == "amount"
+            else f"{attribution['discount_percent']}%"
+        )
         lines.extend([
-            f"Hamkor: <b>{attribution.get('partner_name') or 'Hamkor'}</b>",
+            f"Promo kod: <code>{attribution['promo_code']}</code>",
+            f"Chegirma: <b>{discount_label}</b> — {format_som(attribution['discount_amount'])}",
+            f"Narx: <s>{format_som(attribution['original_amount'])}</s> → <b>{format_som(attribution['discounted_base_amount'])}</b>",
+            "",
         ])
-        if attribution.get("promo_code"):
-            discount_label = (
-                f"{format_som(attribution['discount_value'])}"
-                if attribution.get("discount_type") == "amount"
-                else f"{attribution['discount_percent']}%"
-            )
-            lines.extend(
-                [
-                    f"Promo kod: <code>{attribution['promo_code']}</code>",
-                    f"Chegirma: <b>{discount_label}</b> — {format_som(attribution['discount_amount'])}",
-                    f"Narx: <s>{format_som(attribution['original_amount'])}</s> → <b>{format_som(attribution['discounted_base_amount'])}</b>",
-                    "Chegirma hamkor komissiyasidan ayriladi.",
-                    f"Hamkor komissiyasi: {format_som(attribution['base_commission'])} → {format_som(attribution['commission_amount'])}",
-                    "",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "Referral orqali kelgan mijoz sifatida qayd qilindi.",
-                    f"Hamkor komissiyasi: {format_som(attribution['commission_amount'])}",
-                    "",
-                ]
-            )
 
-    lines.extend(
-        [
-            f"Karta: <code>{PAYMENT_CARD_NUMBER}</code>{holder}",
-            f"Aniq summa: <code>{format_som(order['amount'])}</code>",
-            f"Buyurtma: <code>{order['order_code']}</code>",
-            "",
-            "Muhim: aynan ko'rsatilgan summani yuboring. To'lov aniqlangach tarif avtomatik yoqiladi.",
-            "",
-            (
-                "To'lovdan keyin tarif yoqilmasa yoki tushunarsiz holat bo'lsa, "
-                f"<b>@F45746</b> ga buyurtma raqamini yuboring: <code>{order['order_code']}</code>"
-            ),
-        ]
-    )
+    lines.extend([
+        f"Karta: <code>{PAYMENT_CARD_NUMBER}</code>{holder}",
+        f"Aniq summa: <code>{format_som(order['amount'])}</code>",
+        f"Buyurtma: <code>{order['order_code']}</code>",
+        "",
+        "Muhim: aynan ko'rsatilgan summani yuboring. To'lov aniqlangach tarif avtomatik yoqiladi.",
+        "",
+        "To'lovdan keyin tarif yoqilmasa yoki tushunarsiz holat bo'lsa, "
+        f"<b>@F45746</b> ga buyurtma raqamini yuboring: <code>{order['order_code']}</code>",
+    ])
     return True, "\n".join(lines), _order_keyboard(order["order_code"])
 
 
@@ -197,8 +154,7 @@ async def billing_buy(callback: CallbackQuery, tenant_id: int):
     await callback.message.edit_text(
         f"💳 <b>{plan.name} tarifi</b>\n\n"
         f"Narx: <b>{format_som(plan.price)}</b>\n\n"
-        "Promo kodingiz bo'lsa kiriting. Promo kod chegirma beradi, lekin chegirma Janob HR hisobidan emas — hamkorning komissiyasidan ayriladi.\n\n"
-        "Misol: START 299 000 so'm, 10% promo = 29 900 so'm chegirma. Hamkor komissiyasi 99 000 - 29 900 = 69 100 so'm.\n\n"
+        "Promo kodingiz bo'lsa kiriting — chegirma avtomatik hisoblanadi.\n\n"
         "Qanday davom etamiz?",
         reply_markup=_checkout_keyboard(code),
     )
@@ -243,9 +199,7 @@ async def receive_promo_code(message: Message, tenant_id: int, state: FSMContext
         return
     ok, text, markup = await _create_order_payload(tenant_id, code, promo_code=message.text.strip())
     if not ok:
-        await message.answer(
-            f"❌ {text}\n\nPromo kodni qayta yuboring yoki tarifni promosiz tanlang."
-        )
+        await message.answer(f"❌ {text}\n\nPromo kodni qayta yuboring yoki tarifni promosiz tanlang.")
         return
     await state.clear()
     await message.answer(text, reply_markup=markup)

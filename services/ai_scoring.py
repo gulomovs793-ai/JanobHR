@@ -84,6 +84,14 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str
                     f"{base.rstrip('/')}/chat/completions",
                     json=payload,
                     headers={"Authorization": f"Bearer {key}"},
+                    # Recalculate for EVERY attempt, including a larger retry.
+                    # Keep short scoring calls fast; allow long JSON generation
+                    # room for model reasoning and output (bounded at 180s).
+                    timeout=aiohttp.ClientTimeout(
+                        total=(min(180.0, token_budget / 50.0 + 15.0)
+                               if token_budget >= 1200 else 8.0),
+                        connect=5.0 if token_budget >= 1200 else 2.0,
+                    ),
                 ) as resp:
                     if resp.status != 200:
                         body = await resp.text()
@@ -111,9 +119,14 @@ async def _call_ai(system_prompt: str, user_prompt: str, max_tokens: int) -> str
                         retry_budget,
                     )
                     retry_content, retry_reason = await request_once(retry_budget)
-                    if retry_content:
-                        content = retry_content
-                        finish_reason = retry_reason
+                    content = retry_content
+                    finish_reason = retry_reason
+
+                # An incomplete JSON response must not win the provider race
+                # and cancel another provider that could return valid output.
+                if finish_reason == "length":
+                    logger.warning("AI provayder (%s) qayta urinishda ham javobni tugatmadi.", label)
+                    return None
 
                 if not content:
                     logger.warning(
@@ -656,3 +669,4 @@ def aggregate_scores(ai_scores: dict) -> AggregateResult | None:
         avg_masuliyat=avg_masuliyat,
         avg_aniqlik=avg_aniqlik,
     )
+

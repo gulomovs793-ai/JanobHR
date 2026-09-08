@@ -1,0 +1,76 @@
+name: Restore partner reply menu
+
+on:
+  push:
+    branches:
+      - multi-tenant
+    paths:
+      - .github/workflows/restore-partner-reply-menu.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+          fetch-depth: 20
+
+      - name: Restore chat menu buttons
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('partner_bot.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''def main_menu() -> ReplyKeyboardRemove:
+    """Remove legacy reply buttons; all partner actions live in the Mini App."""
+    return ReplyKeyboardRemove(remove_keyboard=True)
+'''
+          new = '''def main_menu() -> ReplyKeyboardMarkup:
+    """Hamkorning chat ichidagi asosiy menyusi.
+
+    Ko'k Telegram «Boshqaruv paneli» WebApp tugmasi alohida qoladi; shu sabab
+    reply menyuda u takrorlanmaydi.
+    """
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
+            [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
+            [KeyboardButton(text="💸 Pul yechish")],
+            [KeyboardButton(text="📦 Reklama materiallari")],
+            [
+                KeyboardButton(text="❓ Tez-tez so'raladigan savollar"),
+                KeyboardButton(text="🆘 Yordam"),
+            ],
+        ],
+        resize_keyboard=True,
+    )
+'''
+          if old not in text:
+              raise SystemExit('Current main_menu anchor not found; refusing unrelated changes')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Verify
+        run: |
+          python -m py_compile partner_bot.py
+          grep -Fq 'KeyboardButton(text="📊 Statistika")' partner_bot.py
+          grep -Fq 'KeyboardButton(text="💰 Komissiya")' partner_bot.py
+          grep -Fq 'KeyboardButton(text="🔗 Referral link")' partner_bot.py
+          grep -Fq 'KeyboardButton(text="🎟 Promo kod")' partner_bot.py
+          grep -Fq 'KeyboardButton(text="💸 Pul yechish")' partner_bot.py
+          grep -Fq 'KeyboardButton(text="📦 Reklama materiallari")' partner_bot.py
+          grep -Fq 'KeyboardButton(text="🆘 Yordam")' partner_bot.py
+          ! grep -Fq 'KeyboardButton(text="📱 Boshqaruv paneli")' partner_bot.py
+
+      - name: Commit production fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add partner_bot.py
+          git commit -m "Restore partner bot reply menu" || exit 0
+          git push origin HEAD:multi-tenant

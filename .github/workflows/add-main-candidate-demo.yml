@@ -1,0 +1,223 @@
+name: Add main candidate demo flow
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/add-main-candidate-demo.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+
+      - name: Add demo-only candidate experience to main Janob HR bot
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # ---------------- handlers/start.py ----------------
+          p = Path('handlers/start.py')
+          s = p.read_text(encoding='utf-8')
+
+          if 'from config import BOT_TOKEN\n' not in s:
+              anchor = 'from aiogram.utils.keyboard import InlineKeyboardBuilder\n\n'
+              if anchor not in s:
+                  raise AssertionError('start.py import anchor not found')
+              s = s.replace(anchor, anchor + 'from config import BOT_TOKEN\n', 1)
+
+          if '_DEMO_QUESTIONS = [' not in s:
+              anchor = 'router = Router(name="start")\n\n'
+              demo_const = '''_DEMO_QUESTIONS = [
+    {
+        "key": "demo_achievement",
+        "text": "Oldingi ish joyingizda erishgan eng yaxshi natijangizni ayting. Iloji bo'lsa, raqam bilan yozing.",
+        "ai_score": True,
+    },
+    {
+        "key": "demo_client",
+        "text": "Qiyin mijoz yoki muammoli vaziyatni qanday hal qilgansiz? Bitta real misol keltiring.",
+        "ai_score": True,
+    },
+    {
+        "key": "demo_mistake",
+        "text": "Ishda qilgan bir xatoyingiz va undan olgan sabog'ingizni ayting.",
+        "ai_score": True,
+    },
+    {
+        "key": "demo_plan",
+        "text": "Yangi ishga kirsangiz, birinchi 30 kunni qanday rejalashtirasiz? Aniq qadamlar bilan yozing.",
+        "ai_score": True,
+    },
+]
+
+'''
+              if anchor not in s:
+                  raise AssertionError('start.py router anchor not found')
+              s = s.replace(anchor, anchor + demo_const, 1)
+
+          old_plain_start = '''    await state.clear()\n\n    builder = InlineKeyboardBuilder()\n    for code, label in LANGUAGES.items():\n        builder.button(text=label, callback_data=f"lang:{code}")\n    builder.adjust(1)\n\n    await message.answer(\n        "👔 <b>Janob HR</b>\\n\\n" + CHOOSE_LANGUAGE_PROMPT,\n        reply_markup=builder.as_markup(),\n    )\n    await state.set_state(ApplyForm.choosing_language)\n'''
+          new_plain_start = '''    await state.clear()\n\n    # Faqat Janob HR'ning o'z asosiy nomzod botida qisqa demo ko'rsatiladi.\n    # Mijozlar yaratgan nomzod botlarining /start oqimi o'zgarmaydi.\n    if BOT_TOKEN and message.bot.token == BOT_TOKEN:\n        builder = InlineKeyboardBuilder()\n        builder.button(text="▶️ Boshlash", callback_data="demo:start")\n        await message.answer(\n            "👋 <b>Assalomu alaykum</b>\\n\\n"\n            "Tasavvur qiling, siz hozir ishga topshirayotgan nomzodsiz.\\n\\n"\n            "Janob HR siz bilan qanday gaplashadi, qanday savol beradi va "\n            "ma'lumotni qanday yig'adi — hozir o'zingiz ko'rasiz.",\n            reply_markup=builder.as_markup(),\n        )\n        return\n\n    builder = InlineKeyboardBuilder()\n    for code, label in LANGUAGES.items():\n        builder.button(text=label, callback_data=f"lang:{code}")\n    builder.adjust(1)\n\n    await message.answer(\n        "👔 <b>Janob HR</b>\\n\\n" + CHOOSE_LANGUAGE_PROMPT,\n        reply_markup=builder.as_markup(),\n    )\n    await state.set_state(ApplyForm.choosing_language)\n'''
+          if old_plain_start not in s:
+              raise AssertionError('plain /start block not found')
+          s = s.replace(old_plain_start, new_plain_start, 1)
+
+          if 'async def start_candidate_demo(' not in s:
+              anchor = '@router.callback_query(F.data == "candidate:language")\n'
+              demo_handler = '''@router.callback_query(F.data == "demo:start")
+async def start_candidate_demo(
+    callback: CallbackQuery, state: FSMContext, tenant_id: int
+):
+    if not BOT_TOKEN or callback.bot.token != BOT_TOKEN:
+        await callback.answer("Bu demo faqat Janob HR asosiy botida mavjud.", show_alert=True)
+        return
+
+    await state.clear()
+    await state.update_data(
+        demo_mode=True,
+        lang="uz",
+        tenant_id=tenant_id,
+        vacancy_key="janobhr_demo",
+        vacancy_title="Sotuv menejeri · demo",
+        vacancy_reject_message="Demo davom etadi.",
+        vacancy_questions=_DEMO_QUESTIONS,
+        question_index=0,
+        answers={},
+        ai_scores={},
+        voice_answers={},
+        ai_suspect_flagged_keys=[],
+        irrelevant_retry_count=0,
+        ai_suspect_retry_count=0,
+        # Demo qisqa qolishi uchun past ballga qo'shimcha follow-up savol bermaymiz.
+        followup_asked_indices=list(range(len(_DEMO_QUESTIONS))),
+    )
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.answer()
+    await callback.message.answer(
+        "🎭 <b>Demo boshlandi.</b> Siz hozir Sotuv menejeri lavozimiga ariza topshirayotgan nomzodsiz."
+    )
+
+    from handlers.questions import ask_current_question
+
+    await ask_current_question(callback.message, state)
+
+
+'''
+              if anchor not in s:
+                  raise AssertionError('candidate language callback anchor not found')
+              s = s.replace(anchor, demo_handler + anchor, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+          # ---------------- handlers/questions.py ----------------
+          p = Path('handlers/questions.py')
+          q = p.read_text(encoding='utf-8')
+
+          q = q.replace(
+              'from config import MAX_ANSWER_CHARS\n',
+              'from config import BOT_TOKEN, MAX_ANSWER_CHARS\n',
+              1,
+          )
+
+          if 'async def finish_demo_application(' not in q:
+              anchor = 'async def complete_application(message: Message, state: FSMContext):\n'
+              demo_finish = '''async def finish_demo_application(
+    message: Message, state: FSMContext, data: dict
+):
+    """Janob HR asosiy botidagi demo yakuni: DBga ariza yozmaydi, natijani foydalanuvchining o'ziga ko'rsatadi."""
+    from handlers.admin import format_candidate_card
+    from services.ai_scoring import aggregate_scores
+
+    ai_scores = data.get("ai_scores", {})
+    aggregate = aggregate_scores(ai_scores)
+    if aggregate:
+        score_intro = (
+            f"Agar siz haqiqiy nomzod bo'lganingizda, Janob HR sizga "
+            f"<b>{aggregate['avg_score']}/100</b> ball bergan bo'lardi."
+        )
+    else:
+        score_intro = (
+            "AI tahlili hozir to'liq chiqmagan bo'lsa ham, admin javoblaringizni "
+            "shu formatda ko'radi."
+        )
+
+    preview = format_candidate_card(
+        {
+            "full_name": message.from_user.full_name,
+            "vacancy_title": data.get("vacancy_title") or "Demo vakansiya",
+            "phone_number": "—",
+            "ai_scores": ai_scores,
+        },
+        show_risks=True,
+    )
+
+    await message.answer(
+        "📊 <b>Demo natijangiz tayyor</b>\\n\\n"
+        f"{score_intro}\\n\\n"
+        "<b>Admin botda siz taxminan shunday ko'rinardingiz:</b>\\n\\n"
+        f"{preview}\\n\\n"
+        "Ya'ni siz 20–50 ta nomzod bilan alohida yozishib o'tirmaysiz — "
+        "Janob HR javoblarni yig'ib, baholab, sizga tayyor tahlil yuboradi."
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🚀 HR botimni yaratish", callback_data="business:start")
+    builder.button(text="Hozir emas", callback_data="business:skip")
+    builder.adjust(1)
+    await message.answer(
+        "🏢 <b>Endi o'zingizning HR botingizni yaratib ko'rasizmi?</b>\\n\\n"
+        "Sizning vakansiyalaringiz, savollaringiz va talablaringiz asosida ishlaydi.",
+        reply_markup=builder.as_markup(),
+    )
+    await state.clear()
+
+
+'''
+              if anchor not in q:
+                  raise AssertionError('complete_application anchor not found')
+              q = q.replace(anchor, demo_finish + anchor, 1)
+
+          old_finish_head = '''async def finish_questions(message: Message, state: FSMContext):\n    """Barcha savollar tugagach chaqiriladi — rezyume/portfolio so'raladi (ixtiyoriy)."""\n    data = await state.get_data()\n    lang = data.get("lang", DEFAULT_LANG)\n\n'''
+          new_finish_head = '''async def finish_questions(message: Message, state: FSMContext):\n    """Barcha savollar tugagach chaqiriladi — rezyume/portfolio so'raladi (ixtiyoriy)."""\n    data = await state.get_data()\n    lang = data.get("lang", DEFAULT_LANG)\n\n    if data.get("demo_mode"):\n        await finish_demo_application(message, state, data)\n        return\n\n'''
+          if old_finish_head not in q:
+              raise AssertionError('finish_questions header not found')
+          q = q.replace(old_finish_head, new_finish_head, 1)
+
+          # Mijozlarning o'z nomzod botlarida B2B sotuv CTA ko'rinmasin.
+          marker = "    # Botning o'zi B2B mahsulotni sotadi: anketa topshirgan biznes egasiga\n"
+          if marker not in q:
+              raise AssertionError('existing B2B CTA marker not found')
+          start = q.index(marker)
+          tail = q[start:]
+          if 'if BOT_TOKEN and message.bot.token == BOT_TOKEN:' not in tail:
+              indented = ''.join(('    ' + line) if line.strip() else line for line in tail.splitlines(True))
+              q = q[:start] + '    if BOT_TOKEN and message.bot.token == BOT_TOKEN:\n' + indented
+
+          p.write_text(q, encoding='utf-8')
+          PY
+
+      - name: Verify syntax and isolation
+        run: |
+          python -m py_compile handlers/start.py handlers/questions.py
+          grep -Fq 'callback_data="demo:start"' handlers/start.py
+          grep -Fq 'demo_mode=True' handlers/start.py
+          grep -Fq 'Admin botda siz taxminan shunday' handlers/questions.py
+          grep -Fq 'if BOT_TOKEN and message.bot.token == BOT_TOKEN:' handlers/questions.py
+
+      - name: Commit production changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add handlers/start.py handlers/questions.py
+          git commit -m "Add demo experience to main candidate bot" || exit 0
+          git push origin HEAD:multi-tenant

@@ -1,0 +1,79 @@
+name: Hotfix hide phone format hints
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/hide-phone-format-hints.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+
+      - name: Hide phone format and operator code hints
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path("admin_bot/handlers_interview.py")
+          s = p.read_text(encoding="utf-8")
+
+          s = s.replace('_UZ_MOBILE_PREFIXES_TEXT = ", ".join(sorted(_UZ_MOBILE_PREFIXES))\n', '')
+
+          s = s.replace(
+              '        return None, (\n'
+              '            "Faqat raqamlar va odatiy ajratgichlardan foydalaning. "\n'
+              '            "Masalan: +998 90 123 45 67."\n'
+              '        )',
+              '        return None, "Faqat raqamlar va telefon raqamidagi odatiy belgilarni kiriting."'
+          )
+
+          old_len = '''        return None, (\n            f"Raqam uzunligi noto\'g\'ri: {len(national)} ta raqam kiritildi. "\n            "+998 dan keyin aynan 9 ta raqam bo\'lishi kerak. "\n            "Masalan: +998 90 123 45 67."\n        )'''
+          new_len = '''        return None, "Raqam uzunligi noto\'g\'ri. O\'zbekiston mobil raqamini to\'liq kiriting."'''
+          s = s.replace(old_len, new_len)
+
+          old_prefix = '''        return None, (\n            f"\'{prefix}\' O\'zbekiston mobil kodi sifatida qabul qilinmaydi. "\n            f"Mavjud mobil kodlar: {_UZ_MOBILE_PREFIXES_TEXT}."\n        )'''
+          new_prefix = '''        return None, "Operator kodi noto\'g\'ri yoki qo\'llab-quvvatlanmaydi."'''
+          s = s.replace(old_prefix, new_prefix)
+
+          old_prompt = '''    await callback.message.edit_text(\n        "📱 <b>Suhbatni o\'tkazadigan insonning mobil raqamini yozing.</b>\\n\\n"\n        "To\'g\'ri format: <code>+998 90 123 45 67</code>\\n"\n        "Yoki: <code>90 123 45 67</code>\\n\\n"\n        "+998 dan keyin aynan <b>9 ta raqam</b> bo\'lishi kerak.\\n"\n        "Mobil kodlar: <code>33, 50, 77, 88, 90, 91, 93, 94, 95, 97, 98, 99</code>"\n    )'''
+          new_prompt = '''    await callback.message.edit_text(\n        "Suhbatni o\'tkazadigan insonning telefon raqamini yozing:"\n    )'''
+          if old_prompt not in s:
+              raise AssertionError("phone prompt block not found")
+          s = s.replace(old_prompt, new_prompt, 1)
+
+          old_error = '''        await message.answer(\n            "❌ <b>Telefon raqami noto\'g\'ri.</b>\\n\\n"\n            f"{error}\\n\\n"\n            "Qayta kiriting. Masalan: <code>+998 90 123 45 67</code>"\n        )'''
+          new_error = '''        await message.answer(\n            "❌ <b>Telefon raqami noto\'g\'ri.</b>\\n\\n"\n            f"{error}\\n\\n"\n            "Qayta kiriting."\n        )'''
+          if old_error not in s:
+              raise AssertionError("phone error block not found")
+          s = s.replace(old_error, new_error, 1)
+
+          if "Mobil kodlar:" in s or "To'g'ri format:" in s or "Mavjud mobil kodlar:" in s:
+              raise AssertionError("phone hints still visible")
+
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Verify patch
+        run: |
+          python -m py_compile admin_bot/handlers_interview.py
+          ! grep -Fq 'Mobil kodlar:' admin_bot/handlers_interview.py
+          ! grep -Fq "To'g'ri format:" admin_bot/handlers_interview.py
+          ! grep -Fq 'Mavjud mobil kodlar:' admin_bot/handlers_interview.py
+          grep -Fq "Operator kodi noto'g'ri yoki qo'llab-quvvatlanmaydi." admin_bot/handlers_interview.py
+
+      - name: Commit production fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add admin_bot/handlers_interview.py
+          git commit -m "Hide phone format hints" || exit 0
+          git push origin HEAD:multi-tenant

@@ -13,59 +13,22 @@ from services.ai_scoring import aggregate_scores, score_answer
 
 router = Router(name="candidate_demo")
 
-# Demo savollari real Janob HR saralash mantig'ini qisqa shaklda ko'rsatadi:
-# avval oson tanishuv/tajriba, keyin natija, amaliy vaziyat, reja, xato,
-# ish barqarorligi va oxirida Topgrading reference-check.
 _DEMO_QUESTIONS = [
     {
-        "key": "demo_experience",
-        "text": (
-            "Avval qisqacha tanishib olaylik. Sotuv bo'yicha qancha tajribangiz bor "
-            "va oxirgi marta nima sotgansiz?"
-        ),
-    },
-    {
         "key": "demo_achievement",
-        "text": (
-            "Oxirgi ish joyingizda sotuv bo'yicha eng yaxshi natijangiz qanday bo'lgan? "
-            "Iloji bo'lsa, aniq raqam yoki foiz bilan ayting."
-        ),
+        "text": "Oldingi ish joyingizda erishgan eng yaxshi natijangizni ayting. Iloji bo'lsa, raqam bilan yozing.",
     },
     {
-        "key": "demo_objection",
-        "text": (
-            "Mijoz sizga: «Narxi qimmat ekan», dedi. Siz bunday e'tiroz bilan real ishda "
-            "qanday ishlagansiz? Bitta aniq misol ayting."
-        ),
-    },
-    {
-        "key": "demo_scorecard",
-        "text": (
-            "Tasavvur qiling: sizga oyiga 100 ta yangi lead beriladi va maqsad — kamida "
-            "25 ta sotuv. Shu natijaga erishish uchun birinchi haftada nimalar qilasiz?"
-        ),
+        "key": "demo_client",
+        "text": "Qiyin mijoz yoki muammoli vaziyatni qanday hal qilgansiz? Bitta real misol keltiring.",
     },
     {
         "key": "demo_mistake",
-        "text": (
-            "Sotuvda qilgan eng jiddiy xatoyingiz nima bo'lgan? O'sha vaziyatda nima "
-            "qildingiz va undan nimani o'rgandingiz?"
-        ),
+        "text": "Ishda qilgan bir xatoyingiz va undan olgan sabog'ingizni ayting.",
     },
     {
-        "key": "demo_stability",
-        "text": (
-            "Oxirgi 2–3 ish joyingizning har birida taxminan qancha vaqt ishlagansiz "
-            "va nima sababdan ketgansiz?"
-        ),
-    },
-    {
-        "key": "demo_reference_check",
-        "text": (
-            "So'nggi savol. Keyingi bosqichda oldingi rahbaringizga qo'ng'iroq qilishimiz "
-            "mumkin. Agar hozir undan siz haqingizda so'rasak, u sizni 10 balldan "
-            "nechchiga baholaydi va nima uchun?"
-        ),
+        "key": "demo_plan",
+        "text": "Yangi ishga kirsangiz, birinchi 30 kunni qanday rejalashtirasiz? Aniq qadamlar bilan yozing.",
     },
 ]
 
@@ -180,9 +143,7 @@ async def begin_demo(callback: CallbackQuery, state: FSMContext):
         pass
     await callback.answer()
     await callback.message.answer(
-        "💼 <b>Vakansiya: Sotuv menejeri</b>\n\n"
-        "Siz nomzodsiz. Janob HR esa sizni birinchi bosqichda saralaydi. "
-        "Savollarga odatdagidek, o'z so'zingiz bilan javob bering."
+        "🎭 <b>Demo boshlandi.</b> Siz hozir Sotuv menejeri lavozimiga nomzodsiz."
     )
     await _ask_question(callback.message, state)
 

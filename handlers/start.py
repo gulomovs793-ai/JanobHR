@@ -145,10 +145,6 @@ async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
         partner = await pdb.get_partner_by_code(code)
         if partner:
             await pdb.record_referral_click(partner["id"], message.from_user.id)
-            await message.answer(
-                "👔 <b>Janob HR</b>\n\n"
-                "Siz hamkor tavsiyasi orqali keldingiz. Avval sizda xodim yollashda nima muammo borligini bilib olamiz, keyin botni sozlashga o'tamiz."
-            )
             from handlers.create_bot import _start_business_flow
 
             await _start_business_flow(

@@ -1,0 +1,74 @@
+name: Fix business onboarding first impression
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/fix-business-onboarding-first-impression.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+          fetch-depth: 50
+
+      - name: Revert mistaken demo-question change
+        run: |
+          git checkout dcf423c9c96f58ba023069db7cd989064ab1f045 -- handlers/demo.py
+
+      - name: Restore approved 3-question onboarding with clearer UX
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('handlers/create_bot.py')
+          s = p.read_text(encoding='utf-8')
+
+          old = '''    await message.answer(\n        "Har bir kompaniyada xodim yollashdagi asosiy muammo har xil bo'ladi: "\n        "ba'zilarida mos nomzod topish, ba'zilarida saralashga ketadigan vaqt, "\n        "boshqalarida esa ishga olingan xodimning uzoq ishlamasligi muammo bo'ladi.\\n\\n"\n        "<b>Hozir orzuyingizdagi xodimni yollashda sizni eng ko'p qiynayotgan "\n        "narsa nima?</b>"\n    )\n'''
+          new = '''    await message.answer(\n        "Sizga mos HR bot yaratishdan oldin <b>3 ta qisqa savol</b>. "\n        "Javoblaringiz Janob HR'ni sizning yollash jarayoningizga moslash uchun kerak.\\n\\n"\n        "<b>1/3 · Hozir orzuingizdagi xodimni yollashda sizni eng ko'p qiynayotgan "\n        "narsa nima?</b>"\n    )\n'''
+          if old not in s:
+              raise AssertionError('business flow intro block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''    await state.update_data(hiring_problem=value)\n    await message.answer("Odatda ishingizga qiziqqan nomzodlarni qanday saralaysiz?")\n'''
+          new = '''    await state.update_data(hiring_problem=value)\n    await message.answer(\n        "<b>2/3 · Odatda ishingizga qiziqqan nomzodlarni qanday saralaysiz?</b>"\n    )\n'''
+          if old not in s:
+              raise AssertionError('second approved question not found')
+          s = s.replace(old, new, 1)
+
+          old = '''    await state.update_data(current_process=value)\n    await message.answer(\n        "Qaysi muammoyingizni hal qilib bersak, Janob HR bilan muntazam "\n        "ishlagan bo'lardingiz?"\n    )\n'''
+          new = '''    await state.update_data(current_process=value)\n    await message.answer(\n        "<b>3/3 · Qaysi muammoyingizni hal qilib bersak, Janob HR bilan muntazam "\n        "ishlagan bo'lardingiz?</b>"\n    )\n'''
+          if old not in s:
+              raise AssertionError('third approved question not found')
+          s = s.replace(old, new, 1)
+
+          old = '''    await message.answer(\n        f"Siz aytgan asosiy muammo — <b>{escape(data['hiring_problem'])}</b>.\\n\\n"\n        f"Hozir nomzodlarni <b>{escape(data['current_process'])}</b>, shu sabab "\n        "saralashda vaqt va kuch yo'qotyapsiz. Janob HR nomzodlarni bir xil "\n        "mezon asosida tekshiradi va sizga eng moslarini ajratib beradi.\\n\\n"\n        "🎁 Buni o'zingiz ko'rish uchun birinchi <b>5 ta ariza BUTUNLAY BEPUL</b>.\\n\\n"\n        "Davom etasizmi?",\n        reply_markup=keyboard,\n    )\n'''
+          new = '''    await message.answer(\n        "✅ <b>Tushundim.</b>\\n\\n"\n        f"Asosiy muammo: <b>{escape(data['hiring_problem'])}</b>\\n"\n        f"Hozirgi saralash: <b>{escape(data['current_process'])}</b>\\n"\n        f"Siz kutayotgan natija: <b>{escape(data['desired_result'])}</b>\\n\\n"\n        "Janob HR nomzodlarni bir xil mezon asosida tekshiradi, javoblarini tahlil qiladi "\n        "va sizga eng moslarini ajratib beradi.\\n\\n"\n        "🎁 Birinchi <b>5 ta ariza bepul</b>.\\n\\n"\n        "O'zingizning HR botingizni yaratishni boshlaymizmi?",\n        reply_markup=keyboard,\n    )\n'''
+          if old not in s:
+              raise AssertionError('onboarding summary block not found')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Verify syntax and approved copy
+        run: |
+          python -m py_compile handlers/create_bot.py handlers/demo.py
+          grep -Fq '1/3 · Hozir orzuingizdagi xodimni yollashda sizni eng ko'"'"'p qiynayotgan' handlers/create_bot.py
+          grep -Fq '2/3 · Odatda ishingizga qiziqqan nomzodlarni qanday saralaysiz?' handlers/create_bot.py
+          grep -Fq '3/3 · Qaysi muammoyingizni hal qilib bersak' handlers/create_bot.py
+
+      - name: Commit production changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add handlers/create_bot.py handlers/demo.py
+          git commit -m "Restore approved business onboarding questions" || exit 0
+          git push origin HEAD:multi-tenant

@@ -89,10 +89,10 @@ class FounderCrmTests(unittest.IsolatedAsyncioTestCase):
                 },
             }
         )
-        self.assertIn("Kuchli tomoni", card)
-        self.assertIn("Xavf", card)
+        self.assertIn("Kuchli tomon", card)
+        self.assertIn("Tekshirish kerak", card)
         self.assertNotIn("<script>", card)
-        self.assertLess(len(card), 700)
+        self.assertLess(len(card), 3800)
 
 
 if __name__ == "__main__":

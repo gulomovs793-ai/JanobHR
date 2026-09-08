@@ -227,9 +227,11 @@ async def _process_answer(message: Message, state: FSMContext, answer_text: str)
     if data.get("awaiting_followup_for") == idx:
         answers = data.get("answers", {})
         ai_scores = data.get("ai_scores", {})
-        answers[q["key"]] = answer_text
+        original = answers.get(q["key"], "")
+        combined_answer = f"{original}\n\n{answer_text}" if original else answer_text
+        answers[q["key"]] = combined_answer
 
-        result = await score_answer(q["text"], answer_text)
+        result = await score_answer(q["text"], combined_answer)
         if result is None:
             ai_scores = mark_ai_unavailable(ai_scores, q["key"])
         else:

@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import BOT_TOKEN, MAX_ANSWER_CHARS
-from services.ai_scoring import aggregate_scores, score_answer
+from services.ai_scoring import aggregate_scores, score_answer, candidate_recommendation
 
 router = Router(name="candidate_demo")
 
@@ -155,12 +155,10 @@ async def _finish_demo(message: Message, state: FSMContext) -> None:
         score = int(aggregate["avg_score"])
         if experience_failed:
             recommendation = "🔴 <b>Minimal tajriba filtri o'tmadi.</b>"
-        elif score >= 75:
-            recommendation = "🟢 <b>Suhbatga tavsiya qilinadi.</b>"
-        elif score >= 55:
-            recommendation = "🟡 <b>Suhbatga chaqirish mumkin. Ayrim joylarni aniqlashtirish kerak.</b>"
         else:
-            recommendation = "🔴 <b>Hozircha ehtiyotkorlik bilan yondashish kerak.</b>"
+            recommendation = candidate_recommendation(
+                ai_scores, [q["key"] for q in _DEMO_QUESTIONS if q.get("ai_score")]
+            )
         score_intro = (
             "Agar siz nomzod bo'lganingizda, Janob HR sizga "
             f"<b>{score}/100</b> ball bergan bo'lardi."
@@ -200,6 +198,11 @@ async def _finish_demo(message: Message, state: FSMContext) -> None:
         risk_text = _short(weakest.get("izoh") or "Ayrim javoblarni aniqlashtirish kerak.", 260)
     else:
         risk_text = "Jiddiy xavf signali aniqlanmadi."
+
+    if not aggregate:
+        risk_text = "AI tahlili mavjud emas — xavfni qo‘lda tekshiring."
+    if experience_failed:
+        recommendation = "🔴 <b>Minimal tajriba filtri o‘tmadi.</b>"
 
     checks = _interview_checks(aggregate)
     checks_text = "\n".join(f"• {_short(item, 240)}" for item in checks)

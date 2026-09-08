@@ -202,7 +202,7 @@
       const insights = (a.insights || []).map(item => `<div class="jh2-evidence"><b>${esc(item.title)} · ${item.score==null?'—':esc(item.score)+'/100'}</b><p>${esc(item.summary||'')}</p></div>`).join('');
       const metrics = a.metrics ? `<div class="jh2-metrics"><span><b>${esc(a.metrics.natijadorlik)}</b>Natijadorlik</span><span><b>${esc(a.metrics.amaliylik)}</b>Amaliylik</span><span><b>${esc(a.metrics.aniqlik)}</b>Aniqlik</span></div>` : '';
       const risks = (c.risk_signals || []).map(r=>`<span class="jh2-risk">${esc(r.label)}</span>`).join('');
-      const html = `<section class="jh2-insights"><h3>Janob HR tahlili</h3>${insights}${metrics}<div class="jh2-evidence"><b>✅ Kuchli tomon</b><p>${esc(a.strength||'Javoblarni ko‘rib chiqing.')}</p></div><div class="jh2-evidence"><b>⚠️ Tekshirish kerak</b><p>${esc(a.risk||'Jiddiy xavf signali aniqlanmadi.')}</p>${risks?`<div>${risks}</div>`:''}</div><div class="jh2-recommend"><b>🏁 Janob HR tavsiyasi</b><br>${esc(a.recommendation||'AI xulosasi mavjud emas.')}</div></section>`;
+      const html = `<section class="jh2-insights"><h3>Janob HR tahlili</h3>${a.partial_ai ? `<p>⚠️ AI tahlili to‘liq emas: ${esc(a.missing_ai_count)} ta savol baholanmagan.</p>` : ''}${insights}${metrics}<div class="jh2-evidence"><b>✅ Kuchli tomon</b><p>${esc(a.strength||'Javoblarni ko‘rib chiqing.')}</p></div><div class="jh2-evidence"><b>⚠️ Tekshirish kerak</b><p>${esc(a.risk||'Jiddiy xavf signali aniqlanmadi.')}</p>${risks?`<div>${risks}</div>`:''}</div><div class="jh2-recommend"><b>🏁 Janob HR tavsiyasi</b><br>${esc(a.recommendation||'AI xulosasi mavjud emas.')}</div></section>`;
       root.querySelector('.detail-card')?.insertAdjacentHTML('beforeend', html);
     } catch {} finally { detailEnhancing = false; }
   }

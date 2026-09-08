@@ -130,7 +130,7 @@ def candidate_strength(app: dict) -> dict:
     if aggregate:
         dimensions = [
             ("Natijadorlik", aggregate.get("avg_natijadorlik", 0)),
-            ("Mas'uliyat", aggregate.get("avg_masuliyat", 0)),
+            ("Amaliylik", aggregate.get("avg_amaliylik", aggregate.get("avg_masuliyat", 0))),
             ("Aniqlik", aggregate.get("avg_aniqlik", 0)),
         ]
         dimension, dimension_score = max(dimensions, key=lambda item: item[1])

@@ -19,7 +19,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import COMPANY_PITCH_IMAGE_URL, COMPANY_PITCH_TEXT, SELL_SCORE_THRESHOLD
 from i18n import DEFAULT_LANG, t
 from services import database
-from services.ai_scoring import aggregate_scores
+from services.ai_scoring import aggregate_scores, get_ai_unavailable_keys
 
 logger = logging.getLogger("janob_hr_bot")
 
@@ -63,7 +63,7 @@ async def maybe_send_sell_pitch(
     lang: str = DEFAULT_LANG,
 ):
     aggregate = aggregate_scores(ai_scores)
-    if not aggregate:
+    if not aggregate or get_ai_unavailable_keys(ai_scores):
         return
 
     if aggregate["avg_score"] < SELL_SCORE_THRESHOLD or aggregate["verdict"] == "qizil":

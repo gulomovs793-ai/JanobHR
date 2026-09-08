@@ -703,3 +703,18 @@ def aggregate_scores(ai_scores: dict) -> AggregateResult | None:
         avg_aniqlik=avg_aniqlik,
     )
 
+
+
+def candidate_recommendation(ai_scores: dict, expected_keys=()) -> str:
+    """Use the same verdict and completeness rules in demo and admin views."""
+    aggregate = aggregate_scores(ai_scores)
+    missing = set(get_ai_unavailable_keys(ai_scores))
+    missing.update(key for key in expected_keys if not isinstance(ai_scores.get(key), dict)
+                   or not isinstance(ai_scores[key].get("score"), (int, float)))
+    if not aggregate or missing:
+        return "⚪ AI tahlili to'liq emas — javoblarni qo'lda ko'rib chiqing."
+    return {
+        "yashil": "🟢 Suhbatga tavsiya qilinadi.",
+        "sariq": "🟡 Suhbatga chaqirish mumkin. Ayrim joylarni aniqlashtirish kerak.",
+        "qizil": "🔴 Hozircha ehtiyotkorlik bilan yondashish kerak.",
+    }[aggregate["verdict"]]

@@ -17,7 +17,7 @@ from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from services import database
-from services.ai_scoring import aggregate_scores, get_ai_unavailable_keys
+from services.ai_scoring import aggregate_scores, get_ai_unavailable_keys, candidate_recommendation
 from services.plans import FEATURE_RISK_SIGNALS, has_feature
 from vacancies import build_questions
 
@@ -65,15 +65,23 @@ def build_candidate_analysis(
     aggregate = aggregate_scores(ai_scores)
     unavailable_keys = get_ai_unavailable_keys(ai_scores)
 
+    expected_keys = []
     question_map: dict[str, str] = {}
     if vacancy:
         try:
+            expected_keys = [q["key"] for q in build_questions(vacancy, app.get("lang") or "uz") if q.get("ai_score")]
             question_map = {
                 q["key"]: q["text"]
                 for q in build_questions(vacancy, app.get("lang") or "uz")
             }
         except Exception:
             logger.exception("Tahlil uchun vakansiya savollarini o'qib bo'lmadi")
+
+    unavailable_keys = sorted(set(unavailable_keys) | {
+        key for key in expected_keys
+        if not isinstance(ai_scores.get(key), dict)
+        or not isinstance(ai_scores[key].get("score"), (int, float))
+    })
 
     scored = [
         (key, value)
@@ -120,12 +128,6 @@ def build_candidate_analysis(
 
     if aggregate:
         score = int(aggregate["avg_score"])
-        if score >= 75:
-            recommendation = "🟢 Suhbatga tavsiya qilinadi."
-        elif score >= 55:
-            recommendation = "🟡 Suhbatga chaqirish mumkin. Ayrim joylarni aniqlashtirish kerak."
-        else:
-            recommendation = "🔴 Hozircha ehtiyotkorlik bilan yondashish kerak."
         metrics = {
             "natijadorlik": int(aggregate["avg_natijadorlik"]),
             "amaliylik": int(aggregate.get("avg_amaliylik", aggregate["avg_masuliyat"])),
@@ -139,6 +141,7 @@ def build_candidate_analysis(
         if show_risks:
             risk = "AI tahlili mavjud emas — xavfni qo'lda tekshiring."
 
+    recommendation = candidate_recommendation(ai_scores, expected_keys)
     return {
         "score": score,
         "metrics": metrics,
@@ -159,9 +162,9 @@ def format_candidate_card(
 ) -> str:
     analysis = build_candidate_analysis(app, vacancy, show_risks=show_risks)
     score_text = (
-        f"<b>{analysis['score']}/100</b>"
+        f"<b>{analysis['score']}/100{' ⚠️ qisman' if analysis['partial_ai'] else ''}</b>"
         if analysis["score"] is not None
-        else "<b>Baholanmagan</b>"
+        else ("<b>⚠️ AI ishlamadi</b>" if analysis["partial_ai"] else "<b>Baholanmagan</b>")
     )
     lines = [
         "📊 <b>Nomzod tahlili</b>",

@@ -154,6 +154,7 @@ def _build_dispatcher() -> Dispatcher:
     from handlers import (
         contact,
         create_bot,
+        demo,
         files,
         questions,
         resume_upfront,
@@ -179,6 +180,7 @@ def _build_dispatcher() -> Dispatcher:
     for r in (
         sell.router,
         create_bot.router,
+        demo.router,
         start.router,
         vacancy.router,
         resume_upfront.router,

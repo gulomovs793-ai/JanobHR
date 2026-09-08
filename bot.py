@@ -29,6 +29,7 @@ if not BOT_TOKEN:
 from handlers import (
     contact,
     create_bot,
+    demo,
     files,
     questions,
     resume_upfront,
@@ -95,6 +96,7 @@ def _build_candidate_bot(fsm_storage) -> tuple[Bot, Dispatcher]:
     # ishlanadi (admin_bot/handlers_decisions.py), shuning uchun bu yerda yo'q.
     dp.include_router(sell.router)
     dp.include_router(create_bot.router)
+    dp.include_router(demo.router)
     dp.include_router(start.router)
     dp.include_router(vacancy.router)
     dp.include_router(resume_upfront.router)

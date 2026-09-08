@@ -288,7 +288,6 @@ async def receive_pending_question_edit(message: Message, state: FSMContext):
 
 # ============================= 4) QO'LDA KIRITISH =============================
 
-_CHOOSING_TYPE = "AdminForm:choosing_manual_type"
 
 
 async def _ask_manual_question(message: Message, state: FSMContext):
@@ -320,7 +319,7 @@ async def _ask_question_type(message: Message, state: FSMContext):
         builder.button(text=label, callback_data=f"manual:type:{token}:{kind}")
     builder.button(text="⬅️ Bekor qilish", callback_data="manual:review")
     await state.update_data(manual_type_token=token)
-    await state.set_state(_CHOOSING_TYPE)
+    await state.set_state(AdminForm.choosing_manual_type)
     await message.answer(
         f"<b>{escape(question['text'])}</b>\n\n"
         "Nomzod qanday javob bersin?\n"
@@ -330,7 +329,7 @@ async def _ask_question_type(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(_CHOOSING_TYPE, F.data.startswith("manual:type:"))
+@router.callback_query(AdminForm.choosing_manual_type, F.data.startswith("manual:type:"))
 async def choose_manual_type(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     parts = (callback.data or "").split(":")
@@ -385,7 +384,7 @@ async def manual_back_to_review(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(_CHOOSING_TYPE)
+@router.message(AdminForm.choosing_manual_type)
 async def remind_question_type(message: Message):
     await message.answer("Avval yuqoridagi tugmadan javob turini tanlang.")
 

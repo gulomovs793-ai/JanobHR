@@ -8,6 +8,7 @@ class AdminForm(StatesGroup):
     reviewing_ai_questions = State()
     entering_manual_questions = State()
     editing_pending_question = State()
+    choosing_manual_type = State()
 
     # --- Mavjud vakansiyani tahrirlash oqimi ---
     editing_description_for_regen = State()

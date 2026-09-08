@@ -58,7 +58,7 @@
       const tools = document.createElement('div');
       tools.id = 'jh2-compare-tools';
       tools.className = 'jh2-compare-tools';
-      tools.innerHTML = '<select id="jh2-compare-vacancy" aria-label="Taqqoslash uchun vakansiya"><option value="">Vakansiyani tanlang</option></select><button id="jh2-compare-top" type="button">Top 3 ni taqqoslash</button>';
+      tools.innerHTML = '<div class="jh2-compare-select-wrap"><span class="jh2-step-label">1-qadam · Vakansiyani tanlang</span><select id="jh2-compare-vacancy" aria-label="Taqqoslash uchun vakansiya"><option value="">Vakansiyani tanlang ↓</option></select><small>Qaysi lavozim nomzodlarini taqqoslamoqchisiz?</small></div><button id="jh2-compare-top" type="button">2-qadam · Top 3 ni taqqoslash</button>';
       filters?.insertAdjacentElement('afterend', tools);
     }
 
@@ -106,7 +106,7 @@
     if (!select || select.dataset.loaded) return;
     try {
       const data = await api('/vacancies');
-      select.innerHTML = '<option value="">Vakansiyani tanlang</option>' + (data.items || []).filter(v=>v.active!==false).map(v=>`<option value="${esc(v.key)}">${esc(v.title)}</option>`).join('');
+      select.innerHTML = '<option value="">Vakansiyani tanlang ↓</option>' + (data.items || []).filter(v=>v.active!==false).map(v=>`<option value="${esc(v.key)}">${esc(v.title)}</option>`).join('');
       select.dataset.loaded = '1';
     } catch {}
   }
@@ -130,7 +130,18 @@
   async function compareTop() {
     const select = document.querySelector('#jh2-compare-vacancy');
     const key = select?.value;
-    if (!key) { tg?.showAlert?.('Avval vakansiyani tanlang.'); return; }
+    if (!key) {
+      if (select) {
+        select.classList.add('jh2-needs-selection');
+        select.scrollIntoView({behavior:'smooth', block:'center'});
+        select.focus({preventScroll:true});
+        setTimeout(()=>select.classList.remove('jh2-needs-selection'), 2600);
+      }
+      tg?.HapticFeedback?.notificationOccurred?.('error');
+      tg?.showAlert?.('Yuqoridagi “1-qadam · Vakansiyani tanlang” maydonini bosing va vakansiyani tanlang. Keyin Top 3 ni taqqoslash tugmasini bosing.');
+      return;
+    }
+    select?.classList.remove('jh2-needs-selection');
     openSheet('Top nomzodlar', '<div class="jh2-loading">Taqqoslanmoqda…</div>');
     try { renderComparison(await api(`/intelligence/compare?vacancy_key=${encodeURIComponent(key)}&limit=3`)); }
     catch (e) { document.querySelector('#jh2-sheet-body').innerHTML = `<div class="jh2-loading">${esc(e.message)}</div>`; }
@@ -209,6 +220,9 @@
     if (event.target.closest('#jh2-close') || event.target === document.querySelector('#jh2-overlay')) closeSheet();
     if (event.target.closest('#jh2-compare-top')) compareTop();
     if (event.target.closest('#jh2-reload')) location.reload();
+  });
+  document.addEventListener('change', event => {
+    if (event.target.id === 'jh2-compare-vacancy') event.target.classList.remove('jh2-needs-selection');
   });
   document.addEventListener('submit', event => { if (event.target.id === 'jh2-onboarding-form') submitOnboarding(event); });
 

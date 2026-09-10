@@ -1,0 +1,584 @@
+name: Implement support tickets
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/implement-support-tickets.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+
+      - name: Add persistent support ticket flow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # ------------------------------------------------------------
+          # 1) Persistent support tickets in the shared partner DB.
+          # ------------------------------------------------------------
+          p = Path("services/partner_database.py")
+          s = p.read_text(encoding="utf-8")
+          if "CREATE TABLE IF NOT EXISTS partner_support_tickets" not in s:
+              anchor = "            CREATE INDEX IF NOT EXISTS idx_partner_events_partner\n"
+              assert anchor in s, "partner DB index anchor not found"
+              block = '''            CREATE TABLE IF NOT EXISTS partner_support_tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                partner_id INTEGER NOT NULL,
+                telegram_user_id INTEGER NOT NULL,
+                question TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                answer TEXT,
+                answered_by INTEGER,
+                closed_by INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                answered_at TEXT,
+                closed_at TEXT,
+                FOREIGN KEY(partner_id) REFERENCES partners(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_partner_support_status
+                ON partner_support_tickets(status, created_at);
+            CREATE INDEX IF NOT EXISTS idx_partner_support_partner
+                ON partner_support_tickets(partner_id, created_at);
+
+'''
+              s = s.replace(anchor, block + anchor, 1)
+
+          if "async def create_support_ticket(" not in s:
+              anchor = "async def get_partner_by_user_id(user_id: int) -> dict | None:\n"
+              assert anchor in s, "partner DB function anchor not found"
+              funcs = '''async def create_support_ticket(
+    partner_id: int, telegram_user_id: int, question: str
+) -> dict:
+    """Create one persistent support ticket from a partner chat."""
+    await init_partner_db()
+    question = str(question or "").strip()
+    if not question:
+        raise ValueError("Savol bo'sh bo'lishi mumkin emas")
+    if len(question) > 3500:
+        raise ValueError("Savol juda uzun")
+    now = _now()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA busy_timeout=5000")
+        cur = await db.execute(
+            """
+            INSERT INTO partner_support_tickets(
+                partner_id, telegram_user_id, question, status, created_at, updated_at
+            ) VALUES (?, ?, ?, 'open', ?, ?)
+            """,
+            (int(partner_id), int(telegram_user_id), question, now, now),
+        )
+        ticket_id = int(cur.lastrowid)
+        await db.commit()
+    ticket = await get_support_ticket(ticket_id)
+    assert ticket is not None
+    return ticket
+
+
+async def get_support_ticket(ticket_id: int) -> dict | None:
+    await init_partner_db()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """
+            SELECT t.*, p.full_name AS partner_name, p.username AS partner_username
+            FROM partner_support_tickets t
+            LEFT JOIN partners p ON p.id=t.partner_id
+            WHERE t.id=?
+            LIMIT 1
+            """,
+            (int(ticket_id),),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def list_support_tickets(
+    status: str | None = "open", limit: int = 100
+) -> list[dict]:
+    await init_partner_db()
+    limit = max(1, min(int(limit or 100), 500))
+    query = """
+        SELECT t.*, p.full_name AS partner_name, p.username AS partner_username
+        FROM partner_support_tickets t
+        LEFT JOIN partners p ON p.id=t.partner_id
+    """
+    params: list[object] = []
+    if status:
+        if status not in {"open", "answered", "closed"}:
+            raise ValueError("invalid support status")
+        query += " WHERE t.status=?"
+        params.append(status)
+    query += " ORDER BY t.created_at DESC, t.id DESC LIMIT ?"
+    params.append(limit)
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(query, params)
+        return [dict(row) for row in await cur.fetchall()]
+
+
+async def answer_support_ticket(
+    ticket_id: int, answer: str, answered_by: int
+) -> dict | None:
+    await init_partner_db()
+    answer = str(answer or "").strip()
+    if not answer:
+        raise ValueError("Javob bo'sh bo'lishi mumkin emas")
+    if len(answer) > 3500:
+        raise ValueError("Javob juda uzun")
+    now = _now()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        cur = await db.execute(
+            """
+            UPDATE partner_support_tickets
+            SET status='answered', answer=?, answered_by=?, answered_at=?, updated_at=?
+            WHERE id=? AND status='open'
+            """,
+            (answer, int(answered_by), now, now, int(ticket_id)),
+        )
+        await db.commit()
+        if cur.rowcount != 1:
+            return None
+    return await get_support_ticket(ticket_id)
+
+
+async def close_support_ticket(ticket_id: int, closed_by: int) -> dict | None:
+    await init_partner_db()
+    now = _now()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        cur = await db.execute(
+            """
+            UPDATE partner_support_tickets
+            SET status='closed', closed_by=?, closed_at=?, updated_at=?
+            WHERE id=? AND status='open'
+            """,
+            (int(closed_by), now, now, int(ticket_id)),
+        )
+        await db.commit()
+        if cur.rowcount != 1:
+            return None
+    return await get_support_ticket(ticket_id)
+
+
+'''
+              s = s.replace(anchor, funcs + anchor, 1)
+          p.write_text(s, encoding="utf-8")
+
+          # ------------------------------------------------------------
+          # 2) Partner Bot: Yordam -> question -> persistent ticket.
+          # ------------------------------------------------------------
+          p = Path("partner_bot.py")
+          s = p.read_text(encoding="utf-8")
+          if "from html import escape" not in s:
+              anchor = "import logging\nimport os\n"
+              assert anchor in s, "partner_bot import anchor not found"
+              s = s.replace(anchor, "import logging\nimport os\nfrom html import escape\n", 1)
+
+          if "class PartnerSupportForm(StatesGroup):" not in s:
+              anchor = '''class PartnerForm(StatesGroup):
+    role = State()
+    q1 = State()
+    q2 = State()
+    q3 = State()
+    q4 = State()
+    phone = State()
+
+'''
+              assert anchor in s, "PartnerForm anchor not found"
+              addition = anchor + '''class PartnerSupportForm(StatesGroup):
+    waiting_question = State()
+
+
+'''
+              s = s.replace(anchor, addition, 1)
+
+          old = '''@router.message(F.text == "🆘 Yordam")
+async def help_section(message: Message) -> None:
+    if await require_approved(message):
+        await message.answer(
+            "🆘 Savol bo'lsa shu chatga yozing. Kerak bo'lsa siz bilan bog'lanamiz.\\n\\n"
+            "Ko'p so'raladigan savollar uchun <b>❓ Tez-tez so'raladigan savollar</b> bo'limini oching."
+        )
+
+'''
+          if old in s:
+              new = '''@router.message(F.text == "🆘 Yordam")
+async def help_section(message: Message, state: FSMContext) -> None:
+    partner = await require_approved(message)
+    if not partner:
+        return
+    await state.set_state(PartnerSupportForm.waiting_question)
+    await message.answer(
+        "🆘 <b>Yordam</b>\\n\\n"
+        "Savolingizni yozing. Javob shu chatga keladi.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="❌ Bekor qilish")]],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+    )
+
+
+@router.message(PartnerSupportForm.waiting_question)
+async def receive_support_question(message: Message, state: FSMContext) -> None:
+    if message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("Yordam bekor qilindi.", reply_markup=main_menu())
+        return
+
+    partner = await require_approved(message)
+    if not partner:
+        await state.clear()
+        return
+
+    question = (message.text or "").strip()
+    if not question:
+        await message.answer("Savolingizni matn ko'rinishida yozing.")
+        return
+    if len(question) > 3500:
+        await message.answer("Savol juda uzun. Iltimos, 3500 belgidan qisqaroq yozing.")
+        return
+
+    try:
+        ticket = await pdb.create_support_ticket(
+            int(partner["id"]), message.from_user.id, question
+        )
+    except Exception:
+        logger.exception("Support ticket yaratilmadi: partner_id=%s", partner.get("id"))
+        await message.answer("Savolni yuborib bo'lmadi. Birozdan keyin qayta urinib ko'ring.")
+        return
+
+    await state.clear()
+    await message.answer(
+        f"✅ Savolingiz yuborildi.\\n\\n"
+        f"Murojaat: <b>#{ticket['id']}</b>\\n"
+        "Javob shu chatga keladi.",
+        reply_markup=main_menu(),
+    )
+
+    if not FOUNDER_BOT_TOKEN or not FOUNDER_USER_IDS:
+        logger.error("Support ticket notification sozlanmagan: ticket_id=%s", ticket["id"])
+        return
+
+    founder_bot = Bot(
+        token=FOUNDER_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    username = str(partner.get("username") or "").strip().lstrip("@")
+    username_line = f"@{escape(username)}" if username else "—"
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✍️ Javob berish", callback_data=f"fp:supportreply:{ticket['id']}")],
+            [InlineKeyboardButton(text="📥 Mijozlarning savollari", callback_data="fp:support")],
+        ]
+    )
+    notice = (
+        f"💬 <b>Yangi savol #{ticket['id']}</b>\\n\\n"
+        f"👤 {escape(str(partner.get('full_name') or 'Hamkor'))}\\n"
+        f"Telegram: {username_line}\\n\\n"
+        f"<b>Savol:</b>\\n{escape(question)}"
+    )
+    try:
+        for founder_id in FOUNDER_USER_IDS:
+            try:
+                await founder_bot.send_message(founder_id, notice, reply_markup=markup)
+            except Exception:
+                logger.exception(
+                    "Support ticket founderga yuborilmadi: ticket_id=%s founder_id=%s",
+                    ticket["id"], founder_id,
+                )
+    finally:
+        await founder_bot.session.close()
+
+'''
+              s = s.replace(old, new, 1)
+          elif "async def receive_support_question(" not in s:
+              raise AssertionError("help handler anchor changed unexpectedly")
+          p.write_text(s, encoding="utf-8")
+
+          # ------------------------------------------------------------
+          # 3) Founder Bot: dedicated questions section + targeted replies.
+          # ------------------------------------------------------------
+          p = Path("founder_panel.py")
+          s = p.read_text(encoding="utf-8")
+
+          if '"support": "💬 Mijozlarning savollari"' not in s:
+              anchor = '    "partners": "🤝 Hamkorlar uchun arizalar",\n'
+              assert anchor in s, "FOUNDER_MENU anchor not found"
+              s = s.replace(anchor, anchor + '    "support": "💬 Mijozlarning savollari",\n', 1)
+
+          old_row = '            [KeyboardButton(text=FOUNDER_MENU["partners"])],\n'
+          if 'FOUNDER_MENU["support"]' not in s:
+              assert old_row in s, "founder keyboard anchor not found"
+              s = s.replace(
+                  old_row,
+                  old_row + '            [KeyboardButton(text=FOUNDER_MENU["support"])],\n',
+                  1,
+              )
+
+          old_state = '''class FounderForm(StatesGroup):
+    waiting_order_code = State()
+'''
+          if "waiting_support_reply = State()" not in s:
+              assert old_state in s, "FounderForm anchor not found"
+              s = s.replace(
+                  old_state,
+                  '''class FounderForm(StatesGroup):
+    waiting_order_code = State()
+    waiting_support_reply = State()
+''',
+                  1,
+              )
+
+          if "async def service_founder_support(" not in s:
+              anchor = '''@router.message(F.text == FOUNDER_MENU["partners"])
+async def service_founder_partners(message: Message):
+    if message.from_user.id in FOUNDER_USER_IDS:
+        await _send_partner_applications(message)
+
+
+'''
+              assert anchor in s, "founder partner service anchor not found"
+              support_code = anchor + '''def _support_status_label(status: str) -> str:
+    return {
+        "open": "🟡 Javob kutilmoqda",
+        "answered": "✅ Javob berilgan",
+        "closed": "⚪ Yopilgan",
+    }.get(status, status)
+
+
+async def _send_support_tickets(target, *, status: str = "open", edit: bool = False) -> None:
+    tickets = await pdb.list_support_tickets(status=status, limit=100)
+    builder = InlineKeyboardBuilder()
+    for ticket in tickets:
+        question = " ".join(str(ticket.get("question") or "").split())
+        if len(question) > 38:
+            question = question[:35] + "..."
+        name = str(ticket.get("partner_name") or "Mijoz")
+        builder.button(
+            text=f"#{ticket['id']} · {name} · {question}",
+            callback_data=f"fp:supportticket:{ticket['id']}",
+        )
+    if status == "open":
+        builder.button(text="✅ Javob berilganlar", callback_data="fp:supportanswered")
+    else:
+        builder.button(text="🟡 Javobsiz savollar", callback_data="fp:support")
+    builder.button(text="⬅️ Bosh menyu", callback_data="fp:main")
+    builder.adjust(1)
+    title = "💬 <b>Mijozlarning savollari</b>" if status == "open" else "✅ <b>Javob berilgan savollar</b>"
+    text = f"{title}\\n\\nJami: <b>{len(tickets)}</b>"
+    if not tickets:
+        text += "\\nHozircha savol yo'q."
+    if edit:
+        await target.edit_text(text, reply_markup=builder.as_markup())
+    else:
+        await target.answer(text, reply_markup=builder.as_markup())
+
+
+@router.message(F.text == FOUNDER_MENU["support"])
+async def service_founder_support(message: Message):
+    if message.from_user.id not in FOUNDER_USER_IDS:
+        return
+    await _send_support_tickets(message, status="open", edit=False)
+
+
+@router.callback_query(F.data == "fp:support")
+async def list_support_questions(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    await _send_support_tickets(callback.message, status="open", edit=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fp:supportanswered")
+async def list_answered_support_questions(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    await _send_support_tickets(callback.message, status="answered", edit=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fp:supportticket:"))
+async def view_support_ticket(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    ticket_id = _callback_int(callback.data, "fp:supportticket:")
+    if ticket_id is None:
+        await callback.answer("Savol identifikatori noto'g'ri.", show_alert=True)
+        return
+    ticket = await pdb.get_support_ticket(ticket_id)
+    if not ticket:
+        await callback.answer("Savol topilmadi.", show_alert=True)
+        return
+    builder = InlineKeyboardBuilder()
+    if ticket.get("status") == "open":
+        builder.button(text="✍️ Javob berish", callback_data=f"fp:supportreply:{ticket_id}")
+        builder.button(text="❌ Yopish", callback_data=f"fp:supportclose:{ticket_id}")
+        builder.adjust(2)
+    builder.button(
+        text="⬅️ Savollarga qaytish",
+        callback_data="fp:support" if ticket.get("status") == "open" else "fp:supportanswered",
+    )
+    username = str(ticket.get("partner_username") or "").strip().lstrip("@")
+    username_line = f"@{escape(username)}" if username else "—"
+    answer = ""
+    if ticket.get("answer"):
+        answer = f"\\n\\n<b>Javob:</b>\\n{escape(str(ticket['answer']))}"
+    await callback.message.edit_text(
+        f"💬 <b>Savol #{ticket['id']}</b>\\n\\n"
+        f"👤 {escape(str(ticket.get('partner_name') or 'Mijoz'))}\\n"
+        f"Telegram: {username_line}\\n"
+        f"Holat: <b>{escape(_support_status_label(str(ticket.get('status') or 'open')))}</b>\\n\\n"
+        f"<b>Savol:</b>\\n{escape(str(ticket.get('question') or '—'))}{answer}",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fp:supportreply:"))
+async def begin_support_reply(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    ticket_id = _callback_int(callback.data, "fp:supportreply:")
+    if ticket_id is None:
+        await callback.answer("Savol identifikatori noto'g'ri.", show_alert=True)
+        return
+    ticket = await pdb.get_support_ticket(ticket_id)
+    if not ticket or ticket.get("status") != "open":
+        await callback.answer("Bu savol allaqachon yopilgan yoki javob berilgan.", show_alert=True)
+        return
+    await state.update_data(support_ticket_id=ticket_id)
+    await state.set_state(FounderForm.waiting_support_reply)
+    await callback.message.answer(
+        f"✍️ <b>#{ticket_id} uchun javobingizni yozing.</b>",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="❌ Javobni bekor qilish")]],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+    )
+    await callback.answer()
+
+
+@router.message(FounderForm.waiting_support_reply)
+async def send_support_reply(message: Message, state: FSMContext):
+    if message.from_user.id not in FOUNDER_USER_IDS:
+        return
+    if message.text == "❌ Javobni bekor qilish":
+        await state.clear()
+        await message.answer("Javob berish bekor qilindi.", reply_markup=_founder_services_keyboard())
+        return
+
+    data = await state.get_data()
+    ticket_id = int(data.get("support_ticket_id") or 0)
+    ticket = await pdb.get_support_ticket(ticket_id) if ticket_id else None
+    if not ticket or ticket.get("status") != "open":
+        await state.clear()
+        await message.answer(
+            "Bu savol topilmadi yoki allaqachon javob berilgan.",
+            reply_markup=_founder_services_keyboard(),
+        )
+        return
+
+    answer = (message.text or "").strip()
+    if not answer:
+        await message.answer("Javobni matn ko'rinishida yozing.")
+        return
+    if len(answer) > 3500:
+        await message.answer("Javob juda uzun. 3500 belgidan qisqaroq yozing.")
+        return
+    if not PARTNER_BOT_TOKEN:
+        await message.answer("Javobni yuborib bo'lmadi. Partner aloqa kanali sozlanmagan.")
+        return
+
+    partner_bot = Bot(
+        token=PARTNER_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    try:
+        await partner_bot.send_message(
+            int(ticket["telegram_user_id"]),
+            f"💬 <b>Savolingizga javob</b>\\n\\n{escape(answer)}\\n\\n"
+            f"Murojaat: <b>#{ticket_id}</b>",
+        )
+    except Exception:
+        logger.exception("Support javobi yuborilmadi: ticket_id=%s", ticket_id)
+        await message.answer("Javobni yuborib bo'lmadi. Qayta urinib ko'ring.")
+        return
+    finally:
+        await partner_bot.session.close()
+
+    updated = await pdb.answer_support_ticket(ticket_id, answer, message.from_user.id)
+    await state.clear()
+    if not updated:
+        await message.answer(
+            "Javob foydalanuvchiga yuborildi, lekin ticket holati allaqachon o'zgargan.",
+            reply_markup=_founder_services_keyboard(),
+        )
+        return
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📥 Savollarga qaytish", callback_data="fp:support")
+    await message.answer(
+        f"✅ <b>#{ticket_id}</b> ga javob yuborildi.",
+        reply_markup=builder.as_markup(),
+    )
+    await message.answer("Founder menyusi", reply_markup=_founder_services_keyboard())
+
+
+@router.callback_query(F.data.startswith("fp:supportclose:"))
+async def close_support_question(callback: CallbackQuery):
+    if callback.from_user.id not in FOUNDER_USER_IDS:
+        return
+    ticket_id = _callback_int(callback.data, "fp:supportclose:")
+    if ticket_id is None:
+        await callback.answer("Savol identifikatori noto'g'ri.", show_alert=True)
+        return
+    ticket = await pdb.close_support_ticket(ticket_id, callback.from_user.id)
+    if not ticket:
+        await callback.answer("Savol allaqachon yopilgan yoki javob berilgan.", show_alert=True)
+        return
+    await callback.message.edit_text(
+        f"⚪ <b>Savol #{ticket_id} yopildi.</b>",
+        reply_markup=InlineKeyboardBuilder().as_markup(),
+    )
+    await callback.answer("Yopildi")
+
+
+'''
+              s = s.replace(anchor, support_code, 1)
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Verify support flow
+        shell: bash
+        run: |
+          python -m py_compile services/partner_database.py partner_bot.py founder_panel.py
+          grep -Fq 'partner_support_tickets' services/partner_database.py
+          grep -Fq 'receive_support_question' partner_bot.py
+          grep -Fq 'Mijozlarning savollari' founder_panel.py
+          grep -Fq 'send_support_reply' founder_panel.py
+
+      - name: Commit implementation and remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/implement-support-tickets.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Add persistent founder support tickets"
+          git push origin HEAD:multi-tenant

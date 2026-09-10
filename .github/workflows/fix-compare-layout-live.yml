@@ -1,0 +1,56 @@
+name: Fix compare controls layout
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/fix-compare-layout-live.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+
+      - name: Fix compare controls alignment and bust CSS cache
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          css_path = Path('miniapp/janobhr2.css')
+          css = css_path.read_text(encoding='utf-8')
+          old = "@media(max-width:520px){.jh2-card-head{flex-direction:column}.jh2-card-head .jh2-primary{width:100%}.jh2-funnel{grid-template-columns:repeat(5,92px)}.jh2-compare-tools{flex-direction:column}.jh2-compare-tools button{padding:11px}.jh2-sheet{max-height:94vh}.jh2-compare-grid{grid-template-columns:repeat(3,230px)}}"
+          new = "@media(max-width:520px){.jh2-card-head{flex-direction:column}.jh2-card-head .jh2-primary{width:100%}.jh2-funnel{grid-template-columns:repeat(5,92px)}.jh2-compare-tools{flex-direction:column;align-items:stretch;width:100%;gap:10px}.jh2-compare-select-wrap{width:100%;flex:none}.jh2-compare-tools button{width:100%;padding:11px}.jh2-sheet{max-height:94vh}.jh2-compare-grid{grid-template-columns:repeat(3,230px)}}"
+          if old not in css:
+              raise SystemExit('Expected compare mobile CSS block not found')
+          css_path.write_text(css.replace(old, new, 1), encoding='utf-8')
+
+          html_path = Path('miniapp/index.html')
+          html = html_path.read_text(encoding='utf-8')
+          old_href = '/miniapp-assets/janobhr2.css?v=20260905-hero2'
+          new_href = '/miniapp-assets/janobhr2.css?v=20260910-compare-layout'
+          if old_href not in html:
+              raise SystemExit('Expected janobhr2.css cache key not found')
+          html_path.write_text(html.replace(old_href, new_href, 1), encoding='utf-8')
+
+          updated = css_path.read_text(encoding='utf-8')
+          assert 'align-items:stretch;width:100%;gap:10px' in updated
+          assert '.jh2-compare-select-wrap{width:100%;flex:none}' in updated
+          assert '.jh2-compare-tools button{width:100%;padding:11px}' in updated
+          PY
+
+      - name: Commit layout fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add miniapp/janobhr2.css miniapp/index.html
+          git rm .github/workflows/fix-compare-layout-live.yml
+          git commit -m "Align compare controls on mobile"
+          git push origin multi-tenant

@@ -216,6 +216,20 @@ CREATE TABLE IF NOT EXISTS payment_notifications_seen (
 );
 """
 
+# Mijoz cheki har bir admin uchun alohida yuboriladi. ``payment_orders`` dagi
+# umumiy marker faqat barcha adminlar chekni olgandan keyin qo'yiladi.
+_CREATE_CUSTOMER_RECEIPTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS payment_customer_receipts (
+    order_id INTEGER NOT NULL,
+    admin_user_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    claimed_at TEXT,
+    sent_at TEXT,
+    PRIMARY KEY (order_id, admin_user_id),
+    FOREIGN KEY(order_id) REFERENCES payment_orders(id)
+);
+"""
+
 _CREATE_BUSINESS_LEADS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS business_leads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -458,6 +472,7 @@ async def init_db():
         await db.execute(_CREATE_INTERVIEW_SETTINGS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_ORDERS_TABLE_SQL)
         await db.execute(_CREATE_PAYMENT_NOTIFICATIONS_TABLE_SQL)
+        await db.execute(_CREATE_CUSTOMER_RECEIPTS_TABLE_SQL)
         await db.execute(_CREATE_BUSINESS_LEADS_TABLE_SQL)
         await db.execute(_CREATE_SYSTEM_NOTIFICATIONS_TABLE_SQL)
 
@@ -2740,6 +2755,80 @@ async def list_unnotified_approved_orders(hours: int | None = None) -> list[dict
         )
         rows = await cursor.fetchall()
     return [dict(row) for row in rows]
+
+
+async def claim_customer_payment_receipt(
+    order_id: int,
+    admin_user_id: int,
+    *,
+    stale_after_minutes: int = 10,
+) -> bool:
+    """Bitta order/admin chekini parallel workerlar orasida atomik band qiladi."""
+    now = datetime.now(timezone.utc)
+    stale_before = (now - timedelta(minutes=max(1, stale_after_minutes))).isoformat()
+    now_iso = now.isoformat()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=10) as db:
+        await db.execute("PRAGMA busy_timeout=10000")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            await db.execute(
+                "INSERT OR IGNORE INTO payment_customer_receipts "
+                "(order_id, admin_user_id, status) VALUES (?, ?, 'pending')",
+                (order_id, admin_user_id),
+            )
+            cursor = await db.execute(
+                "UPDATE payment_customer_receipts SET status='sending', claimed_at=? "
+                "WHERE order_id=? AND admin_user_id=? AND "
+                "(status='pending' OR (status='sending' AND claimed_at < ?))",
+                (now_iso, order_id, admin_user_id, stale_before),
+            )
+            await db.commit()
+            return cursor.rowcount == 1
+        except Exception:
+            await db.rollback()
+            raise
+
+
+async def release_customer_payment_receipt_claim(
+    order_id: int, admin_user_id: int
+) -> None:
+    """Telegram yuborishi yiqilsa aynan shu adminni qayta urinishga ochadi."""
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE payment_customer_receipts SET status='pending', claimed_at=NULL "
+            "WHERE order_id=? AND admin_user_id=? AND status='sending'",
+            (order_id, admin_user_id),
+        )
+        await db.commit()
+
+
+async def mark_customer_payment_receipt_sent(
+    order_id: int, admin_user_id: int
+) -> None:
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        await db.execute(
+            "UPDATE payment_customer_receipts SET status='sent', sent_at=?, claimed_at=NULL "
+            "WHERE order_id=? AND admin_user_id=? AND status='sending'",
+            (datetime.now(timezone.utc).isoformat(), order_id, admin_user_id),
+        )
+        await db.commit()
+
+
+async def all_customer_payment_receipts_sent(
+    order_id: int, admin_user_ids: list[int]
+) -> bool:
+    admin_ids = sorted({int(value) for value in admin_user_ids})
+    if not admin_ids:
+        return False
+    placeholders = ",".join("?" for _ in admin_ids)
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        cursor = await db.execute(
+            f"SELECT COUNT(*) FROM payment_customer_receipts "
+            f"WHERE order_id=? AND status='sent' AND admin_user_id IN ({placeholders})",
+            (order_id, *admin_ids),
+        )
+        row = await cursor.fetchone()
+    return bool(row and int(row[0]) == len(admin_ids))
 
 
 async def list_approved_orders_without_subscription(limit: int = 100) -> list[dict]:

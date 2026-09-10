@@ -540,7 +540,7 @@ async def set_partner_status(
 
 
 async def record_referral_click(partner_id: int, referred_user_id: int) -> bool:
-    """Bir userning bir partner uchun takroriy startlarini bitta click deb hisoblaydi."""
+    """Userning birinchi partner bosishini saqlaydi; keyingilari uni almashtirmaydi."""
     await init_partner_db()
     async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
         await db.execute("PRAGMA busy_timeout=5000")
@@ -548,11 +548,11 @@ async def record_referral_click(partner_id: int, referred_user_id: int) -> bool:
         try:
             cur = await db.execute(
                 """
-                SELECT 1 FROM partner_referral_events
-                WHERE partner_id=? AND referred_telegram_user_id=? AND event_type='click'
-                LIMIT 1
+                SELECT partner_id FROM partner_referral_events
+                WHERE referred_telegram_user_id=? AND event_type='click'
+                ORDER BY id LIMIT 1
                 """,
-                (partner_id, referred_user_id),
+                (referred_user_id,),
             )
             if await cur.fetchone():
                 await db.commit()
@@ -570,6 +570,24 @@ async def record_referral_click(partner_id: int, referred_user_id: int) -> bool:
         except Exception:
             await db.rollback()
             raise
+
+
+async def get_first_referral_partner_for_user(
+    referred_user_id: int,
+) -> dict | None:
+    """Eski bazada bir nechta click bo'lsa ham eng birinchi partnerni qaytaradi."""
+    await init_partner_db()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT p.* FROM partner_referral_events e "
+            "JOIN partners p ON p.id=e.partner_id "
+            "WHERE e.referred_telegram_user_id=? AND e.event_type='click' "
+            "ORDER BY e.id LIMIT 1",
+            (referred_user_id,),
+        )
+        row = await cur.fetchone()
+    return dict(row) if row else None
 
 
 async def record_referral_trial(

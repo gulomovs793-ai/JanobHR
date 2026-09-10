@@ -18,7 +18,7 @@
   }
   const haptic = (kind='light') => { try { tg?.HapticFeedback?.impactOccurred(kind); } catch (_) {} };
   const text = (id, value) => { const el = $(id); if (el) el.textContent = value; };
-  const esc = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const esc = (value) => String(value ?? '').replace(/[&<>\"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[char]));
   const formatUzs = (value) => `${Number(value || 0).toLocaleString('uz-UZ')} UZS`;
   const dateLabel = (value, options={day:'2-digit', month:'short'}) => {
     if (!value) return '';
@@ -178,8 +178,7 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || 'Payout arizasi yaratilmadi.');
       const payout = data.payout || {};
-      const notice = data.founder_notified ? 'Founder Botga notification yuborildi.' : 'Founder Bot notificationi recovery orqali qayta yuboriladi.';
-      const message = `Ariza #${payout.id || '—'} yuborildi. Aniq summa: ${formatUzs(payout.total_amount)}. ${notice}`;
+      const message = `Ariza #${payout.id || '—'} yuborildi. Aniq summa: ${formatUzs(payout.total_amount)}.`;
       text('payoutMessage', message);
       if (tg?.showPopup) tg.showPopup({title:'Ariza yuborildi', message, buttons:[{type:'ok'}]});
       await load(); show('payout');

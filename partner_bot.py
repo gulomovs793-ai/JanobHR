@@ -79,13 +79,13 @@ FAQ_TEXT = (
     "<b>3. Mijozga qanday foydasi bor?</b>\n"
     "Saralashga kamroq vaqt ketadi, nomzodlar chatlarda yo'qolib qolmaydi, suhbatga kimni chaqirish kerakligi aniqroq bo'ladi.\n\n"
     "<b>4. Men mahsulotni sotamanmi?</b>\n"
-    "Siz tavsiya qilasiz. Mahsulotni tushuntirish, mijoz savollariga javob berish va ishga tushirishda Janob HR jamoasi yordam beradi.\n\n"
+    "Siz tavsiya qilasiz. Sizga tavsiya qilish uchun kerakli materiallar va tushuntirishlar beriladi.\n\n"
     "<b>5. Referral link nima?</b>\n"
     "Bu sizga biriktirilgan maxsus link. Mijoz shu link orqali kirsa, tizim uni siz olib kelgan mijoz sifatida eslab qoladi va tizimga kiritadi.\n\n"
     "<b>6. Promo kod nima?</b>\n"
     "Promo kod mijozga chegirma beradi. Tasdiqlangan hamkor Boshqaruv panelida foiz yoki aniq summa, qaysi tarifga tegishli ekanini va necha kun amal qilishini belgilaydi. 0%, 5%, 10%, 15% yoki 20% kabi qiymatlar tanlanadi; tizim tanlangan tarif komissiyasidan oshadigan chegirmani qabul qilmaydi. Bitta kod barcha tariflarda ishlasa, maksimal xavfsiz chegirma 25% yoki 99 000 UZS bo'ladi. Har bir hamkorda bitta faol promo kod bo'ladi.\n\n"
     "<b>7. Promo chegirma kim hisobidan beriladi?</b>\n"
-    "Chegirma Janob HR hisobidan emas, sizning komissiyangizdan ayriladi. Masalan, 30 000 UZS chegirma berilsa, START komissiyasi 99 000 - 30 000 = 69 000 UZS bo'ladi. Komissiya manfiy bo'lib qolmaydi.\n\n"
+    "Chegirma sizning komissiyangizdan ayriladi. Masalan, 30 000 UZS chegirma berilsa, START komissiyasi 99 000 - 30 000 = 69 000 UZS bo'ladi. Komissiya manfiy bo'lib qolmaydi.\n\n"
     "<b>8. Menga to'lanadigan komissiya qancha?</b>\n"
     "START — 99 000 UZS, GROWTH — 199 000 UZS, BUSINESS — 299 000 UZS. Promo ishlatilsa, chegirma shu summadan ayriladi.\n\n"
     "<b>9. Komissiya qachon balansimga tushirib beriladi?</b>\n"
@@ -97,7 +97,7 @@ FAQ_TEXT = (
     "<b>12. Mijoz link orqali kirib, keyin promo kod ishlatsa nima bo'ladi?</b>\n"
     "Referral link mijozni sizga bog'laydi. Keyin o'zingiz yaratgan promo kod ishlatilsa, mijoz sizniki bo'lib qoladi va chegirma shu kod qoidasi bo'yicha hisoblanadi.\n\n"
     "<b>13. Mijoz boshqa hamkor promo kodini ishlatsa-chi?</b>\n"
-    "Bunday holat alohida tekshiriladi. Mijoz avval qaysi hamkorga biriktirilgan bo'lsa, boshqa partner kodi avtomatik qabul qilinmaydi; komissiya ikki hamkorga bo'linmaydi. Zarur bo'lsa holat qo'lda ko'rib chiqiladi.\n\n"
+    "Bunday holat alohida tekshiriladi. Mijoz avval qaysi hamkorga biriktirilgan bo'lsa, boshqa hamkor kodi avtomatik qabul qilinmaydi; komissiya ikki hamkorga bo'linmaydi. Zarur bo'lsa holat qo'lda ko'rib chiqiladi.\n\n"
     "<b>14. Komissiyani qanday qabul qilaman?</b>\n"
     "To'lov yechish vaqtida sizdan karta yoki kerakli to'lov ma'lumoti so'raladi. Ma'lumotlar to'g'ri bo'lishi kerak. To'lov qilingandan keyin siz taqdim qilgan Telegram username'ga chek yuboriladi, agar spam yoki aloqa bo'yicha muammo bo'lmasa.\n\n"
     "<b>15. Hamkor bo'lsam daromad kafolatlanadimi?</b>\n"
@@ -308,7 +308,7 @@ def fallback_diagnosis(data: dict) -> str:
                 "Lekin hozir bu muammo sizga pul olib kelmayapti. Janob HR orqali siz ularga tayyor HR botni tavsiya qilasiz. Nomzodlarni qabul qilish, savol berish va AI saralashni tizim qiladi. Mijoz tarif olsa, siz komissiya olasiz."
             )
         return (
-            "Sizning kuchingiz — biznes egalari bilan aloqa. Ularda xodim qidirish muammosi paydo bo'lsa, siz Janob HR'ni tavsiya qila olasiz. Mahsulotni tushuntirish va keyingi ishni biz qilamiz."
+            "Sizning kuchingiz — biznes egalari bilan aloqa. Ularda xodim qidirish muammosi paydo bo'lsa, siz Janob HR'ni tavsiya qila olasiz. Mijoz tarif olsa, sizga komissiya yoziladi."
         )
 
     if role == "agency":
@@ -317,13 +317,13 @@ def fallback_diagnosis(data: dict) -> str:
                 "Siz allaqachon biznes mijozlar va HR muammolari bilan ishlaysiz. Janob HR sizdagi qo'lda saralash ishini yengillashtiradi: nomzodlarni qabul qiladi, savol beradi va kuchlilarini ajratadi. Siz mijozga qo'shimcha xizmat sifatida tavsiya qilasiz, tarif olinsa komissiya sizga yoziladi."
             )
         return (
-            "Agentligingizda biznes mijozlar bo'lsa, ularning xodim topish muammosi ham vaqti-vaqti bilan chiqadi. Lekin bu xizmat sizda bo'lmasa, pul imkoniyati o'tib ketadi. Janob HR'ni tavsiya qilasiz, qolgan tushuntirish va xizmatni biz qilamiz."
+            "Agentligingizda biznes mijozlar bo'lsa, ularning xodim topish muammosi ham vaqti-vaqti bilan chiqadi. Lekin bu xizmat sizda bo'lmasa, pul imkoniyati o'tib ketadi. Janob HR'ni tavsiya qilasiz, mijoz tarif olsa komissiya sizga yoziladi."
         )
 
     if role == "blogger":
         if data.get("q3") == "ads":
             return (
-                "Sizda auditoriya bor, lekin reklama har kuni tushmaydi. Janob HR orqali biznes egalari uchun foydali narsani tavsiya qilasiz. Mijoz sizning link yoki promo kodingiz orqali tarif olsa, siz komissiya olasiz. Mahsulotni tushuntirishni biz qilamiz."
+                "Sizda auditoriya bor, lekin reklama har kuni tushmaydi. Janob HR orqali biznes egalari uchun foydali narsani tavsiya qilasiz. Mijoz sizning link yoki promo kodingiz orqali tarif olsa, siz komissiya olasiz."
             )
         return (
             "Auditoriyangiz ichida biznes qiladigan odamlar bo'lsa, Janob HR ularga aniq foyda beradi: nomzodlarni tartibli qabul qiladi va AI bilan saralaydi. Siz faqat tavsiya qilasiz, mijoz tarif olsa komissiya olasiz."
@@ -331,7 +331,7 @@ def fallback_diagnosis(data: dict) -> str:
 
     if q1 in {"work", "friends", "often"} or q2 in {"active", "small"}:
         return (
-            "Sizda biznes egalariga chiqish yo'li bor. Janob HR sizga shu aloqani pulga aylantirish imkonini beradi: siz tavsiya qilasiz, biz mijozga xodim saralash botini tushuntiramiz va ishga tushiramiz. Mijoz tarif olsa, sizga komissiya yoziladi."
+            "Sizda biznes egalariga chiqish yo'li bor. Janob HR sizga shu aloqani daromadga aylantirish imkonini beradi: siz tavsiya qilasiz, mijoz tarif olsa sizga komissiya yoziladi."
         )
     return (
         "Hozir sizda biznes aloqasi ham, auditoriya ham kuchli emas. Shuning uchun sizga bosim qilmaymiz. Tasdiqlansangiz, tayyor referral link va xabar matnlari beriladi. Avval tanish bizneslar orqali sekin sinab ko'rishingiz mumkin."
@@ -695,7 +695,7 @@ async def promo_section(message: Message) -> None:
 async def choose_promo(callback: CallbackQuery) -> None:
     partner = await pdb.get_partner_by_user_id(callback.from_user.id)
     if not partner or partner["status"] != "approved":
-        await callback.answer("Bu bo'lim faqat tasdiqlangan partnerlar uchun.", show_alert=True)
+        await callback.answer("Bu bo'lim faqat tasdiqlangan hamkorlar uchun.", show_alert=True)
         return
     try:
         percent = int(callback.data.split(":", 1)[1])

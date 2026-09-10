@@ -82,19 +82,19 @@
     window.scrollTo({top:0, behavior:'smooth'}); haptic();
   }
   $$('[data-go]').forEach(btn => btn.addEventListener('click', () => show(btn.dataset.go)));
-  function fail(message) { text('errorMessage', message || 'Mini Appni Hamkor bot ichidan qayta oching.'); show('error'); }
+  function fail(message) { text('errorMessage', message || 'Panelni yopib, qayta oching.'); show('error'); }
   async function api(path, options={}) {
     const headers = Object.assign({'X-Telegram-Init-Data': initData}, options.headers || {});
     return fetch(path, Object.assign({cache:'no-store'}, options, {headers}));
   }
   async function load() {
-    if (!initData) return fail('Telegram tasdiqlashi topilmadi. Panelni Hamkor bot ichidagi ko‘k tugmadan oching.');
+    if (!initData) return fail('Sessiya tasdiqlanmadi. Panelni yopib, qayta oching.');
     $('refresh')?.classList.add('loading');
     try {
       const res = await api('/api/partner-miniapp/stats'); const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         if (res.status === 403) return fail('Bu panel faqat tasdiqlangan hamkorlar uchun.');
-        if (res.status === 401) return fail('Telegram sessiyasi tasdiqlanmadi. Mini Appni bot ichidan qayta oching.');
+        if (res.status === 401) return fail('Sessiya tasdiqlanmadi. Panelni yopib, qayta oching.');
         return fail('Ma’lumotlarni yuklab bo‘lmadi. Qayta urinib ko‘ring.');
       }
       const s = data.stats || {}; const earned = s.earned_label || '0 UZS';
@@ -127,7 +127,7 @@
         if ($('promoPlan')) $('promoPlan').value = data.promo.plan_code || 'all';
       }
       updatePromoLimit();
-    } catch (_) { fail('Server bilan aloqa bo‘lmadi. Qayta urinib ko‘ring.'); }
+    } catch (_) { fail('Ma’lumotlarni yuklab bo‘lmadi. Qayta urinib ko‘ring.'); }
     finally { $('refresh')?.classList.remove('loading'); }
   }
   async function copyValue(value, label) {
@@ -147,7 +147,7 @@
   $('promoPlan')?.addEventListener('change', updatePromoLimit);
   $('createPromo')?.addEventListener('click', async () => {
     const discount = Number($('discountValue')?.value || 0); const duration = Number($('durationDays')?.value || 0); const planCode = $('promoPlan')?.value || 'all';
-    if (!initData) return fail('Telegram sessiyasi topilmadi.');
+    if (!initData) return fail('Sessiya tasdiqlanmadi. Panelni qayta oching.');
     const cap = getPromoCap(planCode, promoType);
     if (discount < 0 || (promoType === 'amount' && discount === 0) || duration < 1 || duration > 365 || discount > cap) { if (tg?.showAlert) tg.showAlert(`Chegirma miqdori noto‘g‘ri. Maksimum: ${cap.toLocaleString('uz-UZ')}${promoType === 'amount' ? ' UZS' : '%'}.`); return; }
     haptic('medium'); const btn = $('createPromo'); btn.disabled = true;

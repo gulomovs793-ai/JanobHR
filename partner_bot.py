@@ -83,7 +83,7 @@ FAQ_TEXT = (
     "<b>5. Referral link nima?</b>\n"
     "Bu sizga biriktirilgan maxsus link. Mijoz shu link orqali kirsa, tizim uni siz olib kelgan mijoz sifatida eslab qoladi va tizimga kiritadi.\n\n"
     "<b>6. Promo kod nima?</b>\n"
-    "Promo kod mijozga chegirma beradi. Tasdiqlangan partner Boshqaruv panelida foiz yoki aniq summa, qaysi tarifga tegishli ekanini va necha kun amal qilishini belgilaydi. 0%, 5%, 10%, 15% yoki 20% kabi qiymatlar tanlanadi; tizim tanlangan tarif komissiyasidan oshadigan chegirmani qabul qilmaydi. Bitta kod barcha tariflarda ishlasa, maksimal xavfsiz chegirma 25% yoki 99 000 UZS bo'ladi. Har bir partnerda bitta faol promo kod bo'ladi.\n\n"
+    "Promo kod mijozga chegirma beradi. Tasdiqlangan hamkor Boshqaruv panelida foiz yoki aniq summa, qaysi tarifga tegishli ekanini va necha kun amal qilishini belgilaydi. 0%, 5%, 10%, 15% yoki 20% kabi qiymatlar tanlanadi; tizim tanlangan tarif komissiyasidan oshadigan chegirmani qabul qilmaydi. Bitta kod barcha tariflarda ishlasa, maksimal xavfsiz chegirma 25% yoki 99 000 UZS bo'ladi. Har bir hamkorda bitta faol promo kod bo'ladi.\n\n"
     "<b>7. Promo chegirma kim hisobidan beriladi?</b>\n"
     "Chegirma Janob HR hisobidan emas, sizning komissiyangizdan ayriladi. Masalan, 30 000 UZS chegirma berilsa, START komissiyasi 99 000 - 30 000 = 69 000 UZS bo'ladi. Komissiya manfiy bo'lib qolmaydi.\n\n"
     "<b>8. Menga to'lanadigan komissiya qancha?</b>\n"
@@ -96,8 +96,8 @@ FAQ_TEXT = (
     "To'lov keyingi ish kunida ko'rib chiqiladi. Yakshanba va rasmiy bayram kunlari kechikish hisobiga kirmaydi. Asosiysi, komissiya avval tasdiqlangan bo'lishi kerak.\n\n"
     "<b>12. Mijoz link orqali kirib, keyin promo kod ishlatsa nima bo'ladi?</b>\n"
     "Referral link mijozni sizga bog'laydi. Keyin o'zingiz yaratgan promo kod ishlatilsa, mijoz sizniki bo'lib qoladi va chegirma shu kod qoidasi bo'yicha hisoblanadi.\n\n"
-    "<b>13. Mijoz boshqa partner promo kodini ishlatsa-chi?</b>\n"
-    "Bunday holat alohida tekshiriladi. Mijoz avval qaysi hamkorga biriktirilgan bo'lsa, boshqa partner kodi avtomatik qabul qilinmaydi; komissiya ikki partnerga bo'linmaydi. Zarur bo'lsa Founder jamoasi to'lovni qo'lda ko'rib chiqadi.\n\n"
+    "<b>13. Mijoz boshqa hamkor promo kodini ishlatsa-chi?</b>\n"
+    "Bunday holat alohida tekshiriladi. Mijoz avval qaysi hamkorga biriktirilgan bo'lsa, boshqa partner kodi avtomatik qabul qilinmaydi; komissiya ikki hamkorga bo'linmaydi. Zarur bo'lsa holat qo'lda ko'rib chiqiladi.\n\n"
     "<b>14. Komissiyani qanday qabul qilaman?</b>\n"
     "To'lov yechish vaqtida sizdan karta yoki kerakli to'lov ma'lumoti so'raladi. Ma'lumotlar to'g'ri bo'lishi kerak. To'lov qilingandan keyin siz taqdim qilgan Telegram username'ga chek yuboriladi, agar spam yoki aloqa bo'yicha muammo bo'lmasa.\n\n"
     "<b>15. Hamkor bo'lsam daromad kafolatlanadimi?</b>\n"
@@ -366,7 +366,7 @@ async def send_phone_step(message: Message, state: FSMContext) -> None:
     )
     await message.answer(
         "Shu model sizga mos bo'lsa, arizani yakunlaymiz. Tasdiqlangach sizga 2 xil yo'l ochiladi:\n\n"
-        "1️⃣ asosiy botga olib kiradigan referral link\n"
+        "1️⃣ shaxsiy referral link\n"
         "2️⃣ mijozga chegirma beradigan promo kod\n\n"
         "Bog'lanish uchun telefon raqamingizni yuboring.",
         reply_markup=kb,
@@ -377,7 +377,7 @@ async def send_phone_step(message: Message, state: FSMContext) -> None:
 async def send_partner_home(message: Message, partner: dict) -> None:
     await message.answer(
         "🤝 <b>Janob HR Hamkor</b>\n\n"
-        "Profilingiz faol. Ko'k <b>«Boshqaruv paneli»</b> tugmasini bosing — referral, leadlar, promo, komissiya va pul yechish bitta Mini App ichida.\n\n"
+        "Profilingiz faol. Ko'k <b>«Boshqaruv paneli»</b> tugmasini bosing — referral, leadlar, promo, komissiya va pul yechish bitta panelda.\n\n"
         "Mijoz referral link yoki promo orqali tarif sotib olib, to'lovi tasdiqlanganda komissiya balansingizga yoziladi.",
         reply_markup=main_menu(),
     )
@@ -396,17 +396,17 @@ async def handle_referral_entry(message: Message, code: str) -> bool:
         target_url = build_referral_link(target_username, partner.get("referral_code"))
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="👔 Asosiy Janob HR botga o'tish", url=target_url)]
+                [InlineKeyboardButton(text="👔 Davom etish", url=target_url)]
             ]
         )
         await message.answer(
-            "Bu eski link edi.\n\n"
-            "Mijoz endi hamkorlar botida qolmaydi. Pastdagi tugma uni to'g'ridan-to'g'ri asosiy Janob HR botga olib kiradi:",
+            ""
+            "Davom etish uchun pastdagi tugmani bosing.",
             reply_markup=kb,
         )
     else:
         await message.answer(
-            "Referral qabul qilindi, lekin asosiy Janob HR bot topilmadi. JANOBHR_MAIN_BOT_USERNAME sozlanishi kerak."
+            "⚠️ Referral linkni hozir ochib bo'lmadi. Birozdan keyin qayta urinib ko'ring."
         )
     return True
 
@@ -428,7 +428,7 @@ async def start(message: Message, state: FSMContext, bot: Bot) -> None:
             await send_partner_home(message, partner)
             return
         if partner["status"] == "pending":
-            await message.answer("⏳ Arizangiz ko'rib chiqilmoqda. Tasdiqlangach bot sizga referral link, promo kod va FAQ bo'limini beradi.")
+            await message.answer("⏳ Arizangiz ko'rib chiqilmoqda. Tasdiqlangach referral link, promo kod va FAQ bo'limi ochiladi.")
             return
         if partner["status"] == "rejected":
             await message.answer(
@@ -441,7 +441,7 @@ async def start(message: Message, state: FSMContext, bot: Bot) -> None:
 
     await message.answer(
         "🤝 <b>Janob HR hamkorlik dasturi</b>\n\n"
-        "Avval sizni tushunib olamiz. Keyin bot sizga oddiy tilda: sizga bu nima uchun kerak, Janob HR qanday yordam beradi, qayerdan pul chiqishi mumkin — shuni aytadi.\n\n"
+        "Avval sizni tushunib olamiz. Keyin sizga oddiy tilda Janob HR qanday yordam berishi va qanday daromad qilish mumkinligini ko'rsatamiz.\n\n"
         "<b>Siz kimsiz?</b>",
         reply_markup=role_keyboard(),
     )
@@ -591,7 +591,7 @@ async def approve_partner(callback: CallbackQuery) -> None:
         await callback.bot.send_message(
             partner["telegram_user_id"],
             "🎉 <b>Hamkorligingiz tasdiqlandi!</b>\n\n"
-            "Ko'k <b>«Boshqaruv paneli»</b> tugmasi yoqildi. Unda referral link, leadlar, promo kod, komissiya, pul yechish va FAQ bir joyda ishlaydi.\n\n"
+            "Ko'k <b>«Boshqaruv paneli»</b> tugmasi yoqildi. Referral link, leadlar, promo kod, komissiya, pul yechish va FAQ bo'limlari bir joyda ishlaydi.\n\n"
             "Mijoz tarif sotib olib, to'lovi tasdiqlanganda komissiya balansingizga yoziladi.",
             reply_markup=main_menu(),
         )
@@ -632,7 +632,7 @@ async def reject_partner(callback: CallbackQuery) -> None:
 async def require_approved(message: Message) -> dict | None:
     partner = await pdb.get_partner_by_user_id(message.from_user.id)
     if not partner or partner["status"] != "approved":
-        await message.answer("Bu bo'lim faqat tasdiqlangan partnerlar uchun. /start yuboring.")
+        await message.answer("Bu bo'lim faqat tasdiqlangan hamkorlar uchun. /start yuboring.")
         return None
     return partner
 
@@ -644,7 +644,7 @@ async def partner_panel_fallback(message: Message) -> None:
     url = partner_miniapp_url()
     if not url:
         await message.answer(
-            "⚠️ Mini App manzili sozlanmagan. Admin WEBHOOK_BASE_URL ni tekshirishi kerak."
+            "⚠️ Boshqaruv panelini hozir ochib bo'lmadi. Birozdan keyin qayta urinib ko'ring."
         )
         return
     await message.answer(
@@ -666,16 +666,16 @@ async def my_link(message: Message, bot: Bot) -> None:
     target_username = await referral_target_username(bot)
     if not target_username:
         await message.answer(
-            "⚠️ Asosiy Janob HR bot topilmadi.\n\n"
-            "Render envda <code>JANOBHR_MAIN_BOT_USERNAME=janobHR_bot</code> bo'lishi kerak."
+            ""
+            "⚠️ Referral linkni hozir yaratib bo'lmadi. Birozdan keyin qayta urinib ko'ring."
         )
         return
     link = build_referral_link(target_username, partner.get("referral_code"))
     await message.answer(
         "🔗 <b>Sizning referral linkingiz</b>\n\n"
         f"<code>{link}</code>\n\n"
-        "Bu link mijozni hamkorlar botiga qaytarmaydi. U to'g'ridan-to'g'ri <b>asosiy Janob HR botga</b> kiradi.\n"
-        "Mijoz shu link orqali botini ochsa, u sizga bog'lanadi."
+        "Mijozga shu linkni yuboring.\n"
+        "Link orqali kelgan mijoz sizga avtomatik biriktiriladi."
     )
 
 
@@ -726,7 +726,7 @@ async def choose_promo(callback: CallbackQuery) -> None:
         f"BUSINESS: mijoz {pdb.format_uzs(business['discounted_base_amount'])} to'laydi, siz {pdb.format_uzs(business['commission_amount'])} olasiz",
     ]
     if percent:
-        lines.append("\nChegirma sizning komissiyangizdan ayrildi. Kompaniya zarar qilmaydi.")
+        lines.append("\nChegirma sizning komissiyangizdan ayrildi. ")
     else:
         lines.append("\n0% tanlangani uchun mijoz chegirma olmaydi, siz to'liq komissiya olasiz.")
     await callback.message.edit_text("\n".join(lines))
@@ -740,11 +740,11 @@ async def statistics(message: Message) -> None:
         return
     stats = await pdb.get_partner_stats(partner["id"])
     await message.answer(
-        "📊 <b>Partner statistikasi</b>\n\n"
+        "📊 <b>Hamkor statistikasi</b>\n\n"
         f"Referral kirishlar: <b>{stats['clicks']}</b>\n"
         f"Trial boshlaganlar: <b>{stats['trials']}</b>\n"
         f"Sotuvlar: <b>{stats['sales']}</b>\n"
-        f"Promo orderlar: <b>{stats['promo_orders']}</b>\n"
+        f"Promo buyurtmalar: <b>{stats['promo_orders']}</b>\n"
         f"Promo orqali sotuv: <b>{stats['promo_sales']}</b>\n"
         f"Hisoblangan komissiya: <b>{pdb.format_uzs(stats['earned'])}</b>"
     )
@@ -801,7 +801,7 @@ async def faq_section(message: Message) -> None:
 async def help_section(message: Message) -> None:
     if await require_approved(message):
         await message.answer(
-            "🆘 Savol bo'lsa shu chatga yozing. Founder jamoasi partner profilingiz orqali siz bilan bog'lanadi.\n\n"
+            "🆘 Savol bo'lsa shu chatga yozing. Kerak bo'lsa siz bilan bog'lanamiz.\n\n"
             "Ko'p so'raladigan savollar uchun <b>❓ Tez-tez so'raladigan savollar</b> bo'limini oching."
         )
 

@@ -342,11 +342,6 @@ async def payout_receipt_username(message: Message, state: FSMContext) -> None:
     )
     if founder_notified:
         await partner_payouts.mark_payout_notified(int(result["id"]), first=True)
-    notification_text = (
-        "Founder Botga tafsilotlar bilan yuborildi."
-        if founder_notified
-        else "⚠️ Founder Botga avtomatik notification yuborilmadi; admin sozlamani tekshiradi."
-    )
     await message.answer(
         f"✅ Pul yechish arizangiz yuborildi.\n\n"
         f"Ariza: <b>#{result['id']}</b>\n"
@@ -354,7 +349,7 @@ async def payout_receipt_username(message: Message, state: FSMContext) -> None:
         f"Kechikish bonusi hozircha: <b>{pdb.format_uzs(result['bonus_amount'])}</b>\n"
         f"Aniq o'tkazma: <b>{pdb.format_uzs(result['total_amount'])}</b>\n"
         f"To'lov kuni: <b>{result['payout_due_date']}</b>\n\n"
-        f"{notification_text} Sana o'tsa, kechikish bonusi real vaqtda qayta hisoblanadi."
+        f"Sana o'tsa, kechikish bonusi real vaqtda qayta hisoblanadi."
     )
 
 

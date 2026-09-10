@@ -266,7 +266,6 @@ async def partner_payout(request: web.Request) -> web.Response:
     return web.json_response(
         {
             "ok": True,
-            "founder_notified": founder_notified,
             "payout": _public_payout(result),
         },
         status=201,

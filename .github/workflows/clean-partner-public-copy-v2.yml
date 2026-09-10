@@ -1,0 +1,117 @@
+name: Clean partner public copy v2
+
+on:
+  push:
+    branches: [multi-tenant]
+    paths:
+      - .github/workflows/clean-partner-public-copy-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: multi-tenant
+
+      - name: Clean partner-facing copy
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def edit(path, replacements):
+              p = Path(path)
+              s = p.read_text(encoding="utf-8")
+              for old, new in replacements:
+                  s = s.replace(old, new)
+              p.write_text(s, encoding="utf-8")
+
+          edit("partner_bot.py", [
+              ("Zarur bo'lsa Founder jamoasi to'lovni qo'lda ko'rib chiqadi.", "Zarur bo'lsa holat qo'lda ko'rib chiqiladi."),
+              ("Tasdiqlangan partner Boshqaruv panelida", "Tasdiqlangan hamkor Boshqaruv panelida"),
+              ("boshqa partner promo kodini", "boshqa hamkor promo kodini"),
+              ("ikki partnerga bo'linmaydi", "ikki hamkorga bo'linmaydi"),
+              ("Har bir partnerda bitta faol promo kod bo'ladi.", "Har bir hamkorda bitta faol promo kod bo'ladi."),
+              ("1️⃣ asosiy botga olib kiradigan referral link", "1️⃣ shaxsiy referral link"),
+              ("bitta Mini App ichida", "bitta panelda"),
+              ("Tasdiqlangach bot sizga referral link, promo kod va FAQ bo'limini beradi.", "Tasdiqlangach referral link, promo kod va FAQ bo'limi ochiladi."),
+              ("Keyin bot sizga oddiy tilda: sizga bu nima uchun kerak, Janob HR qanday yordam beradi, qayerdan pul chiqishi mumkin — shuni aytadi.", "Keyin sizga oddiy tilda Janob HR qanday yordam berishi va qanday daromad qilish mumkinligini ko'rsatamiz."),
+              ("Unda referral link, leadlar, promo kod, komissiya, pul yechish va FAQ bir joyda ishlaydi.", "Referral link, leadlar, promo kod, komissiya, pul yechish va FAQ bo'limlari bir joyda ishlaydi."),
+              ("Bu bo'lim faqat tasdiqlangan partnerlar uchun. /start yuboring.", "Bu bo'lim faqat tasdiqlangan hamkorlar uchun. /start yuboring."),
+              ("⚠️ Mini App manzili sozlanmagan. Admin WEBHOOK_BASE_URL ni tekshirishi kerak.", "⚠️ Boshqaruv panelini hozir ochib bo'lmadi. Birozdan keyin qayta urinib ko'ring."),
+              ("📊 <b>Partner statistikasi</b>", "📊 <b>Hamkor statistikasi</b>"),
+              ("Promo orderlar:", "Promo buyurtmalar:"),
+              ("Kompaniya zarar qilmaydi.", ""),
+              ("🆘 Savol bo'lsa shu chatga yozing. Founder jamoasi partner profilingiz orqali siz bilan bog'lanadi.", "🆘 Savol bo'lsa shu chatga yozing. Kerak bo'lsa siz bilan bog'lanamiz."),
+              ("👔 Asosiy Janob HR botga o'tish", "👔 Davom etish"),
+              ("Bu eski link edi.\\n\\n", ""),
+              ("Mijoz endi hamkorlar botida qolmaydi. Pastdagi tugma uni to'g'ridan-to'g'ri asosiy Janob HR botga olib kiradi:", "Davom etish uchun pastdagi tugmani bosing."),
+              ("Referral qabul qilindi, lekin asosiy Janob HR bot topilmadi. JANOBHR_MAIN_BOT_USERNAME sozlanishi kerak.", "⚠️ Referral linkni hozir ochib bo'lmadi. Birozdan keyin qayta urinib ko'ring."),
+              ("⚠️ Asosiy Janob HR bot topilmadi.\\n\\n", ""),
+              ("Render envda <code>JANOBHR_MAIN_BOT_USERNAME=janobHR_bot</code> bo'lishi kerak.", "⚠️ Referral linkni hozir yaratib bo'lmadi. Birozdan keyin qayta urinib ko'ring."),
+              ("Bu link mijozni hamkorlar botiga qaytarmaydi. U to'g'ridan-to'g'ri <b>asosiy Janob HR botga</b> kiradi.", "Mijozga shu linkni yuboring."),
+              ("Mijoz shu link orqali botini ochsa, u sizga bog'lanadi.", "Link orqali kelgan mijoz sizga avtomatik biriktiriladi."),
+          ])
+
+          p = Path("partner_payout_bot.py")
+          s = p.read_text(encoding="utf-8")
+          s = re.sub(
+              r"\n    notification_text = \(\n.*?\n    \)\n(?=    await message\.answer\()",
+              "\n",
+              s,
+              flags=re.S,
+          )
+          s = s.replace("{notification_text} ", "")
+          p.write_text(s, encoding="utf-8")
+
+          edit("partner_miniapp/index.html", [
+              ("PARTNER DASHBOARD", "HAMKOR PANELI"),
+              ("Link asosiy Janob HR botiga olib kiradi va mijoz avtomatik sizga biriktiriladi.", "Link orqali kelgan mijoz avtomatik sizga biriktiriladi."),
+              ("Mijoz asosiy Janob HR botiga kiradi.", "Mijoz link orqali ro‘yxatdan o‘tadi."),
+              ("Har bir partnerda bitta faol promo kod bo‘ladi.", "Har bir hamkorda bitta faol promo kod bo‘ladi."),
+              ("Karta raqami saqlanadi va Founder Botdagi faqat to‘lov mas’uliga ko‘rsatiladi. Mini Appga to‘liq karta raqami qaytarilmaydi.", "Karta raqamingiz xavfsiz saqlanadi va faqat to‘lovni amalga oshirish uchun ishlatiladi."),
+              ("<details><summary>Referral link qayerga olib kiradi?</summary><p>Hamkor botiga emas, asosiy Janob HR botiga.</p></details>", "<details><summary>Referral link qanday ishlaydi?</summary><p>Link orqali kelgan mijoz sizga avtomatik biriktiriladi.</p></details>"),
+              ("Boshqa partnerga bog‘langan mijozning kodi qabul qilinmaydi.", "Boshqa hamkorga biriktirilgan mijozning kodi qabul qilinmaydi."),
+              ("Mini Appni Hamkor bot ichidan qayta oching.", "Panelni yopib, qayta oching."),
+          ])
+
+          edit("partner_miniapp/app.js", [
+              ("Mini Appni Hamkor bot ichidan qayta oching.", "Panelni yopib, qayta oching."),
+              ("Telegram tasdiqlashi topilmadi. Panelni Hamkor bot ichidagi ko‘k tugmadan oching.", "Sessiya tasdiqlanmadi. Panelni yopib, qayta oching."),
+              ("Telegram sessiyasi tasdiqlanmadi. Mini Appni bot ichidan qayta oching.", "Sessiya tasdiqlanmadi. Panelni yopib, qayta oching."),
+              ("Server bilan aloqa bo‘lmadi. Qayta urinib ko‘ring.", "Ma’lumotlarni yuklab bo‘lmadi. Qayta urinib ko‘ring."),
+              ("Telegram sessiyasi topilmadi.", "Sessiya tasdiqlanmadi. Panelni qayta oching."),
+          ])
+
+          p = Path("partner_miniapp_api.py")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace('            "founder_notified": founder_notified,\n', "")
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Verify cleanup
+        shell: bash
+        run: |
+          python -m py_compile partner_bot.py partner_payout_bot.py partner_miniapp_api.py
+          node --check partner_miniapp/app.js
+          ! grep -Fq "Bu link mijozni hamkorlar botiga" partner_bot.py
+          ! grep -Fq "Render envda <code>JANOBHR_MAIN_BOT_USERNAME" partner_bot.py
+          ! grep -Fq "Founder Botga tafsilotlar bilan yuborildi" partner_payout_bot.py
+          ! grep -Fq "Link asosiy Janob HR botiga" partner_miniapp/index.html
+          ! grep -Fq "Founder Botdagi" partner_miniapp/index.html
+          ! grep -Fq '"founder_notified": founder_notified' partner_miniapp_api.py
+          grep -Fq "Mijozga shu linkni yuboring." partner_bot.py
+          grep -Fq "Link orqali kelgan mijoz sizga avtomatik biriktiriladi." partner_bot.py
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add partner_bot.py partner_payout_bot.py partner_miniapp/index.html partner_miniapp/app.js partner_miniapp_api.py
+          git commit -m "Clean internal details from partner-facing copy" || exit 0
+          git push origin HEAD:multi-tenant

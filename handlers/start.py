@@ -149,6 +149,11 @@ async def cmd_start(message: Message, state: FSMContext, tenant_id: int):
         partner = await pdb.get_partner_by_code(code)
         if partner:
             await pdb.record_referral_click(partner["id"], message.from_user.id)
+            first_partner = await pdb.get_first_referral_partner_for_user(
+                message.from_user.id
+            )
+            if first_partner:
+                partner = first_partner
             from handlers.create_bot import _start_business_flow
 
             await _start_business_flow(

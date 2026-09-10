@@ -146,25 +146,9 @@ def partner_miniapp_url() -> str:
     return f"{WEBHOOK_BASE_URL}/partner" if WEBHOOK_BASE_URL else ""
 
 
-def main_menu() -> ReplyKeyboardMarkup:
-    """Hamkorning chat ichidagi asosiy menyusi.
-
-    Ko'k Telegram «Boshqaruv paneli» WebApp tugmasi alohida qoladi; shu sabab
-    reply menyuda u takrorlanmaydi.
-    """
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="💰 Komissiya")],
-            [KeyboardButton(text="🔗 Referral link"), KeyboardButton(text="🎟 Promo kod")],
-            [KeyboardButton(text="💸 Pul yechish")],
-            [KeyboardButton(text="📦 Reklama materiallari")],
-            [
-                KeyboardButton(text="❓ Tez-tez so'raladigan savollar"),
-                KeyboardButton(text="🆘 Yordam"),
-            ],
-        ],
-        resize_keyboard=True,
-    )
+def main_menu() -> ReplyKeyboardRemove:
+    """Reply menyuni yashiradi; faqat ko'k Mini App tugmasi qoladi."""
+    return ReplyKeyboardRemove()
 
 
 def founder_review_keyboard(partner_id: int) -> InlineKeyboardMarkup:

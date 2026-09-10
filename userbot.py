@@ -196,6 +196,8 @@ async def _notify_tenant_payment_approved(result: dict) -> bool:
     order = await database.get_payment_order_for_tenant(result["tenant_id"], result["order_code"])
     if not order or order["status"] != "approved" or not order.get("subscription_activated_at"):
         return False
+    # Eski orderlarda bu umumiy marker per-admin jadvalidan oldin qo'yilgan.
+    # Ularni deploydan keyin qayta yubormaymiz.
     if order.get("customer_notified_at"):
         return True
     tenant = await database.get_tenant(result["tenant_id"])
@@ -213,21 +215,34 @@ async def _notify_tenant_payment_approved(result: dict) -> bool:
         "Tarifingiz faol. Boshqarish uchun /start bosing."
     )
     bot = Bot(token=tenant["admin_bot_token"])
-    sent_any = False
+    all_sent = False
     try:
         for admin_id in tenant["admin_user_ids"]:
+            claimed = await database.claim_customer_payment_receipt(
+                order["id"], admin_id
+            )
+            if not claimed:
+                continue
             try:
                 await bot.send_message(admin_id, text)
-                sent_any = True
+                await database.mark_customer_payment_receipt_sent(
+                    order["id"], admin_id
+                )
             except Exception:
+                await database.release_customer_payment_receipt_claim(
+                    order["id"], admin_id
+                )
                 logger.exception(
                     "[to'lov] Mijoz adminiga tasdiq yuborilmadi (id=%s).", admin_id
                 )
+        all_sent = await database.all_customer_payment_receipts_sent(
+            order["id"], tenant["admin_user_ids"]
+        )
     finally:
         await bot.session.close()
-    if not sent_any:
+    if not all_sent:
         logger.error(
-            "[to'lov] Hech bir mijoz adminiga tasdiq yuborilmadi; recovery qayta urinadi: %s",
+            "[to'lov] Barcha mijoz adminlariga tasdiq yuborilmadi; recovery qayta urinadi: %s",
             result["order_code"],
         )
         return False

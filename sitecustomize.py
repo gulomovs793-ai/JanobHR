@@ -7,11 +7,11 @@ to the real commission ledger and Founder Bot is told not to transfer money.
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
 from datetime import datetime, timezone
-
 
 _TEST_CODE = (os.getenv("PARTNER_PAYOUT_TEST_REFERRAL_CODE") or "").strip().upper()
 try:
@@ -48,11 +48,12 @@ def _install_test_patch() -> None:
         try:
             from aiogram.client.default import DefaultBotProperties
             from aiogram.enums import ParseMode
+
             import partner_payout_bot as payout_bot
             from services import partner_database as pdb
             from services import partner_payouts as payouts
             break
-        except Exception:
+        except (AttributeError, ImportError):
             time.sleep(1)
     else:
         return
@@ -209,7 +210,9 @@ def _install_test_patch() -> None:
                     await founder_bot.send_message(founder_id, text)
                     sent_any = True
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).exception(
+                        "Test payout xabari founderga yuborilmadi: %s", founder_id
+                    )
         finally:
             await founder_bot.session.close()
         return sent_any

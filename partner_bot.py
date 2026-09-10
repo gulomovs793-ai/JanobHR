@@ -15,6 +15,7 @@ Referral link uchun asosiy bot username'i:
 import asyncio
 import logging
 import os
+from html import escape
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
@@ -114,6 +115,10 @@ class PartnerForm(StatesGroup):
     q3 = State()
     q4 = State()
     phone = State()
+
+class PartnerSupportForm(StatesGroup):
+    waiting_question = State()
+
 
 
 def role_keyboard() -> InlineKeyboardMarkup:
@@ -798,12 +803,93 @@ async def faq_section(message: Message) -> None:
 
 
 @router.message(F.text == "🆘 Yordam")
-async def help_section(message: Message) -> None:
-    if await require_approved(message):
-        await message.answer(
-            "🆘 Savol bo'lsa shu chatga yozing. Kerak bo'lsa siz bilan bog'lanamiz.\n\n"
-            "Ko'p so'raladigan savollar uchun <b>❓ Tez-tez so'raladigan savollar</b> bo'limini oching."
+async def help_section(message: Message, state: FSMContext) -> None:
+    partner = await require_approved(message)
+    if not partner:
+        return
+    await state.set_state(PartnerSupportForm.waiting_question)
+    await message.answer(
+        "🆘 <b>Yordam</b>\n\n"
+        "Savolingizni yozing. Javob shu chatga keladi.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="❌ Bekor qilish")]],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+    )
+
+
+@router.message(PartnerSupportForm.waiting_question)
+async def receive_support_question(message: Message, state: FSMContext) -> None:
+    if message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("Yordam bekor qilindi.", reply_markup=main_menu())
+        return
+
+    partner = await require_approved(message)
+    if not partner:
+        await state.clear()
+        return
+
+    question = (message.text or "").strip()
+    if not question:
+        await message.answer("Savolingizni matn ko'rinishida yozing.")
+        return
+    if len(question) > 3500:
+        await message.answer("Savol juda uzun. Iltimos, 3500 belgidan qisqaroq yozing.")
+        return
+
+    try:
+        ticket = await pdb.create_support_ticket(
+            int(partner["id"]), message.from_user.id, question
         )
+    except Exception:
+        logger.exception("Support ticket yaratilmadi: partner_id=%s", partner.get("id"))
+        await message.answer("Savolni yuborib bo'lmadi. Birozdan keyin qayta urinib ko'ring.")
+        return
+
+    await state.clear()
+    await message.answer(
+        f"✅ Savolingiz yuborildi.\n\n"
+        f"Murojaat: <b>#{ticket['id']}</b>\n"
+        "Javob shu chatga keladi.",
+        reply_markup=main_menu(),
+    )
+
+    if not FOUNDER_BOT_TOKEN or not FOUNDER_USER_IDS:
+        logger.error("Support ticket notification sozlanmagan: ticket_id=%s", ticket["id"])
+        return
+
+    founder_bot = Bot(
+        token=FOUNDER_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    username = str(partner.get("username") or "").strip().lstrip("@")
+    username_line = f"@{escape(username)}" if username else "—"
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✍️ Javob berish", callback_data=f"fp:supportreply:{ticket['id']}")],
+            [InlineKeyboardButton(text="📥 Mijozlarning savollari", callback_data="fp:support")],
+        ]
+    )
+    notice = (
+        f"💬 <b>Yangi savol #{ticket['id']}</b>\n\n"
+        f"👤 {escape(str(partner.get('full_name') or 'Hamkor'))}\n"
+        f"Telegram: {username_line}\n\n"
+        f"<b>Savol:</b>\n{escape(question)}"
+    )
+    try:
+        for founder_id in FOUNDER_USER_IDS:
+            try:
+                await founder_bot.send_message(founder_id, notice, reply_markup=markup)
+            except Exception:
+                logger.exception(
+                    "Support ticket founderga yuborilmadi: ticket_id=%s founder_id=%s",
+                    ticket["id"], founder_id,
+                )
+    finally:
+        await founder_bot.session.close()
+
 
 
 async def configure_partner_miniapp_menu(bot: Bot) -> None:

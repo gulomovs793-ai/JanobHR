@@ -191,6 +191,27 @@ async def init_partner_db() -> None:
                 FOREIGN KEY(partner_id) REFERENCES partners(id)
             );
 
+            CREATE TABLE IF NOT EXISTS partner_support_tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                partner_id INTEGER NOT NULL,
+                telegram_user_id INTEGER NOT NULL,
+                question TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                answer TEXT,
+                answered_by INTEGER,
+                closed_by INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                answered_at TEXT,
+                closed_at TEXT,
+                FOREIGN KEY(partner_id) REFERENCES partners(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_partner_support_status
+                ON partner_support_tickets(status, created_at);
+            CREATE INDEX IF NOT EXISTS idx_partner_support_partner
+                ON partner_support_tickets(partner_id, created_at);
+
             CREATE INDEX IF NOT EXISTS idx_partner_events_partner
                 ON partner_referral_events(partner_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_partner_events_user
@@ -234,6 +255,122 @@ async def init_partner_db() -> None:
             "WHERE discount_value=0 AND discount_percent!=0"
         )
         await db.commit()
+
+
+async def create_support_ticket(
+    partner_id: int, telegram_user_id: int, question: str
+) -> dict:
+    """Create one persistent support ticket from a partner chat."""
+    await init_partner_db()
+    question = str(question or "").strip()
+    if not question:
+        raise ValueError("Savol bo'sh bo'lishi mumkin emas")
+    if len(question) > 3500:
+        raise ValueError("Savol juda uzun")
+    now = _now()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA busy_timeout=5000")
+        cur = await db.execute(
+            """
+            INSERT INTO partner_support_tickets(
+                partner_id, telegram_user_id, question, status, created_at, updated_at
+            ) VALUES (?, ?, ?, 'open', ?, ?)
+            """,
+            (int(partner_id), int(telegram_user_id), question, now, now),
+        )
+        ticket_id = int(cur.lastrowid)
+        await db.commit()
+    ticket = await get_support_ticket(ticket_id)
+    assert ticket is not None
+    return ticket
+
+
+async def get_support_ticket(ticket_id: int) -> dict | None:
+    await init_partner_db()
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """
+            SELECT t.*, p.full_name AS partner_name, p.username AS partner_username
+            FROM partner_support_tickets t
+            LEFT JOIN partners p ON p.id=t.partner_id
+            WHERE t.id=?
+            LIMIT 1
+            """,
+            (int(ticket_id),),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def list_support_tickets(
+    status: str | None = "open", limit: int = 100
+) -> list[dict]:
+    await init_partner_db()
+    limit = max(1, min(int(limit or 100), 500))
+    query = """
+        SELECT t.*, p.full_name AS partner_name, p.username AS partner_username
+        FROM partner_support_tickets t
+        LEFT JOIN partners p ON p.id=t.partner_id
+    """
+    params: list[object] = []
+    if status:
+        if status not in {"open", "answered", "closed"}:
+            raise ValueError("invalid support status")
+        query += " WHERE t.status=?"
+        params.append(status)
+    query += " ORDER BY t.created_at DESC, t.id DESC LIMIT ?"
+    params.append(limit)
+    async with aiosqlite.connect(SQLITE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(query, params)
+        return [dict(row) for row in await cur.fetchall()]
+
+
+async def answer_support_ticket(
+    ticket_id: int, answer: str, answered_by: int
+) -> dict | None:
+    await init_partner_db()
+    answer = str(answer or "").strip()
+    if not answer:
+        raise ValueError("Javob bo'sh bo'lishi mumkin emas")
+    if len(answer) > 3500:
+        raise ValueError("Javob juda uzun")
+    now = _now()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        cur = await db.execute(
+            """
+            UPDATE partner_support_tickets
+            SET status='answered', answer=?, answered_by=?, answered_at=?, updated_at=?
+            WHERE id=? AND status='open'
+            """,
+            (answer, int(answered_by), now, now, int(ticket_id)),
+        )
+        await db.commit()
+        if cur.rowcount != 1:
+            return None
+    return await get_support_ticket(ticket_id)
+
+
+async def close_support_ticket(ticket_id: int, closed_by: int) -> dict | None:
+    await init_partner_db()
+    now = _now()
+    async with aiosqlite.connect(SQLITE_PATH, timeout=5) as db:
+        await db.execute("PRAGMA busy_timeout=5000")
+        cur = await db.execute(
+            """
+            UPDATE partner_support_tickets
+            SET status='closed', closed_by=?, closed_at=?, updated_at=?
+            WHERE id=? AND status='open'
+            """,
+            (int(closed_by), now, now, int(ticket_id)),
+        )
+        await db.commit()
+        if cur.rowcount != 1:
+            return None
+    return await get_support_ticket(ticket_id)
 
 
 async def get_partner_by_user_id(user_id: int) -> dict | None:

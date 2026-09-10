@@ -130,6 +130,15 @@ class CrossBotReleaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(await pdb.get_partner_leads(first['id'])), 1)
         self.assertEqual(await pdb.get_partner_leads(second['id']), [])
 
+    async def test_first_referral_click_cannot_be_replaced_before_lead_exists(self):
+        first, second = await self.partner(301), await self.partner(302)
+        self.assertTrue(await pdb.record_referral_click(first['id'], 101))
+        self.assertFalse(await pdb.record_referral_click(second['id'], 101))
+        canonical = await pdb.get_first_referral_partner_for_user(101)
+        self.assertEqual(canonical['id'], first['id'])
+        self.assertEqual((await pdb.get_partner_stats(first['id']))['clicks'], 1)
+        self.assertEqual((await pdb.get_partner_stats(second['id']))['clicks'], 0)
+
     async def test_trial_cannot_credit_second_partner_after_promo_claim(self):
         first, second = await self.partner(301), await self.partner(302)
         await pdb.claim_tenant_attribution(self.tenant, first['id'], source='promo_code')
@@ -175,6 +184,54 @@ class CrossBotReleaseTests(unittest.IsolatedAsyncioTestCase):
             await db.execute("UPDATE payment_orders SET decided_at='2020-01-01T00:00:00+00:00' WHERE id=?", (order['id'],))
             await db.commit()
         self.assertEqual(len(await database.list_unnotified_approved_orders()), 1)
+
+    async def test_parallel_receipt_recovery_sends_once_per_admin(self):
+        order = await create_payment_order(self.tenant, 299000, plan_code='start')
+        await database.try_approve_payment_order(order['id'])
+        await database.activate_subscription_for_order(order['id'])
+        fake = SimpleNamespace(send_message=AsyncMock(), session=SimpleNamespace(close=AsyncMock()))
+        payload = {**order, 'tenant_id': self.tenant}
+        with patch('aiogram.Bot', return_value=fake):
+            results = await asyncio.gather(
+                _notify_tenant_payment_approved(payload),
+                _notify_tenant_payment_approved(payload),
+            )
+        self.assertEqual(fake.send_message.await_count, 1)
+        self.assertIn(True, results)
+        self.assertEqual(await database.list_unnotified_approved_orders(), [])
+
+    async def test_failed_admin_receipt_retries_only_that_admin(self):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE tenants SET admin_user_ids=? WHERE id=?",
+                (json.dumps([101, 202]), self.tenant),
+            )
+            await db.commit()
+        order = await create_payment_order(self.tenant, 299000, plan_code='start')
+        await database.try_approve_payment_order(order['id'])
+        await database.activate_subscription_for_order(order['id'])
+
+        async def fail_second(admin_id, _text):
+            if admin_id == 202:
+                raise RuntimeError('temporary Telegram failure')
+
+        first_bot = SimpleNamespace(
+            send_message=AsyncMock(side_effect=fail_second),
+            session=SimpleNamespace(close=AsyncMock()),
+        )
+        payload = {**order, 'tenant_id': self.tenant}
+        with patch('aiogram.Bot', return_value=first_bot):
+            self.assertFalse(await _notify_tenant_payment_approved(payload))
+        self.assertEqual(len(await database.list_unnotified_approved_orders()), 1)
+
+        retry_bot = SimpleNamespace(
+            send_message=AsyncMock(), session=SimpleNamespace(close=AsyncMock())
+        )
+        with patch('aiogram.Bot', return_value=retry_bot):
+            self.assertTrue(await _notify_tenant_payment_approved(payload))
+        retry_bot.send_message.assert_awaited_once()
+        self.assertEqual(retry_bot.send_message.await_args.args[0], 202)
+        self.assertEqual(await database.list_unnotified_approved_orders(), [])
 
     async def test_failed_resume_download_does_not_hide_admin_card(self):
         app_id = await database.save_application(tenant_id=self.tenant, user_id=404, username='',
